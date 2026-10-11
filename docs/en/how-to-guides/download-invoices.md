@@ -140,6 +140,11 @@ The one case the SDK hands back to you: KSeF asked to wait longer than the
 ceiling. Then `download()` raises `KSeFRateLimitError` immediately, without
 sleeping, and `error.retry_after` carries the true header value.
 
+A single `download()` still blocks when the header is short enough to honor. If
+KSeF repeats the same `Retry-After`, that one call waits up to
+`(max_attempts - 1) * max_retry_after` before it raises, which is 240 seconds
+with the defaults. Budget for that in a long batch.
+
 ```python
 from pathlib import Path
 

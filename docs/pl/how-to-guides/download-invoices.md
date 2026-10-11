@@ -141,6 +141,11 @@ Jeden przypadek SDK oddaje z powrotem aplikacji: gdy KSeF każe czekać dłużej
 sufit. Wtedy `download()` rzuca `KSeFRateLimitError` natychmiast, bez spania, a
 `error.retry_after` niesie prawdziwą wartość z nagłówka.
 
+Pojedyncze `download()` nadal blokuje, gdy nagłówek jest na tyle krótki, że SDK
+go stosuje. Jeśli KSeF powtarza ten sam `Retry-After`, takie wywołanie
+czeka maksymalnie `(max_attempts - 1) * max_retry_after` przed rzuceniem błędu,
+czyli domyślnie 240 sekund. Uwzględnij to w długiej partii.
+
 ```python
 from pathlib import Path
 

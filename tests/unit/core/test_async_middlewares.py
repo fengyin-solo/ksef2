@@ -674,6 +674,26 @@ class TestAsyncRetryAfterCeiling:
         assert exc_info.value.retry_after == 600
         assert len(fake.calls) == 1
 
+    async def test_repeated_retry_after_sleeps_the_ceiling_once_per_retry(self) -> None:
+        """One request can wait `(max_attempts - 1) * max_retry_after` in total."""
+        fake = AsyncFakeTransport()
+        for _ in range(3):
+            fake.enqueue(
+                json_body=_RATE_LIMIT_BODY,
+                status_code=429,
+                headers={"Retry-After": "120"},
+            )
+
+        sleep_calls: list[float] = []
+        mock_sleep = AsyncMock(side_effect=lambda s: sleep_calls.append(s))
+
+        middleware = AsyncRetryMiddleware(fake, RetryConfig(max_attempts=3))
+        response = await middleware.request("GET", "/test", _sleep_fn=mock_sleep)
+
+        assert response.status_code == 429
+        assert len(fake.calls) == 3
+        assert sleep_calls == [120.0, 120.0]
+
     async def test_exponential_backoff_still_capped_by_max_delay(self) -> None:
         fake = AsyncFakeTransport()
         for _ in range(5):

@@ -221,6 +221,27 @@ class TestRetryAfterCeiling:
         sleep_mock.assert_called_once_with(120.0)
 
     @patch("ksef2._core.middlewares.retry.time.sleep")
+    def test_repeated_retry_after_sleeps_the_ceiling_once_per_retry(
+        self,
+        sleep_mock,
+    ) -> None:
+        """One request can wait `(max_attempts - 1) * max_retry_after` in total."""
+        transport = FakeTransport()
+        for _ in range(3):
+            transport.enqueue(
+                status_code=429,
+                json_body=_RATE_LIMIT_BODY,
+                headers={"Retry-After": "120"},
+            )
+        middleware = RetryMiddleware(transport, RetryConfig(max_attempts=3))
+
+        response = middleware.get("/resource")
+
+        assert response.status_code == 429
+        assert len(transport.calls) == 3
+        assert [c.args[0] for c in sleep_mock.call_args_list] == [120.0, 120.0]
+
+    @patch("ksef2._core.middlewares.retry.time.sleep")
     def test_retry_after_over_ceiling_raises_immediately_with_true_value(
         self,
         sleep_mock,

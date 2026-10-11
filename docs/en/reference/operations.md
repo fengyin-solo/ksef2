@@ -95,6 +95,12 @@ not retry: it gives up immediately and raises `KSeFRateLimitError` carrying the
 true header value, so the app can reschedule. The ceiling keeps a multi-hour
 `Retry-After` from stalling a process forever.
 
+The ceiling bounds one sleep, not the whole request. If KSeF repeats the same
+`Retry-After` on every attempt, a single request waits up to
+`(max_attempts - 1) * max_retry_after` before it gives up. With the defaults
+that is 240 seconds, because the SDK sleeps 120 seconds twice. Lower
+`max_attempts` or `max_retry_after` when a request handler cannot afford that.
+
 ## Retryable requests
 
 The SDK retries only request shapes that are safe enough to repeat at the
@@ -202,7 +208,9 @@ For a `429`, the retry middleware honors `Retry-After` exactly when the value
 is at or below `max_retry_after`, sleeping and retrying up to `max_attempts`.
 When the header exceeds the ceiling, the middleware gives up immediately: no
 sleep, no retry, and the request fails with `KSeFRateLimitError` whose
-`retry_after` is the true header value.
+`retry_after` is the true header value. The ceiling bounds each sleep, so a
+repeated header can hold one request for `(max_attempts - 1) * max_retry_after`,
+which is 240 seconds with the defaults.
 
 What the app still owns: a `KSeFRateLimitError` means the SDK already gave up,
 so schedule the work for later instead of retrying blindly. Use `retry_after`

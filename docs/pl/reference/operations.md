@@ -95,6 +95,13 @@ natychmiast i rzuca `KSeFRateLimitError` z prawdziwą wartością z nagłówka, 
 aplikacja mogła przełożyć pracę. Sufit chroni proces przed wiecznym
 oczekiwaniem na `Retry-After` rzędu wielu godzin.
 
+Sufit ogranicza jedno zaśnięcie, nie cały request. Jeśli KSeF powtórzy ten sam
+`Retry-After` przy każdej próbie, pojedynczy request czeka maksymalnie
+`(max_attempts - 1) * max_retry_after`, zanim się podda. Przy domyślnych
+wartościach to 240 sekund, bo SDK śpi 120 sekund dwa razy. Zmniejsz
+`max_attempts` albo `max_retry_after`, gdy handler requestu nie może tyle
+czekać.
+
 ## Ponawialne requesty
 
 SDK ponawia tylko kształty requestów, które są wystarczająco bezpieczne do
@@ -203,7 +210,9 @@ Dla `429` middleware retry stosuje dokładnie wartość `Retry-After`, gdy mieś
 się ona w `max_retry_after`, śpi i ponawia do `max_attempts` razy. Gdy nagłówek
 przekracza sufit, middleware poddaje się natychmiast: bez spania, bez ponawiania,
 a request kończy się `KSeFRateLimitError` z prawdziwą wartością nagłówka w
-`retry_after`.
+`retry_after`. Sufit ogranicza każde zaśnięcie z osobna, więc powtarzający się
+nagłówek może trzymać request przez `(max_attempts - 1) * max_retry_after`,
+czyli domyślnie 240 sekund.
 
 Co nadal należy do aplikacji: `KSeFRateLimitError` oznacza, że SDK już się
 poddał, więc zaplanuj pracę na później zamiast ponawiać na oślep. Używaj

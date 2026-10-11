@@ -362,6 +362,13 @@
         "kind": "reference",
         "items": [
           {
+            "label": "Migrate to 1.0",
+            "translations": {
+              "pl": "Migracja do 1.0"
+            },
+            "path": "reference/migration-1-0.md"
+          },
+          {
             "label": "1.0.0 release notes",
             "translations": {
               "pl": "Notatki wydania 1.0.0"

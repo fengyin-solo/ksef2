@@ -163,7 +163,7 @@ class AsyncCollectiveIdentifiersClient:
             yield response
 
     @deprecated(
-        "`query()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`query()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `list()` instead."
     )
     def query(
@@ -176,7 +176,7 @@ class AsyncCollectiveIdentifiersClient:
         """Deprecated: fetch one page of collective identifiers visible in the context.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``list()`` instead; ``first_page()`` fetches one page.
+            May be removed no earlier than ksef2 2.0.0. Use ``list()`` instead; ``first_page()`` fetches one page.
 
         Args:
             filters: Criteria selecting collective identifiers.
@@ -193,7 +193,7 @@ class AsyncCollectiveIdentifiersClient:
         )
 
     @deprecated(
-        "`query_all()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`query_all()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `list()` instead."
     )
     async def query_all(
@@ -205,7 +205,7 @@ class AsyncCollectiveIdentifiersClient:
         """Deprecated: iterate through every page matching a collective identifier query.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``list().pages()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``list().pages()`` instead.
 
         Args:
             filters: Criteria selecting collective identifiers.
@@ -218,7 +218,7 @@ class AsyncCollectiveIdentifiersClient:
             yield page
 
     @deprecated(
-        "`query_by_ksef_number()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`query_by_ksef_number()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `list_for_invoice()` instead."
     )
     def query_by_ksef_number(
@@ -231,7 +231,7 @@ class AsyncCollectiveIdentifiersClient:
         """Deprecated: fetch one page of identifiers associated with a KSeF invoice.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``list_for_invoice()`` instead; ``first_page()`` fetches one page.
+            May be removed no earlier than ksef2 2.0.0. Use ``list_for_invoice()`` instead; ``first_page()`` fetches one page.
 
         Args:
             ksef_number: KSeF number of the invoice.
@@ -248,8 +248,8 @@ class AsyncCollectiveIdentifiersClient:
         )
 
     @deprecated(
-        "`query_all_by_ksef_number()` is deprecated and will be removed in "
-        "ksef2 1.10.0; use `list_for_invoice()` instead."
+        "`query_all_by_ksef_number()` is deprecated and will be removed no earlier than "
+        "ksef2 2.0.0; use `list_for_invoice()` instead."
     )
     async def query_all_by_ksef_number(
         self,
@@ -260,7 +260,7 @@ class AsyncCollectiveIdentifiersClient:
         """Deprecated: iterate through identifiers associated with one KSeF invoice.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``list_for_invoice().pages()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``list_for_invoice().pages()`` instead.
 
         Args:
             ksef_number: KSeF number of the invoice.
@@ -273,7 +273,7 @@ class AsyncCollectiveIdentifiersClient:
             yield page
 
     @deprecated(
-        "`list_all_invoices()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`list_all_invoices()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `list_invoices()` instead."
     )
     async def list_all_invoices(
@@ -285,7 +285,7 @@ class AsyncCollectiveIdentifiersClient:
         """Deprecated: iterate through every invoice page for the supplied collective identifiers.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``list_invoices().pages()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``list_invoices().pages()`` instead.
 
         Args:
             collective_identifier_numbers: Collective identifier numbers to expand (1–10).

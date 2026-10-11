@@ -201,18 +201,65 @@ def test_maps_the_domestic_tax_exemption_basis() -> None:
     assert annotations.tax_exemption.legal_basis_act == "art. 43 ust. 1 pkt 10 ustawy"
 
 
-def test_several_exemption_bases_break_the_domain_rule() -> None:
-    """The domain model accepts exactly one basis while the spec carries three."""
+def test_several_exemption_bases_map_the_first_one_in_schema_order() -> None:
+    """The schema offers one basis, so a repeated choice keeps the first basis."""
+    annotations = annotations_from_spec(
+        adnotacje(
+            zwolnienie=FakturaFaAdnotacjeZwolnienie(
+                p_19=Twybor1.VALUE_1,
+                p_19_a="art. 43 ust. 1 pkt 10 ustawy",
+                p_19_b="art. 132 Dyrektywy 2006/112/WE",
+            )
+        )
+    )
+
+    assert annotations is not None
+    assert annotations.tax_exemption is not None
+    assert annotations.tax_exemption.legal_basis_act == "art. 43 ust. 1 pkt 10 ustawy"
+    assert annotations.tax_exemption.legal_basis_eu_directive is None
+    assert annotations.tax_exemption.legal_basis_other is None
+
+
+def test_exemption_bases_fall_through_to_the_directive_basis() -> None:
+    annotations = annotations_from_spec(
+        adnotacje(
+            zwolnienie=FakturaFaAdnotacjeZwolnienie(
+                p_19=Twybor1.VALUE_1,
+                p_19_b="art. 132 Dyrektywy 2006/112/WE",
+                p_19_c="umowa miedzynarodowa",
+            )
+        )
+    )
+
+    assert annotations is not None
+    assert annotations.tax_exemption is not None
+    assert annotations.tax_exemption.legal_basis_act is None
+    assert annotations.tax_exemption.legal_basis_eu_directive == (
+        "art. 132 Dyrektywy 2006/112/WE"
+    )
+    assert annotations.tax_exemption.legal_basis_other is None
+
+
+def test_maps_the_other_tax_exemption_basis() -> None:
+    annotations = annotations_from_spec(
+        adnotacje(
+            zwolnienie=FakturaFaAdnotacjeZwolnienie(
+                p_19=Twybor1.VALUE_1,
+                p_19_c="umowa miedzynarodowa",
+            )
+        )
+    )
+
+    assert annotations is not None
+    assert annotations.tax_exemption is not None
+    assert annotations.tax_exemption.legal_basis_other == "umowa miedzynarodowa"
+
+
+def test_exemption_marker_without_any_basis_still_breaks_the_domain_rule() -> None:
+    """A ``P_19`` marker that names no basis stays rejected by the domain."""
     with pytest.raises(ValidationError, match="Exactly one exemption legal basis"):
         annotations_from_spec(
-            adnotacje(
-                zwolnienie=FakturaFaAdnotacjeZwolnienie(
-                    p_19=Twybor1.VALUE_1,
-                    p_19_a="art. 43 ust. 1 pkt 10 ustawy",
-                    p_19_b="art. 132 Dyrektywy 2006/112/WE",
-                    p_19_c="umowa miedzynarodowa",
-                )
-            )
+            adnotacje(zwolnienie=FakturaFaAdnotacjeZwolnienie(p_19=Twybor1.VALUE_1))
         )
 
 

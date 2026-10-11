@@ -33,12 +33,12 @@ from tests.unit.clients.test_paging import (
 )
 from tests.unit.flavors import Flavor
 
-SUFFIX = "will be removed in ksef2 1.10.0; use `{new}` instead."
+SUFFIX = "will be removed no earlier than ksef2 2.0.0; use `{new}` instead."
 BY_ID = {collection.id: collection for collection in COLLECTIONS}
 
 
 def once(flavor: Flavor, call: Callable[[], Any], old: str, new: str) -> Any:
-    """Call, drain, and assert exactly one DeprecationWarning with the 1.10.0 message."""
+    """Call, drain, and assert exactly one DeprecationWarning with the 2.0.0 minimum-removal message."""
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         value = call()
@@ -287,8 +287,8 @@ class TestInvoicesClientExport:
         deprecations = [w for w in caught if issubclass(w.category, DeprecationWarning)]
         assert len(deprecations) == 1
         assert str(deprecations[0].message) == (
-            f"`ksef2.clients.{name}` is deprecated and will be removed in "
-            f"ksef2 1.10.0; use `{replacement}` instead."
+            f"`ksef2.clients.{name}` is deprecated and will be removed no earlier than "
+            f"ksef2 2.0.0; use `{replacement}` instead."
         )
         assert resolved.__name__ == name
         assert resolved.__module__.startswith("ksef2._clients.")

@@ -345,7 +345,7 @@ class AsyncCertificatesClient:
             current_params = current_params.next_page()
 
     @deprecated(
-        "`query()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`query()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `list()` instead."
     )
     def query(
@@ -361,7 +361,7 @@ class AsyncCertificatesClient:
         """Deprecated: fetch one page of certificate search results.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``list()`` instead; ``first_page()`` fetches one page.
+            May be removed no earlier than ksef2 2.0.0. Use ``list()`` instead; ``first_page()`` fetches one page.
 
         Args:
             name: Match this certificate name.
@@ -384,7 +384,7 @@ class AsyncCertificatesClient:
         )
 
     @deprecated(
-        "`all()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`all()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `list()` instead."
     )
     async def all(
@@ -400,7 +400,7 @@ class AsyncCertificatesClient:
         """Deprecated: iterate over all certificates matching the provided filters.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``list()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``list()`` instead.
 
         Args:
             certificate_serial_number: Match this certificate serial number.

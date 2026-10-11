@@ -1,4 +1,4 @@
-"""Enforce the namespace rule: no underscore means public, underscore means private."""
+"""Check public namespaces and the four deprecated compatibility packages."""
 
 from pathlib import Path
 
@@ -21,6 +21,10 @@ PUBLIC_MODULES = frozenset(
         "ksef2.testdata",
         "ksef2.xades",
     }
+)
+
+LEGACY_PACKAGES = frozenset(
+    {"ksef2.core", "ksef2.domain", "ksef2.infra", "ksef2.services"}
 )
 
 
@@ -55,6 +59,7 @@ def test_every_module_without_an_underscore_component_is_listed_as_public() -> N
         for module in _all_modules()
         if not _is_private(module)
         and not _is_dunder_module(module)
+        and module not in LEGACY_PACKAGES
         and module not in PUBLIC_MODULES
     )
 
@@ -71,13 +76,16 @@ def test_every_listed_public_module_exists() -> None:
     assert not missing, f"PUBLIC_MODULES lists modules that do not exist: {missing}"
 
 
-def test_no_internal_package_is_importable_without_an_underscore() -> None:
+def test_legacy_packages_exist_alongside_canonical_implementations() -> None:
+    modules = _all_modules()
+    assert LEGACY_PACKAGES <= modules
+    for module in LEGACY_PACKAGES:
+        assert module.replace("ksef2.", "ksef2._", 1) in modules, module
+
+
+def test_other_internal_paths_remain_private() -> None:
     old_internal = {
-        "ksef2.core",
-        "ksef2.domain",
-        "ksef2.infra",
         "ksef2.endpoints",
-        "ksef2.services",
         "ksef2.config",
         "ksef2.logging",
         "ksef2.clients.base",

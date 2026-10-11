@@ -176,7 +176,7 @@ class Client:
         return RawClient(self._transport, self._environment)
 
     @deprecated(
-        "`Client.authenticated()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`Client.authenticated()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `Client.authentication.resume()` with "
         "`AuthenticationResumeState.from_tokens()` instead."
     )
@@ -184,7 +184,7 @@ class Client:
         """Deprecated compatibility wrapper for ``authentication.resume()``.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``authentication.resume()`` with ``AuthenticationResumeState.from_tokens()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``authentication.resume()`` with ``AuthenticationResumeState.from_tokens()`` instead.
 
         Args:
             auth_tokens: Access and refresh tokens from a previous authentication.

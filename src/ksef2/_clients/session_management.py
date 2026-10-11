@@ -65,7 +65,7 @@ class SessionManagementClient:
             yield response
 
     @deprecated(
-        "`query()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`query()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `list()` instead."
     )
     def query(
@@ -77,7 +77,7 @@ class SessionManagementClient:
         """Deprecated: fetch one page of authentication sessions.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``list()`` instead; ``first_page()`` fetches one page.
+            May be removed no earlier than ksef2 2.0.0. Use ``list()`` instead; ``first_page()`` fetches one page.
 
         Args:
             page_size: Maximum number of sessions to request from KSeF.
@@ -89,7 +89,7 @@ class SessionManagementClient:
         return self._query(page_size=page_size, continuation_token=continuation_token)
 
     @deprecated(
-        "`all()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`all()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `list()` instead."
     )
     def all(
@@ -100,7 +100,7 @@ class SessionManagementClient:
         """Deprecated: iterate through all authentication session pages.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``list().pages()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``list().pages()`` instead.
 
         Args:
             page_size: Maximum number of sessions to request per page.
@@ -125,14 +125,14 @@ class SessionManagementClient:
         self._auth_ep.terminate_auth_session(reference_number=reference_number)
 
     @deprecated(
-        "`close()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`close()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `terminate()` instead."
     )
     def close(self, *, reference_number: str) -> None:
         """Deprecated: terminate an authentication session by reference number.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``terminate()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``terminate()`` instead.
 
         Args:
             reference_number: Reference number of the authentication session to terminate.

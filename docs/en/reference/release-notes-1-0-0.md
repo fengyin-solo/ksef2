@@ -59,11 +59,14 @@ Do not build application code on these paths:
 - repository `scripts/*`;
 - generated schema internals outside `ksef2.raw.spec` and `ksef2.raw.supp`.
 
-The former internal packages (`ksef2.core`, `ksef2.domain`, `ksef2.infra`,
-`ksef2.endpoints`, `ksef2.services`, the client implementation modules,
-`ksef2.config` and `ksef2.logging`) are now underscore-prefixed, with no
-compatibility aliases: importing the old paths raises `ImportError`. Private
-modules can change without a 2.0 release.
+The former paths `ksef2.core`, `ksef2.domain`, `ksef2.infra` and
+`ksef2.services`, including their submodules, remain as deprecated aliases.
+They emit `DeprecationWarning` once per package family, naming replacements. Existing method aliases
+also remain available throughout 1.x, with removal no earlier than 2.0.0.
+The private-module rename does not remove these legacy imports in 1.0.
+
+See the [migration guide](migration-1-0.md) for imports, send/wait/UPO and search
+examples. Python normally hides these warnings, so enable them in your tests.
 
 ## Related pages
 

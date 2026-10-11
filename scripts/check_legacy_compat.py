@@ -621,8 +621,17 @@ def _typecheck_wheel(candidate: Path, executable: str | None) -> None:
         "error",
     ]
     _ = sys.stdout.flush()
+    # Under GitHub Actions basedpyright fails on warnings too; `just typecheck`
+    # clears the variable for the same reason. Runtime-only legacy aliases have
+    # unknown static types, so only errors count here.
+    environment = {**os.environ, "GITHUB_ACTIONS": ""}
     result = subprocess.run(
-        command, cwd=ROOT, capture_output=True, text=True, check=False
+        command,
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=environment,
     )
     _ = sys.stdout.write(result.stdout)
     _ = sys.stderr.write(result.stderr)

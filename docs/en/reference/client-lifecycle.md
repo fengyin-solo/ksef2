@@ -83,7 +83,7 @@ token pair.
 | `tokens` | `TokensClient` | Token generation, status, listing, and revocation. |
 | `certificates` | `CertificatesClient` | Certificate enrollment, retrieval, query, limits, and revocation. |
 | `sessions` | `SessionManagementClient` | Authentication session listing and termination. |
-| `invoice_sessions` | `InvoiceSessionsClient` | Online and batch invoice-session history. |
+| `invoice_sessions` | `InvoiceSessionsClient` | Online and batch invoice-session history and UPO downloads from stored references. |
 | `permissions` | `PermissionsClient` | Permission grants, queries, revokes, and operation status. |
 | `raw` | `RawAuthenticatedClient` | Low-level authenticated endpoint groups. |
 

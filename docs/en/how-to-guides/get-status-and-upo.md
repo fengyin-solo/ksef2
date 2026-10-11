@@ -60,6 +60,42 @@ the session. Store it before waiting so another worker can inspect the result
 if the original process stops.
 :::
 
+## Download UPO after restart
+
+With a newly authenticated `auth` client, use stored references to download UPO
+from an online or batch session. You do not need an open session handle or
+`OnlineSessionResumeState` and its encryption keys.
+
+```python
+# Load these references from your application's records.
+upo_xml = auth.invoice_sessions.download_upo(
+    session_reference_number,
+    invoice_reference_number=invoice_reference_number,
+)
+_ = Path("upo.xml").write_bytes(upo_xml)
+
+# Alternatively, select the invoice by its KSeF number.
+upo_xml = auth.invoice_sessions.download_upo(
+    session_reference_number,
+    ksef_number=ksef_number,
+)
+
+# Or download one session UPO page using its stored UPO reference.
+upo_page_xml = auth.invoice_sessions.download_upo(
+    session_reference_number,
+    upo_reference_number=upo_reference_number,
+)
+```
+
+Pass exactly one of `invoice_reference_number`, `ksef_number`, or
+`upo_reference_number`. Each call makes one authenticated request and returns
+XML bytes. For an async client, `await` the same call.
+
+Like `submission.download_upo()`, this method never waits or polls. If KSeF
+returns code 21165 or 21178, it raises `KSeFNotReadyError`. Check processing
+status before retrying; rejected invoices may never receive a UPO. A session
+UPO page becomes available after the session is closed and processed.
+
 ## Online session pages
 
 Use session pages when you need to inspect everything submitted in an online

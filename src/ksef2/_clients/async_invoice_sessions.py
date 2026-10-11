@@ -8,6 +8,7 @@ from typing_extensions import deprecated
 
 from ksef2._clients._async_pager import AsyncPager
 from ksef2._core.async_protocols import AsyncMiddleware
+from ksef2._core.exceptions import KSeFValidationError
 from ksef2._domain.models.pagination import ListSessionsQuery
 from ksef2._domain.models.session import (
     ListSessionsResponse,
@@ -17,13 +18,14 @@ from ksef2._domain.models.session import (
     normalize_session_status,
     normalize_session_type,
 )
+from ksef2._endpoints.async_invoices import AsyncInvoicesEndpoints
 from ksef2._endpoints.async_session import AsyncSessionEndpoints
 from ksef2._infra.mappers.sessions import from_spec
 
 
 @final
 class AsyncInvoiceSessionsClient:
-    """Async browse historical online and batch invoice sessions.
+    """Async browse historical invoice sessions and download their UPO documents.
 
     Catch ``KSeFException`` for SDK-classified failures raised by this branch,
     and ``httpx.HTTPError`` for transport failures.
@@ -43,6 +45,66 @@ class AsyncInvoiceSessionsClient:
             transport: Middleware chain used for requests to KSeF.
         """
         self._endpoints = AsyncSessionEndpoints(transport)
+        self._invoice_endpoints = AsyncInvoicesEndpoints(transport)
+
+    async def download_upo(
+        self,
+        session_reference_number: str,
+        *,
+        invoice_reference_number: str | None = None,
+        ksef_number: str | None = None,
+        upo_reference_number: str | None = None,
+    ) -> bytes:
+        """Download one UPO from stored references without opening a session.
+
+        Works for online and batch invoice sessions, including after a process
+        restart. Uses the authenticated client's bearer token and makes one
+        request. It never waits or polls, and needs no session crypto state.
+
+        Args:
+            session_reference_number: Reference number of the invoice session.
+            invoice_reference_number: Invoice reference within that session.
+                Pass exactly one of this, ``ksef_number`` or ``upo_reference_number``.
+            ksef_number: KSeF number of an accepted invoice in that session.
+            upo_reference_number: Reference number of one session UPO page.
+
+        Returns:
+            The invoice UPO or session UPO page as XML bytes.
+
+        Raises:
+            KSeFValidationError: If no selector or multiple selectors are given.
+            KSeFNotReadyError: If KSeF has not issued the requested UPO yet.
+                Check processing status before retrying. Rejected invoices may
+                never receive a UPO.
+        """
+        selector_count = sum(
+            value is not None
+            for value in (
+                invoice_reference_number,
+                ksef_number,
+                upo_reference_number,
+            )
+        )
+        if selector_count != 1:
+            raise KSeFValidationError(
+                "Pass exactly one of invoice_reference_number, ksef_number "
+                "or upo_reference_number."
+            )
+        if invoice_reference_number is not None:
+            return await self._invoice_endpoints.get_invoice_upo_by_reference(
+                reference_number=session_reference_number,
+                invoice_reference_number=invoice_reference_number,
+            )
+        if ksef_number is not None:
+            return await self._invoice_endpoints.get_invoice_upo_by_ksef(
+                reference_number=session_reference_number,
+                ksef_number=ksef_number,
+            )
+        assert upo_reference_number is not None
+        return await self._endpoints.get_session_upo(
+            reference_number=session_reference_number,
+            upo_reference_number=upo_reference_number,
+        )
 
     async def _query(
         self,
@@ -98,7 +160,7 @@ class AsyncInvoiceSessionsClient:
             yield response
 
     @deprecated(
-        "`query()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`query()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `list()` instead."
     )
     def query(
@@ -112,7 +174,7 @@ class AsyncInvoiceSessionsClient:
         """Deprecated: fetch one page of invoice session history for the chosen session type.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``list()`` instead; ``first_page()`` fetches one page.
+            May be removed no earlier than ksef2 2.0.0. Use ``list()`` instead; ``first_page()`` fetches one page.
 
         Args:
             session_type: Invoice session family to browse, such as ``"online"``
@@ -132,7 +194,7 @@ class AsyncInvoiceSessionsClient:
         )
 
     @deprecated(
-        "`all()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`all()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `list()` instead."
     )
     async def all(
@@ -144,7 +206,7 @@ class AsyncInvoiceSessionsClient:
         """Deprecated: iterate through all pages of invoice session history.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``list().pages()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``list().pages()`` instead.
 
         Args:
             session_type: Invoice session family to browse, such as ``"online"``

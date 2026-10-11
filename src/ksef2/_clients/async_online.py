@@ -268,7 +268,7 @@ class AsyncOnlineSessionClient:
         return AsyncInvoiceSubmission(self, invoice_from_spec(response_dto))
 
     @deprecated(
-        "`send_invoice_and_wait()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`send_invoice_and_wait()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `send_invoice().wait()` instead."
     )
     def send_invoice_and_wait(
@@ -281,7 +281,7 @@ class AsyncOnlineSessionClient:
         """Deprecated: submit an invoice and poll until KSeF assigns a final result.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``send_invoice().wait()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``send_invoice().wait()`` instead.
 
         Args:
             invoice_xml: Invoice XML bytes, valid against the session's schema.
@@ -379,7 +379,7 @@ class AsyncOnlineSessionClient:
         )
 
     @deprecated(
-        "`wait_for_invoice_ready()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`wait_for_invoice_ready()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `send_invoice().wait()` instead."
     )
     def wait_for_invoice_ready(
@@ -392,7 +392,7 @@ class AsyncOnlineSessionClient:
         """Deprecated: poll invoice status until it succeeds, fails, or times out.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``send_invoice().wait()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``send_invoice().wait()`` instead.
 
         Args:
             invoice_reference_number: Reference number of the invoice within the session.
@@ -490,8 +490,8 @@ class AsyncOnlineSessionClient:
         )
 
     @deprecated(
-        "`get_invoice_upo_by_ksef_number()` is deprecated and will be removed in "
-        "ksef2 1.10.0; use `download_invoice_upo(ksef_number=...)` instead."
+        "`get_invoice_upo_by_ksef_number()` is deprecated and will be removed no earlier than "
+        "ksef2 2.0.0; use `download_invoice_upo(ksef_number=...)` instead."
     )
     def get_invoice_upo_by_ksef_number(
         self, *, ksef_number: str
@@ -499,7 +499,7 @@ class AsyncOnlineSessionClient:
         """Deprecated: download the invoice UPO by KSeF number.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``download_invoice_upo(ksef_number=...)`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``download_invoice_upo(ksef_number=...)`` instead.
 
         Args:
             ksef_number: KSeF number of an invoice accepted in this session.
@@ -510,8 +510,8 @@ class AsyncOnlineSessionClient:
         return self.download_invoice_upo(ksef_number=ksef_number)
 
     @deprecated(
-        "`get_invoice_upo_by_reference()` is deprecated and will be removed in "
-        "ksef2 1.10.0; use `download_invoice_upo(reference_number=...)` instead."
+        "`get_invoice_upo_by_reference()` is deprecated and will be removed no earlier than "
+        "ksef2 2.0.0; use `download_invoice_upo(reference_number=...)` instead."
     )
     def get_invoice_upo_by_reference(
         self,
@@ -521,7 +521,7 @@ class AsyncOnlineSessionClient:
         """Deprecated: download the invoice UPO by session invoice reference number.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``download_invoice_upo(reference_number=...)`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``download_invoice_upo(reference_number=...)`` instead.
 
         Args:
             invoice_reference_number: Reference number of the invoice within the session.
@@ -659,14 +659,14 @@ class AsyncOnlineSessionClient:
         return self._state
 
     @deprecated(
-        "`get_state()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`get_state()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `resume_state()` instead."
     )
     def get_state(self) -> OnlineSessionResumeState:
         """Deprecated compatibility wrapper for ``resume_state()``.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``resume_state()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``resume_state()`` instead.
 
         Returns:
             The same state as ``resume_state()``.

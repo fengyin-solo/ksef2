@@ -539,7 +539,7 @@ class AsyncPermissionsClient:
         return self._operation(await self._revoke(permission_id))
 
     @deprecated(
-        "`revoke_common()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`revoke_common()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `revoke()` instead."
     )
     def revoke_common(
@@ -550,7 +550,7 @@ class AsyncPermissionsClient:
         """Deprecated: revoke a non-authorization permission by permission id.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``revoke()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``revoke()`` instead.
 
         Args:
             permission_id: Identifier of the permission, from a query result.
@@ -658,7 +658,7 @@ class AsyncPermissionsClient:
         )
 
     @deprecated(
-        "`get_entity_roles()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`get_entity_roles()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `list_entity_roles()` instead."
     )
     def get_entity_roles(
@@ -669,7 +669,7 @@ class AsyncPermissionsClient:
         """Deprecated: fetch one page of roles assigned to the authenticated entity.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``list_entity_roles()`` instead; ``first_page()`` fetches one page.
+            May be removed no earlier than ksef2 2.0.0. Use ``list_entity_roles()`` instead; ``first_page()`` fetches one page.
 
         Args:
             params: Page size and offset; defaults are used when ``None``.
@@ -680,7 +680,7 @@ class AsyncPermissionsClient:
         return self._entity_roles(params or OffsetPaginationParams())
 
     @deprecated(
-        "`query_authorizations()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`query_authorizations()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `list_authorizations()` instead."
     )
     def query_authorizations(
@@ -692,7 +692,7 @@ class AsyncPermissionsClient:
         """Deprecated: fetch one page of authorization grants matching the provided filters.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``list_authorizations()`` instead; ``first_page()`` fetches one page.
+            May be removed no earlier than ksef2 2.0.0. Use ``list_authorizations()`` instead; ``first_page()`` fetches one page.
 
         Args:
             query: Filters for the authorization grants.
@@ -704,7 +704,7 @@ class AsyncPermissionsClient:
         return self._authorizations(query, params or OffsetPaginationParams())
 
     @deprecated(
-        "`query_entities()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`query_entities()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `list_entities()` instead."
     )
     def query_entities(
@@ -716,7 +716,7 @@ class AsyncPermissionsClient:
         """Deprecated: fetch one page of entity permission grants matching the provided filters.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``list_entities()`` instead; ``first_page()`` fetches one page.
+            May be removed no earlier than ksef2 2.0.0. Use ``list_entities()`` instead; ``first_page()`` fetches one page.
 
         Args:
             query: Filters for the entity permissions.
@@ -728,7 +728,7 @@ class AsyncPermissionsClient:
         return self._entities(query, params or OffsetPaginationParams())
 
     @deprecated(
-        "`query_eu_entities()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`query_eu_entities()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `list_eu_entities()` instead."
     )
     def query_eu_entities(
@@ -740,7 +740,7 @@ class AsyncPermissionsClient:
         """Deprecated: fetch one page of EU-entity permissions matching the provided filters.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``list_eu_entities()`` instead; ``first_page()`` fetches one page.
+            May be removed no earlier than ksef2 2.0.0. Use ``list_eu_entities()`` instead; ``first_page()`` fetches one page.
 
         Args:
             query: Filters for the EU-entity permissions.
@@ -752,7 +752,7 @@ class AsyncPermissionsClient:
         return self._eu_entities(query, params or OffsetPaginationParams())
 
     @deprecated(
-        "`query_personal()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`query_personal()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `list_personal()` instead."
     )
     def query_personal(
@@ -764,7 +764,7 @@ class AsyncPermissionsClient:
         """Deprecated: fetch one page of permissions held by the authenticated subject.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``list_personal()`` instead; ``first_page()`` fetches one page.
+            May be removed no earlier than ksef2 2.0.0. Use ``list_personal()`` instead; ``first_page()`` fetches one page.
 
         Args:
             query: Filters for the permissions.
@@ -776,7 +776,7 @@ class AsyncPermissionsClient:
         return self._personal(query, params or OffsetPaginationParams())
 
     @deprecated(
-        "`query_persons()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`query_persons()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `list_persons()` instead."
     )
     def query_persons(
@@ -788,7 +788,7 @@ class AsyncPermissionsClient:
         """Deprecated: fetch one page of person permission grants matching the provided filters.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``list_persons()`` instead; ``first_page()`` fetches one page.
+            May be removed no earlier than ksef2 2.0.0. Use ``list_persons()`` instead; ``first_page()`` fetches one page.
 
         Args:
             query: Filters for the person permissions.
@@ -800,8 +800,8 @@ class AsyncPermissionsClient:
         return self._persons(query, params or OffsetPaginationParams())
 
     @deprecated(
-        "`query_subordinate_entities()` is deprecated and will be removed in "
-        "ksef2 1.10.0; use `list_subordinate_entities()` instead."
+        "`query_subordinate_entities()` is deprecated and will be removed no earlier than "
+        "ksef2 2.0.0; use `list_subordinate_entities()` instead."
     )
     def query_subordinate_entities(
         self,
@@ -812,7 +812,7 @@ class AsyncPermissionsClient:
         """Deprecated: fetch one page of subordinate entity roles.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``list_subordinate_entities()`` instead; ``first_page()`` fetches one page.
+            May be removed no earlier than ksef2 2.0.0. Use ``list_subordinate_entities()`` instead; ``first_page()`` fetches one page.
 
         Args:
             query: Filters for the subordinate entity roles.
@@ -824,7 +824,7 @@ class AsyncPermissionsClient:
         return self._subordinate_entities(query, params or OffsetPaginationParams())
 
     @deprecated(
-        "`query_subunits()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`query_subunits()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `list_subunits()` instead."
     )
     def query_subunits(
@@ -836,7 +836,7 @@ class AsyncPermissionsClient:
         """Deprecated: fetch one page of subunit permission grants.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``list_subunits()`` instead; ``first_page()`` fetches one page.
+            May be removed no earlier than ksef2 2.0.0. Use ``list_subunits()`` instead; ``first_page()`` fetches one page.
 
         Args:
             query: Filters for the subunit permissions.

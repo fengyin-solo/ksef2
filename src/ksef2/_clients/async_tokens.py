@@ -177,7 +177,7 @@ class AsyncTokensClient:
         return await handle.wait(timeout=timeout, poll_interval=poll_interval)
 
     @deprecated(
-        "`wait_for_activation()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`wait_for_activation()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `generate(...).wait()` instead."
     )
     def wait_for_activation(
@@ -190,7 +190,7 @@ class AsyncTokensClient:
         """Deprecated: wait until a generated token becomes active or reaches a terminal state.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Call ``wait()`` on the handle returned by ``generate()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Call ``wait()`` on the handle returned by ``generate()`` instead.
 
         Args:
             reference_number: Reference returned by :meth:`generate`.
@@ -264,7 +264,7 @@ class AsyncTokensClient:
             yield response
 
     @deprecated(
-        "`list_page()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`list_page()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `list()` instead."
     )
     def list_page(
@@ -276,7 +276,7 @@ class AsyncTokensClient:
         """Deprecated: fetch one page of tokens using optional filters and continuation state.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``list()`` instead; ``first_page()`` fetches one page.
+            May be removed no earlier than ksef2 2.0.0. Use ``list()`` instead; ``first_page()`` fetches one page.
 
         Args:
             continuation_token: Token identifying the next page to fetch.
@@ -288,7 +288,7 @@ class AsyncTokensClient:
         return self._list_page(continuation_token=continuation_token, params=params)
 
     @deprecated(
-        "`list_all()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`list_all()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `list()` instead."
     )
     async def list_all(
@@ -297,7 +297,7 @@ class AsyncTokensClient:
         """Deprecated: iterate through all token pages until KSeF stops returning a continuation token.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``list().pages()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``list().pages()`` instead.
 
         Args:
             params: Optional filters and page size applied to every request.
@@ -327,7 +327,7 @@ class AsyncTokensClient:
         return from_spec(spec_resp)
 
     @deprecated(
-        "`status()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`status()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `get_status()` instead."
     )
     def status(
@@ -338,7 +338,7 @@ class AsyncTokensClient:
         """Deprecated: return the current status of a token.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``get_status()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``get_status()`` instead.
 
         Args:
             reference_number: Reference number of the token.

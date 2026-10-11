@@ -84,7 +84,7 @@ kontekstem KSeF i jedną parą tokenów.
 | `tokens` | `TokensClient` | Generowanie, status, lista i unieważnianie tokenów. |
 | `certificates` | `CertificatesClient` | Enrollment, pobranie, query, limity i unieważnianie certyfikatów. |
 | `sessions` | `SessionManagementClient` | Lista i zamykanie sesji uwierzytelnienia. |
-| `invoice_sessions` | `InvoiceSessionsClient` | Historia sesji online i batch faktur. |
+| `invoice_sessions` | `InvoiceSessionsClient` | Historia sesji online i batch faktur oraz pobieranie UPO po zapisanych referencjach. |
 | `permissions` | `PermissionsClient` | Nadawanie, query, cofanie i status operacji uprawnień. |
 | `raw` | `RawAuthenticatedClient` | Niskopoziomowe, uwierzytelnione grupy endpointów. |
 

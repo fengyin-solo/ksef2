@@ -1,3 +1,15 @@
+## v1.0.0 (unreleased)
+
+### Deprecated
+
+- Keep the former `ksef2.core`, `domain`, `infra` and `services` imports,
+  including submodules, as deprecated aliases throughout 1.x (#171). The first
+  import loads the canonical package tree and warns once per package family.
+- Keep deprecated call names, including invoice send/wait/UPO, metadata search,
+  download and export aliases, through 1.x. Removal is a 2.0 decision and may
+  happen no earlier than 2.0.0, replacing the former 1.10.0 removal schedule.
+- Add English and Polish migration examples for legacy imports and workflows.
+
 ## v0.22.2 (2026-09-25)
 
 ## v0.22.1 (2026-09-25)

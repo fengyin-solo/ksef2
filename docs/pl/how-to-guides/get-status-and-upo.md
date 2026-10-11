@@ -60,6 +60,42 @@ Zapisz ją przed czekaniem, żeby inny worker mógł sprawdzić wynik, jeśli
 pierwotny proces się zatrzyma.
 :::
 
+## Pobierz UPO po restarcie
+
+Mając nowego uwierzytelnionego klienta `auth`, użyj zapisanych referencji, aby
+pobrać UPO z sesji online lub batch. Nie potrzebujesz otwartego uchwytu sesji
+ani `OnlineSessionResumeState` z kluczami szyfrowania.
+
+```python
+# Wczytaj te referencje z danych zapisanych przez aplikację.
+upo_xml = auth.invoice_sessions.download_upo(
+    session_reference_number,
+    invoice_reference_number=invoice_reference_number,
+)
+_ = Path("upo.xml").write_bytes(upo_xml)
+
+# Alternatywnie wybierz fakturę po numerze KSeF.
+upo_xml = auth.invoice_sessions.download_upo(
+    session_reference_number,
+    ksef_number=ksef_number,
+)
+
+# Albo pobierz jedną stronę UPO sesji po zapisanej referencji UPO.
+upo_page_xml = auth.invoice_sessions.download_upo(
+    session_reference_number,
+    upo_reference_number=upo_reference_number,
+)
+```
+
+Przekaż dokładnie jeden z parametrów: `invoice_reference_number`, `ksef_number`
+lub `upo_reference_number`. Każde wywołanie wykonuje jedno uwierzytelnione żądanie
+i zwraca bajty XML. Dla klienta async użyj `await` przy tym samym wywołaniu.
+
+Podobnie jak `submission.download_upo()`, ta metoda nie czeka ani nie polluje.
+Gdy KSeF zwróci kod 21165 lub 21178, rzuca `KSeFNotReadyError`. Sprawdź status
+przetwarzania przed ponowną próbą; odrzucona faktura może nigdy nie otrzymać UPO.
+Strona UPO sesji jest dostępna po zamknięciu i przetworzeniu sesji.
+
 ## Strony sesji online
 
 Użyj stron sesji, gdy chcesz sprawdzić wszystko, co wysłano w sesji online, a

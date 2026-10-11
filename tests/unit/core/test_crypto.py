@@ -85,9 +85,10 @@ def test_encrypt_invoice_wraps_invalid_key_sizes() -> None:
         crypto.encrypt_invoice(b"x", b"short", b"0" * 16)
 
 
-def test_decrypt_rejects_invalid_padding_and_wrong_keys() -> None:
-    key, iv = crypto.generate_session_key()
-    other_key, _ = crypto.generate_session_key()
+def test_decrypt_rejects_invalid_padding_and_block_length() -> None:
+    """A random wrong CBC key can produce valid padding; use a fixed rejection case."""
+    key, iv = b"k" * 32, b"i" * 16
+    other_key = b"x" * 32
     encrypted = crypto.encrypt_invoice(b"payload", key, iv)
 
     with pytest.raises(KSeFEncryptionError, match="AES-CBC decryption failed"):

@@ -15,3 +15,7 @@
   and check for missing counterparts in both directions. Compatibility files
   are outside that discovery. Check parity with runtime type checking both
   enabled and disabled.
+
+- Cryptographic rejection tests must use deterministic inputs with known
+  invalid padding or block lengths. A random wrong AES-CBC key can produce
+  valid PKCS#7 padding and does not guarantee a decryption error.

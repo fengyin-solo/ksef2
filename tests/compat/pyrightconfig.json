@@ -1,0 +1,14 @@
+{
+  // Used by `just check-legacy-compat`, which runs basedpyright with
+  // --pythonpath pointing at an environment holding only the built wheel, so
+  // the files below are checked against the packaged distribution and never
+  // against src/. `just typecheck` excludes tests/compat for that reason.
+  "include": ["legacy_app.py", "run_legacy_consumer.py", "modern_imports_check.py"],
+  // The application's whole purpose is calling deprecated APIs that still work.
+  "reportDeprecated": "none",
+  // The four deprecated families alias their modules at runtime, so no file
+  // exists for e.g. ksef2.core.exceptions and static resolution cannot see it.
+  // run_legacy_consumer.py proves those imports work against the wheel.
+  "reportMissingImports": "none",
+  "reportMissingModuleSource": "none"
+}

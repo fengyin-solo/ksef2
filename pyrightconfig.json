@@ -1,6 +1,8 @@
 {
   "include": ["src", "tests"],
-  "exclude": [".venv","src/ksef2/_infra/schema/api/spec", "src/ksef2/_infra/schema/fa3/models"],
+  // tests/compat is typechecked against an installed wheel by the legacy
+  // compatibility gate (tests/compat/pyrightconfig.json), not against src/.
+  "exclude": [".venv", "src/ksef2/_infra/schema/api/spec", "src/ksef2/_infra/schema/fa3/models", "tests/compat"],
   "venvPath": ".",
   "venv": ".venv",
   "reportImplicitStringConcatenation": false,

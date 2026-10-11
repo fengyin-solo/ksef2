@@ -1,5 +1,12 @@
 ## v1.0.0 (unreleased)
 
+### Added
+
+- Download a UPO after a restart from a stored session reference with
+  `auth.invoice_sessions.download_upo()`, selecting it by invoice reference,
+  KSeF number or session UPO reference. No open session is needed, and a UPO
+  KSeF has not issued raises `KSeFNotReadyError` (#172).
+
 ### Deprecated
 
 - Keep the former `ksef2.core`, `domain`, `infra` and `services` imports,

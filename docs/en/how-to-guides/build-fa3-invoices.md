@@ -464,3 +464,37 @@ If you already have a complete `KsefInvoice`, reopen it in the builder with
 - [Quickstart](../getting-started/quickstart.md): Generate, send, confirm, and download a TEST invoice end to end.
 - [Send invoices](send-invoices.md): Use builder output in online or batch invoice sessions.
 - [Public API contract](../reference/public-api.md): Review stable public imports used by invoice builder code.
+
+
+## Parse an existing FA(3) invoice
+
+`parse_invoice_xml` accepts XML bytes and returns the public `KsefInvoice` model.
+No private schema or mapper imports are needed.
+
+```python
+from pathlib import Path
+from ksef2.fa3 import FA3InvoiceBuilder, parse_invoice_xml
+
+xml_bytes = Path("invoice.xml").read_bytes()
+invoice = parse_invoice_xml(xml_bytes)
+print(invoice.seller.tax_id, invoice.body.issue_date, invoice.total_gross)
+
+builder = FA3InvoiceBuilder.from_invoice(invoice)
+rebuilt_xml = builder.to_xml()
+```
+
+The parser respects the XML encoding declaration, rejects DTDs and other invoice
+namespaces, and applies domain validation. Invalid input raises `ValueError` with
+the original cause. It does not perform full XSD validation or preserve the
+original XML formatting. `builder.to_xml()` validates its output against the
+bundled FA(3) XSD. Keep the original bytes for verification hashes.
+
+## Compatibility with 0.17.0
+
+All four builder gaps reported against 0.17.0 were reproduced using that tag.
+Rowless `KOR_ZAL` and `KOR_ROZ` now work through `correction_advance()` and
+`correction_settlement()`. Supply `summary_overrides(InvoiceSummaryOverrides(...))`
+when totals cannot be computed from rows. `return_of_excise(True)` now emits
+`ZwrotAkcyzy=1`; `False` and `None` omit the optional marker. Parsing an omitted
+marker returns `None`. Transport-only `annotations().add_new_transport_item(...).done()`
+was already fixed before this change and remains covered by regression tests.

@@ -172,3 +172,45 @@ opisuje [Operacje](../reference/operations.md).
 - [Wyślij faktury](send-invoices.md): Wyślij XML faktury przez sesję online albo wsadową.
 - [Zapytania i eksporty](../concepts/querying-and-exports.md): Zrozum metadane, bezpośrednie pobieranie, paczki eksportu i synchronizację HWM.
 - [Sprawdź certyfikaty szyfrowania](inspect-encryption-certificates.md): Sprawdź publiczne certyfikaty KSeF używane przez szyfrowane przepływy.
+
+
+## Eksportuj PDF z weryfikacyjnym kodem QR
+
+Zainstaluj opcjonalne zależności przez `pip install 'ksef2[pdf]'` oraz biblioteki
+systemowe wymagane przez [WeasyPrint](https://doc.courtbouillon.org/weasyprint/stable/first_steps.html).
+
+```python
+from ksef2 import Environment
+from ksef2.renderers import InvoicePDFExporter, PDFPageSize
+
+exporter = InvoicePDFExporter(
+    page_size=PDFPageSize.A4,
+    verification_environment=Environment.TEST,
+)
+output = exporter.export_to_file(
+    "invoice.xml",
+    "invoice.pdf",
+    ksef_number="9999999999-20260215-ABCDEF123456-AB",
+)
+```
+
+Podaj rzeczywisty numer KSeF nadany tej fakturze. `ksef_number` dodaje lokalnie
+wygenerowany kod QR w formacie SVG oraz numer pod kodem. Pominięcie tego argumentu
+zachowuje dotychczasowy PDF bez QR. Ten sam argument obsługują `export_from_path()`
+i `export_from_string()`. Domyślnym środowiskiem jest `Environment.PRODUCTION`;
+dla faktur testowych lub demo wybierz odpowiednio `TEST` lub `DEMO`.
+Kod zawiera NIP sprzedawcy, datę wystawienia oraz SHA-256 **oryginalnych bajtów XML**,
+zakodowany jako Base64URL bez dopełnienia, zgodnie z
+[specyfikacją kodów QR Ministerstwa Finansów](https://github.com/CIRFMF/ksef-docs/blob/main/kody-qr.md).
+Do `export_from_string()` przekazuj bajty; tekst jest kodowany jako UTF-8.
+Ponowna serializacja faktury zmienia skrót. Eksport nie sprawdza przyjęcia faktury
+ani tego, czy podany numer KSeF należy do niej.
+
+Opcja obsługuje faktury z nadanym numerem KSeF. Nie generuje kodu QR certyfikatu
+dla trybu offline, nie podpisuje adresów URL ani nie zastępuje własnych układów PDF.
+
+`PDFPageSize` obsługuje `A4`, `A4_LANDSCAPE`, `A3`, `A3_LANDSCAPE`, `LETTER` oraz
+`LETTER_LANDSCAPE`. Bez `page_size` obowiązuje dotychczasowe ustawienie arkusza,
+zwykle A4 poziomo. Jawny rozmiar strony ma pierwszeństwo przed CSS w `html_overrides`;
+pozostałe reguły CSS nadal działają. Szerokie tabele mogą wymagać orientacji poziomej
+lub własnego CSS, aby zmieściły się na pionowej stronie.

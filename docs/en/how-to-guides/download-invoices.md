@@ -171,3 +171,45 @@ behavior and what stays the app's job.
 - [Send invoices](send-invoices.md): Submit invoice XML through online or batch sessions.
 - [Querying and exports](../concepts/querying-and-exports.md): Understand metadata, direct downloads, export packages, and HWM sync.
 - [Inspect encryption certificates](inspect-encryption-certificates.md): Check the public KSeF certificates used by encrypted workflows.
+
+
+## Export a PDF with a verification QR
+
+Install the optional dependencies with `pip install 'ksef2[pdf]'` and the native
+libraries required by [WeasyPrint](https://doc.courtbouillon.org/weasyprint/stable/first_steps.html).
+
+```python
+from ksef2 import Environment
+from ksef2.renderers import InvoicePDFExporter, PDFPageSize
+
+exporter = InvoicePDFExporter(
+    page_size=PDFPageSize.A4,
+    verification_environment=Environment.TEST,
+)
+output = exporter.export_to_file(
+    "invoice.xml",
+    "invoice.pdf",
+    ksef_number="9999999999-20260215-ABCDEF123456-AB",
+)
+```
+
+Use the actual assigned KSeF number for the invoice. Supplying `ksef_number`
+adds a locally generated SVG QR and displays that number below it. Omitting it
+keeps the existing PDF output without a QR. The same keyword works with
+`export_from_path()` and `export_from_string()`. The environment defaults to
+`Environment.PRODUCTION`; select `TEST` or `DEMO` for invoices from those systems.
+The QR identifies the seller NIP, issue date and SHA-256 of the **original XML
+bytes**, encoded as unpadded Base64URL, according to the
+[Ministry's verification QR specification](https://github.com/CIRFMF/ksef-docs/blob/main/kody-qr.md).
+Use bytes when calling `export_from_string()`; a string is encoded as UTF-8.
+Reserializing an invoice changes its hash. Rendering does not check its acceptance
+or verify that the supplied KSeF number belongs to it.
+
+This option supports invoices that already have an assigned KSeF number. It does
+not generate the offline certificate QR, sign URLs, or replace custom PDF layouts.
+
+`PDFPageSize` supports `A4`, `A4_LANDSCAPE`, `A3`, `A3_LANDSCAPE`, `LETTER` and
+`LETTER_LANDSCAPE`. With no `page_size`, the existing stylesheet setting remains,
+normally A4 landscape. An explicit page size takes precedence over `html_overrides`
+CSS; the other CSS rules still apply. Large invoice tables may need landscape
+orientation or custom CSS to fit on a portrait page.

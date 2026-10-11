@@ -462,3 +462,39 @@ Jeżeli masz już kompletny `KsefInvoice`, otwórz go ponownie w builderze przez
 - [Quickstart](../getting-started/quickstart.md): Wygeneruj, wyślij, potwierdź i pobierz fakturę TEST end to end.
 - [Wysyłanie faktur](send-invoices.md): Użyj wyniku buildera w sesji online albo batch.
 - [Kontrakt publicznego API](../reference/public-api.md): Przejrzyj stabilne publiczne importy używane przez kod buildera faktur.
+
+
+## Odczytaj istniejącą fakturę FA(3)
+
+`parse_invoice_xml` przyjmuje bajty XML i zwraca publiczny model `KsefInvoice`.
+Nie wymaga importowania prywatnych schematów ani mapperów.
+
+```python
+from pathlib import Path
+from ksef2.fa3 import FA3InvoiceBuilder, parse_invoice_xml
+
+xml_bytes = Path("invoice.xml").read_bytes()
+invoice = parse_invoice_xml(xml_bytes)
+print(invoice.seller.tax_id, invoice.body.issue_date, invoice.total_gross)
+
+builder = FA3InvoiceBuilder.from_invoice(invoice)
+rebuilt_xml = builder.to_xml()
+```
+
+Parser uwzględnia deklarację kodowania XML, odrzuca DTD oraz inne przestrzenie
+nazw faktur i stosuje walidację domenową. Nieprawidłowe dane powodują `ValueError`
+z zachowaną pierwotną przyczyną. Parser nie wykonuje pełnej walidacji XSD ani nie
+zachowuje formatowania oryginalnego XML. `builder.to_xml()` sprawdza wynik względem
+schematu FA(3) dostarczonego z SDK. Zachowaj oryginalne bajty do obliczania skrótu
+weryfikacyjnego.
+
+## Zgodność z wersją 0.17.0
+
+Wszystkie cztery zgłoszone problemy buildera odtworzono na tagu 0.17.0.
+Faktury `KOR_ZAL` i `KOR_ROZ` bez wierszy są teraz obsługiwane przez
+`correction_advance()` i `correction_settlement()`. Podaj
+`summary_overrides(InvoiceSummaryOverrides(...))`, gdy sum nie można wyliczyć
+z wierszy. `return_of_excise(True)` zapisuje teraz `ZwrotAkcyzy=1`; `False` i `None`
+pomijają opcjonalny znacznik. Odczyt pominiętego znacznika zwraca `None`.
+`annotations().add_new_transport_item(...).done()` bez innych adnotacji naprawiono
+już wcześniej; nadal sprawdzają to testy regresji.

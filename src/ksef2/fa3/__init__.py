@@ -18,6 +18,7 @@ from ksef2._domain.models.fa3.body import (
     VatTreatment,
 )
 from ksef2._services.builders.fa3.root import StandardInvoiceBuilder
+from ksef2._services.fa3 import parse_invoice_xml
 
 
 class FA3InvoiceBuilder(StandardInvoiceBuilder):
@@ -80,4 +81,5 @@ __all__ = [
     "VatClassification",
     "VatRate",
     "VatTreatment",
+    "parse_invoice_xml",
 ]

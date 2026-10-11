@@ -451,6 +451,7 @@ def _(request: KsefInvoiceBody) -> FakturaFa:
         zaliczka_czesciowa=partial_advance_payments,
         fp=Twybor1.VALUE_1 if request.fp_invoice else None,
         tp=Twybor1.VALUE_1 if request.related_party_transaction else None,
+        zwrot_akcyzy=Twybor1.VALUE_1 if request.return_of_excise else None,
         dodatkowy_opis=[
             TkluczWartosc(
                 nr_wiersza=entry.row_number,

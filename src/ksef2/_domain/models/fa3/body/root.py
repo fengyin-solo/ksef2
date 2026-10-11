@@ -290,7 +290,12 @@ class KsefInvoiceBody(KSeFBaseModel):
 
     def _validate_row_presence(self) -> None:
         if (
-            self.invoice_type == InvoiceType.CORRECTING
+            self.invoice_type
+            in {
+                InvoiceType.CORRECTING,
+                InvoiceType.CORRECTING_ZAL,
+                InvoiceType.CORRECTING_ROZ,
+            }
             and not self.rows
             and self.order is None
         ):

@@ -1318,14 +1318,6 @@
                     "endColumn": 24,
                     "lineCount": 1
                 }
-            },
-            {
-                "code": "reportUnusedCallResult",
-                "range": {
-                    "startColumn": 8,
-                    "endColumn": 46,
-                    "lineCount": 1
-                }
             }
         ],
         "./src/ksef2/_services/renderers/xslt.py": [

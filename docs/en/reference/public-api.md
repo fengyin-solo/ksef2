@@ -68,8 +68,8 @@ an underscore is private.** `ksef2._core`, `ksef2._clients.base` and
 Private modules can change without a major release. The former paths without
 underscores (`core`, `domain`, `infra`, `endpoints`, `services`, client
 implementation modules, `config` and `logging`) remain as deprecated aliases
-throughout 1.x. They warn with a replacement path and reuse the same module
-objects. Removal may happen no earlier than 2.0.0.
+throughout 1.x. They warn with a replacement path and reuse canonical classes and leaf
+modules. Package wrappers forward attributes and retain their own namespace. Removal may happen no earlier than 2.0.0.
 
 See the [1.0 migration guide](migration-1-0.md) for before/after examples.
 

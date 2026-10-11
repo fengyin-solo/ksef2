@@ -1,7 +1,6 @@
 """Public package facade for the KSeF 2 SDK."""
 
 import os
-import sys
 from importlib.metadata import version
 
 
@@ -136,8 +135,3 @@ __all__ = [
     "TransportConfig",
     "__version__",
 ]
-
-
-from ksef2._legacy_imports import LegacyImportFinder
-
-sys.meta_path.insert(0, LegacyImportFinder())

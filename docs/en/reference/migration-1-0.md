@@ -46,8 +46,9 @@ from ksef2.renderers import InvoiceXSLTRenderer
 | `ksef2.endpoints` | `ksef2.raw` |
 | `ksef2.logging` | Application-owned standard logging or structlog configuration; the alias remains available for existing helpers. |
 
-Aliases reuse the canonical modules and classes. They do not load the optional
-PDF renderer until it is requested.
+Compatibility files reuse canonical leaf modules and classes. Package wrappers
+forward attributes while Python discovers nested compatibility files normally.
+The optional PDF renderer is loaded only when requested.
 
 ## Send, wait and download UPO
 

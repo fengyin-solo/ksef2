@@ -10,9 +10,14 @@ from typing import Any
 
 import pytest
 
-PACKAGES = ("ksef2.clients", "ksef2._endpoints", "ksef2._services")
+PACKAGES = ("ksef2._clients", "ksef2._endpoints", "ksef2._services")
 
 SKIPPED_MODULES = {
+    "ksef2._clients._async_handles": "private handle base, paired with _handles rather than the async_X convention",
+    "ksef2._clients._async_pager": "private pager implementation, paired with _pager rather than the async_X convention",
+    "ksef2._clients._handles": "private handle base, paired with _async_handles rather than the async_X convention",
+    "ksef2._clients._pager": "private pager implementation, paired with _async_pager rather than the async_X convention",
+    "ksef2._clients.exported_invoices": "shared sync/async export result with no IO methods",
     "ksef2._clients._metadata_pagination": "shared pagination helpers, not a public sync facade",
     "ksef2._clients.profiles": "shared profile configuration models, not a public sync facade",
     "ksef2._endpoints.shared": "shared endpoint helper protocols, not a public sync facade",
@@ -128,7 +133,7 @@ def test_sync_async_class_pairs_are_discovered_by_convention() -> None:
                     f"{sync_module_name}.{sync_name} is missing async twin {missing}"
                 )
 
-            for missing in sorted(set(sync_classes) - expected_sync_names):
+            for missing in sorted(expected_sync_names - set(sync_classes)):
                 failures.append(
                     f"{async_module_name}.Async{missing} is missing sync twin {missing}"
                 )

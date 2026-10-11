@@ -69,7 +69,7 @@ Moduły prywatne mogą zmieniać się bez wydania major. Dawne ścieżki bez
 podkreśleń (`core`, `domain`, `infra`, `endpoints`, `services`, moduły
 implementacji klientów, `config` i `logging`) pozostają jako wycofywane aliasy
 przez całe 1.x. Emitują ostrzeżenie wskazujące zamiennik i używają tych samych
-obiektów modułów. Usunięcie jest możliwe nie wcześniej niż w 2.0.0.
+klas oraz modułów końcowych. Pakiety przekazują dostęp do atrybutów implementacji. Usunięcie jest możliwe nie wcześniej niż w 2.0.0.
 
 Przykłady przed i po zmianie zawiera [poradnik migracji do 1.0](migration-1-0.md).
 

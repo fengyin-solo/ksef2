@@ -46,8 +46,9 @@ from ksef2.renderers import InvoiceXSLTRenderer
 | `ksef2.endpoints` | `ksef2.raw` |
 | `ksef2.logging` | Konfiguracja standardowego logging lub structlog w aplikacji; alias nadal udostępnia dotychczasowe funkcje. |
 
-Aliasy używają tych samych modułów i klas co implementacja. Opcjonalny renderer
-PDF jest ładowany dopiero na żądanie.
+Pliki zgodności używają tych samych modułów końcowych i klas co implementacja.
+Pakiety przekazują dostęp do atrybutów, a Python znajduje zagnieżdżone pliki
+zgodności przez zwykłe importy. Opcjonalny renderer PDF jest ładowany na żądanie.
 
 ## Wysyłka, oczekiwanie i pobieranie UPO
 

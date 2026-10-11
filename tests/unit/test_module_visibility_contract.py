@@ -1,4 +1,4 @@
-"""Enforce the namespace rule: no underscore means public, underscore means private."""
+"""Check stable public paths, private implementations, and legacy compatibility paths."""
 
 from pathlib import Path
 
@@ -49,12 +49,22 @@ def _is_dunder_module(module: str) -> bool:
     return _is_dunder(module.rsplit(".", 1)[-1]) and module != "ksef2"
 
 
+def _is_legacy(module: str) -> bool:
+    parts = module.split(".")
+    return len(parts) > 1 and (
+        parts[1]
+        in {"core", "domain", "infra", "endpoints", "services", "config", "logging"}
+        or (parts[1] == "clients" and len(parts) > 2)
+    )
+
+
 def test_every_module_without_an_underscore_component_is_listed_as_public() -> None:
     unlisted = sorted(
         module
         for module in _all_modules()
         if not _is_private(module)
         and not _is_dunder_module(module)
+        and not _is_legacy(module)
         and module not in PUBLIC_MODULES
     )
 
@@ -71,17 +81,20 @@ def test_every_listed_public_module_exists() -> None:
     assert not missing, f"PUBLIC_MODULES lists modules that do not exist: {missing}"
 
 
-def test_no_internal_package_is_importable_without_an_underscore() -> None:
-    old_internal = {
+def test_legacy_paths_have_canonical_implementations() -> None:
+    modules = _all_modules()
+    legacy = {module for module in modules if _is_legacy(module)}
+    assert {
         "ksef2.core",
         "ksef2.domain",
         "ksef2.infra",
-        "ksef2.endpoints",
         "ksef2.services",
         "ksef2.config",
         "ksef2.logging",
         "ksef2.clients.base",
-        "ksef2.raw.facade",
-    }
-
-    assert not old_internal & _all_modules()
+    } <= legacy
+    for module in legacy:
+        parts = module.split(".")
+        parts[1] = "_" + parts[1]
+        assert ".".join(parts) in modules, module
+    assert "ksef2.raw.facade" not in modules

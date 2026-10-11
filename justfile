@@ -67,6 +67,7 @@ release-check:
     just validate-examples
     just check-generated-artifacts
     just check-gen-sync
+    just check-legacy-imports
     just coverage
     just typecheck
     just test-coverage
@@ -80,10 +81,10 @@ coverage:
 
 
 lint:
-    uv run ruff check src/ tests/ scripts/api_coverage.py scripts/gen_sync.py scripts/sync_generated_artifacts.py scripts/test_coverage_badge.py scripts/validate_docs_markdown.py scripts/validate_docs_paths.py scripts/validate_examples.py scripts/verify_integration_results.py scripts/verify_release.py
+    uv run ruff check src/ tests/ scripts/api_coverage.py scripts/gen_sync.py scripts/generate_legacy_imports.py scripts/sync_generated_artifacts.py scripts/test_coverage_badge.py scripts/validate_docs_markdown.py scripts/validate_docs_paths.py scripts/validate_examples.py scripts/verify_integration_results.py scripts/verify_release.py
 
 format-check:
-    uv run ruff format --check src/ tests/ scripts/api_coverage.py scripts/gen_sync.py scripts/sync_generated_artifacts.py scripts/test_coverage_badge.py scripts/validate_docs_markdown.py scripts/validate_docs_paths.py scripts/validate_examples.py scripts/verify_integration_results.py scripts/verify_release.py
+    uv run ruff format --check src/ tests/ scripts/api_coverage.py scripts/gen_sync.py scripts/generate_legacy_imports.py scripts/sync_generated_artifacts.py scripts/test_coverage_badge.py scripts/validate_docs_markdown.py scripts/validate_docs_paths.py scripts/validate_examples.py scripts/verify_integration_results.py scripts/verify_release.py
 
 gen-sync:
     uv run --group codegen python scripts/gen_sync.py
@@ -94,7 +95,7 @@ check-gen-sync:
 typecheck:
     GITHUB_ACTIONS= uv run --extra runtime-checks basedpyright src --level warning --warnings
     GITHUB_ACTIONS= uv run --extra runtime-checks basedpyright tests --level error
-    GITHUB_ACTIONS= uv run --extra runtime-checks --group codegen basedpyright scripts/api_coverage.py scripts/gen_sync.py scripts/sync_generated_artifacts.py scripts/test_coverage_badge.py scripts/validate_docs_markdown.py scripts/validate_docs_paths.py scripts/validate_examples.py scripts/verify_integration_results.py scripts/verify_release.py --level warning --warnings
+    GITHUB_ACTIONS= uv run --extra runtime-checks --group codegen basedpyright scripts/api_coverage.py scripts/gen_sync.py scripts/generate_legacy_imports.py scripts/sync_generated_artifacts.py scripts/test_coverage_badge.py scripts/validate_docs_markdown.py scripts/validate_docs_paths.py scripts/validate_examples.py scripts/verify_integration_results.py scripts/verify_release.py --level warning --warnings
 
 
 # Fail when product docs contain MDX instead of plain Markdown
@@ -138,3 +139,10 @@ regenerate-artifacts:
 
 check-generated-artifacts:
     uv run --group codegen python scripts/sync_generated_artifacts.py --check
+
+# Keep compatibility modules in sync with their canonical implementation paths
+generate-legacy-imports:
+    uv run python scripts/generate_legacy_imports.py
+
+check-legacy-imports:
+    uv run python scripts/generate_legacy_imports.py --check

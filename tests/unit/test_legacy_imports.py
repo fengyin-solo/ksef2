@@ -58,7 +58,10 @@ with warnings.catch_warnings(record=True) as caught:
     warnings.simplefilter('always', DeprecationWarning)
     old = importlib.import_module('ksef2.{legacy}')
 new = importlib.import_module('ksef2.{canonical}')
-assert old is new
+if hasattr(new, '__path__'):
+    assert old.__path__ != new.__path__
+else:
+    assert old is new
 messages = [str(w.message) for w in caught if w.category is DeprecationWarning]
 matching = [m for m in messages if m.startswith('`ksef2.{legacy}` is deprecated')]
 assert len(matching) == 1, messages
@@ -66,7 +69,7 @@ assert {replacement!r} in matching[0], matching
 assert 'no earlier than ksef2 2.0.0' in matching[0], matching
 with warnings.catch_warnings(record=True) as caught:
     warnings.simplefilter('always', DeprecationWarning)
-    assert importlib.import_module('ksef2.{legacy}') is new
+    assert importlib.import_module('ksef2.{legacy}') is old
 assert not caught
 """,
         ],
@@ -85,7 +88,12 @@ def test_real_application_import_forms_and_resources() -> None:
             "-c",
             """
 import sys
+import_hooks = tuple(sys.meta_path)
 import ksef2
+assert all(
+    hook in import_hooks or type(hook).__module__.startswith('beartype.')
+    for hook in sys.meta_path
+)
 assert 'ksef2._services.renderers.pdf' not in sys.modules
 from ksef2.domain.models.invoices import InvoicesFilter
 from ksef2.domain.models.pagination import InvoiceMetadataParams

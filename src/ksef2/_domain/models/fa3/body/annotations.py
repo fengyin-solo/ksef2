@@ -55,6 +55,10 @@ class InvoiceTaxExemption(KSeFBaseModel):
     def validate_single_basis(self) -> "InvoiceTaxExemption":
         """Require exactly one exemption legal basis.
 
+        ``schemat.FakturaFaAdnotacjeZwolnienie`` keeps ``P_19A``, ``P_19B`` and
+        ``P_19C`` in an ``xsd:choice`` with the default ``maxOccurs="1"``, so a
+        FA(3) document never carries more than one basis.
+
         Returns:
             The validated exemption.
 

@@ -14,7 +14,10 @@ from ksef2._domain.models.fa3.body import (
 from ksef2._infra.schema.fa3.models.elementarne_typy_danych_v10_0_e import (
     Twybor12,
 )
-from ksef2._infra.schema.fa3.models.schemat import FakturaFaAdnotacje
+from ksef2._infra.schema.fa3.models.schemat import (
+    FakturaFaAdnotacje,
+    FakturaFaAdnotacjeZwolnienie,
+)
 
 
 @overload
@@ -38,6 +41,31 @@ def _from_spec(schema: object) -> object:
         f"No mapper registered for {type(schema).__name__}. "
         f"Register one with @_from_spec.register"
     )
+
+
+def _tax_exemption_from_spec(
+    schema: FakturaFaAdnotacjeZwolnienie,
+) -> InvoiceTaxExemption:
+    """Map the exemption annotation onto the single legal basis the schema allows.
+
+    ``Zwolnienie`` groups ``P_19A``, ``P_19B`` and ``P_19C`` in an ``xsd:choice``
+    with the default ``maxOccurs="1"``, so one document names at most one basis.
+    A document that repeats the choice anyway keeps the first basis in schema
+    order, the same way the ``PMarzy`` choice is resolved.
+
+    Args:
+        schema: The ``Fa/Adnotacje/Zwolnienie`` element of the document.
+
+    Returns:
+        The exemption annotation carrying one legal basis.
+    """
+    if schema.p_19_a is not None:
+        return InvoiceTaxExemption(legal_basis_act=schema.p_19_a)
+    if schema.p_19_b is not None:
+        return InvoiceTaxExemption(legal_basis_eu_directive=schema.p_19_b)
+    if schema.p_19_c is not None:
+        return InvoiceTaxExemption(legal_basis_other=schema.p_19_c)
+    return InvoiceTaxExemption()
 
 
 @_from_spec.register
@@ -73,11 +101,7 @@ def _(schema: FakturaFaAdnotacje) -> InvoiceAnnotationsContext | None:
 
     tax_exemption = None
     if schema.zwolnienie is not None and schema.zwolnienie.p_19 is not None:
-        tax_exemption = InvoiceTaxExemption(
-            legal_basis_act=schema.zwolnienie.p_19_a,
-            legal_basis_eu_directive=schema.zwolnienie.p_19_b,
-            legal_basis_other=schema.zwolnienie.p_19_c,
-        )
+        tax_exemption = _tax_exemption_from_spec(schema.zwolnienie)
 
     new_transport_supply = None
     if schema.nowe_srodki_transportu is not None:

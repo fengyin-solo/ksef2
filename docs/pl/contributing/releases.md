@@ -94,6 +94,39 @@ taga wydania codziennie według harmonogramu, więc poczekaj na to uruchomienie 
 uruchom ręcznie workflow **Docs** w `stacking-hq/ksef2-docs`, żeby od razu
 opublikować strony nowego wydania.
 
+## Sprawdź wdrożenie dokumentacji
+
+Wydanie SDK i udane wdrożenie dokumentacji wymagają osobnych kontroli. W kopii
+repozytorium `stacking-hq/ksef2-docs` sprawdź ostatnie uruchomienie i działającą
+stronę:
+
+```bash
+gh run list --repo stacking-hq/ksef2-docs --workflow docs.yml --limit 3
+gh run view RUN_ID --repo stacking-hq/ksef2-docs --log-failed
+node scripts/smoke_check.mjs https://docs.stacking.me --retries 1
+```
+
+Sam HTTP 200 nie wystarcza: stare wdrożenie może zwracać stronę 404 ze statusem
+sukcesu. Test smoke sprawdza tytuły stron, rzeczywisty status 404 dla brakujących
+stron oraz przekierowanie 301 ze starych adresów `/ksef2/` do katalogu głównego
+domeny. Linki dokumentacji SDK powinny wskazywać `https://docs.stacking.me/sdk/`,
+a polskie linki `https://docs.stacking.me/pl/sdk/`.
+
+Jeśli build odrzuca wydanie starsze niż `min_release` w pliku
+`scripts/sources.json` repozytorium dokumentacji, nic nie zostaje wdrożone.
+Czekanie na kolejne zaplanowane uruchomienie nie usuwa tej blokady. Osoba
+odpowiedzialna za wydania musi opublikować zgodne wydania SDK i CLI albo osoba
+odpowiedzialna za wdrożenie musi jawnie wybrać obsługiwane refy przez parametry
+workflow `docs_ref_sdk` i `docs_ref_cli`. Nie obniżaj minimum tylko po to, by build
+przeszedł.
+
+Przed pierwszym wdrożeniem w katalogu głównym domeny osoba odpowiedzialna za
+wdrożenie musi też przeprowadzić jednorazową migrację montowania nginx opisaną w
+[przewodniku wdrożenia dokumentacji](https://github.com/stacking-hq/ksef2-docs/blob/main/DEPLOYMENT.md).
+Ten przewodnik opisuje konfigurację VPS, sekrety wdrożenia i rollback. Po
+wdrożeniu uruchom test smoke na działającej stronie, zanim zgłosisz dostępność
+dokumentacji.
+
 ## Ponów nieudane wydanie
 
 Nigdy nie usuwaj, nie przesuwaj ani nie nadpisuj tagu wydania. Blokują to reguły, a

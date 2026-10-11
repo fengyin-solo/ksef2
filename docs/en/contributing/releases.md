@@ -94,6 +94,37 @@ the latest release tag on a daily schedule, so wait for that run or start the
 **Docs** workflow in `stacking-hq/ksef2-docs` by hand to publish the new release's
 pages now.
 
+## Check documentation deployment
+
+An SDK release and a successful docs deployment are separate checks. From a
+checkout of `stacking-hq/ksef2-docs`, inspect the latest run and check the live
+site:
+
+```bash
+gh run list --repo stacking-hq/ksef2-docs --workflow docs.yml --limit 3
+gh run view RUN_ID --repo stacking-hq/ksef2-docs --log-failed
+node scripts/smoke_check.mjs https://docs.stacking.me --retries 1
+```
+
+HTTP 200 alone is insufficient: a stale deployment can serve the site's 404
+page with a successful status. The smoke check verifies page titles, a real 404
+for missing pages, and a 301 redirect from the old `/ksef2/` URLs to the domain
+root. Keep SDK documentation links at `https://docs.stacking.me/sdk/` and Polish
+links at `https://docs.stacking.me/pl/sdk/`.
+
+If the build rejects a release older than `min_release` in the docs repository's
+`scripts/sources.json`, nothing is deployed. Waiting for another scheduled run
+does not resolve that blocker. The release owner must publish compatible SDK
+and CLI releases, or the deployment owner must explicitly choose supported refs
+through the workflow's `docs_ref_sdk` and `docs_ref_cli` inputs. Do not lower the
+minimum merely to make the build pass.
+
+For the first deployment at the domain root, the deployment owner must also
+complete the one-time nginx mount migration described in
+[the docs deployment guide](https://github.com/stacking-hq/ksef2-docs/blob/main/DEPLOYMENT.md).
+That guide owns VPS setup, deployment secrets, and rollback. Run the live smoke
+check after deployment before reporting the documentation as available.
+
 ## Recover a failed release
 
 Never delete, move, or overwrite a release tag. The rulesets reject it, and PyPI

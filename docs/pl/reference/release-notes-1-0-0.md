@@ -60,11 +60,15 @@ Nie buduj kodu aplikacji na tych ścieżkach:
 - repozytoryjnych `scripts/*`;
 - internali wygenerowanych schem poza `ksef2.raw.spec` i `ksef2.raw.supp`.
 
-Dawne pakiety wewnętrzne (`ksef2.core`, `ksef2.domain`, `ksef2.infra`,
+Dawne ścieżki (`ksef2.core`, `ksef2.domain`, `ksef2.infra`,
 `ksef2.endpoints`, `ksef2.services`, moduły implementacji klientów,
-`ksef2.config` i `ksef2.logging`) mają teraz prefiks podkreślenia, bez aliasów
-kompatybilności: import starych ścieżek zgłasza `ImportError`. Moduły prywatne
-mogą zmieniać się bez wydania 2.0.
+`ksef2.config` i `ksef2.logging`) nadal działają jako wycofywane aliasy.
+Emitują `DeprecationWarning` wskazujące zamiennik. Dawne nazwy metod także
+działają przez całe 1.x. Usunięcie jest możliwe nie wcześniej niż w 2.0.0.
+Zmiana nazw modułów prywatnych nie usuwa dawnych importów w 1.0.
+
+[Poradnik migracji](migration-1-0.md) pokazuje importy, wysyłkę/oczekiwanie/UPO
+oraz wyszukiwanie. Python zwykle ukrywa ostrzeżenia, więc włącz je w testach.
 
 ## Powiązane strony
 

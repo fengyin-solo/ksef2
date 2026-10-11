@@ -278,8 +278,8 @@ class AsyncAuthenticatedClient:
         )
 
     @deprecated(
-        "`resume_online_session()` is deprecated and will be removed in "
-        "ksef2 1.10.0; use `online_session(state=...)` instead."
+        "`resume_online_session()` is deprecated and will be removed no earlier than "
+        "ksef2 2.0.0; use `online_session(state=...)` instead."
     )
     def resume_online_session(
         self,
@@ -288,7 +288,7 @@ class AsyncAuthenticatedClient:
         """Deprecated: rebind an existing serialized online session state to this client.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``online_session(state=...)`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``online_session(state=...)`` instead.
 
         Args:
             state: State previously exported from an online session client.
@@ -526,7 +526,7 @@ class AsyncAuthenticatedClient:
         )
 
     @deprecated(
-        "`open_batch_session()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`open_batch_session()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `raw` instead."
     )
     def open_batch_session(
@@ -544,7 +544,7 @@ class AsyncAuthenticatedClient:
         """Deprecated: open a batch session using caller-prepared encryption metadata.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``auth.batch_session()`` for the standard flow, or ``raw`` for caller-supplied encryption material.
+            May be removed no earlier than ksef2 2.0.0. Use ``auth.batch_session()`` for the standard flow, or ``raw`` for caller-supplied encryption material.
 
         Args:
             batch_file: Declared ZIP package metadata and encrypted part metadata.
@@ -575,8 +575,8 @@ class AsyncAuthenticatedClient:
         )
 
     @deprecated(
-        "`resume_batch_session()` is deprecated and will be removed in "
-        "ksef2 1.10.0; use `batch_session(state=...)` instead."
+        "`resume_batch_session()` is deprecated and will be removed no earlier than "
+        "ksef2 2.0.0; use `batch_session(state=...)` instead."
     )
     def resume_batch_session(
         self,
@@ -585,7 +585,7 @@ class AsyncAuthenticatedClient:
         """Deprecated: rebind an existing serialized batch session state to this client.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``batch_session(state=...)`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``batch_session(state=...)`` instead.
 
         Args:
             state: State previously exported from a batch session client.

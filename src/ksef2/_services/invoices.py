@@ -363,7 +363,7 @@ class InvoicesService:
         )
 
     @deprecated(
-        "`query_metadata()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`query_metadata()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `search()` instead."
     )
     def query_metadata(
@@ -375,7 +375,7 @@ class InvoicesService:
         """Deprecated: fetch one invoice metadata page matching the provided filters.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``search()`` instead; ``first_page()`` fetches one page.
+            May be removed no earlier than ksef2 2.0.0. Use ``search()`` instead; ``first_page()`` fetches one page.
 
         Args:
             filters: Criteria selecting the invoices.
@@ -387,7 +387,7 @@ class InvoicesService:
         return self._client.query_metadata(filters=filters, params=params)
 
     @deprecated(
-        "`query_metadata_pages()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`query_metadata_pages()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `search()` instead."
     )
     def query_metadata_pages(
@@ -399,7 +399,7 @@ class InvoicesService:
         """Deprecated: fetch metadata pages, following KSeF page and truncation mechanics.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``search().pages()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``search().pages()`` instead.
 
         Args:
             filters: Criteria selecting the invoices.
@@ -419,7 +419,7 @@ class InvoicesService:
             yield page
 
     @deprecated(
-        "`all_metadata()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`all_metadata()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `search()` instead."
     )
     def all_metadata(
@@ -431,7 +431,7 @@ class InvoicesService:
         """Deprecated: iterate over all invoice metadata items matching the provided filters.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``search()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``search()`` instead.
 
         Args:
             filters: Criteria selecting the invoices.
@@ -448,14 +448,14 @@ class InvoicesService:
             yield invoice
 
     @deprecated(
-        "`download_invoice()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`download_invoice()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `download()` instead."
     )
     def download_invoice(self, *, ksef_number: str) -> bytes:
         """Deprecated: download one processed invoice by KSeF number.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``download()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``download()`` instead.
 
         Args:
             ksef_number: KSeF number of the invoice.
@@ -466,8 +466,8 @@ class InvoicesService:
         return self._client.download_invoice(ksef_number=ksef_number)
 
     @deprecated(
-        "`wait_for_invoice_download()` is deprecated and will be removed in "
-        "ksef2 1.10.0; use `download()` instead."
+        "`wait_for_invoice_download()` is deprecated and will be removed no earlier than "
+        "ksef2 2.0.0; use `download()` instead."
     )
     def wait_for_invoice_download(
         self,
@@ -479,7 +479,7 @@ class InvoicesService:
         """Deprecated: poll until KSeF makes a processed invoice available for download.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``download(ksef_number, timeout=...)`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``download(ksef_number, timeout=...)`` instead.
 
         Args:
             ksef_number: KSeF number of the invoice.
@@ -530,7 +530,7 @@ class InvoicesService:
         return result
 
     @deprecated(
-        "`schedule_export()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`schedule_export()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `export()` instead."
     )
     def schedule_export(
@@ -543,7 +543,7 @@ class InvoicesService:
         """Deprecated: schedule an encrypted invoice export.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``export()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``export()`` instead.
 
         Args:
             filters: Criteria selecting the invoices to export.
@@ -582,7 +582,7 @@ class InvoicesService:
         )
 
     @deprecated(
-        "`get_export_status()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`get_export_status()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `export()` instead."
     )
     def get_export_status(
@@ -593,7 +593,7 @@ class InvoicesService:
         """Deprecated: fetch the current status for a scheduled invoice export.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``export()`` and ``ExportJob.get_status()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``export()`` and ``ExportJob.get_status()`` instead.
 
         Args:
             reference_number: Reference number of the export, from ``ExportHandle.reference_number``.
@@ -604,7 +604,7 @@ class InvoicesService:
         return self._client.get_export_status(reference_number=reference_number)
 
     @deprecated(
-        "`fetch_package()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`fetch_package()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `export().wait()` instead."
     )
     def fetch_package(
@@ -617,7 +617,7 @@ class InvoicesService:
         """Deprecated: download and decrypt all parts of an export package to disk.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``export().wait()`` and ``ExportedInvoices.save()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``export().wait()`` and ``ExportedInvoices.save()`` instead.
 
         Args:
             package: Package metadata from the export status.
@@ -667,7 +667,7 @@ class InvoicesService:
         return saved_files
 
     @deprecated(
-        "`fetch_package_bytes()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`fetch_package_bytes()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `export().wait()` instead."
     )
     def fetch_package_bytes(
@@ -679,7 +679,7 @@ class InvoicesService:
         """Deprecated: download and decrypt all parts of an export package in memory.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``export().wait()`` and ``ExportedInvoices.archive`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``export().wait()`` and ``ExportedInvoices.archive`` instead.
 
         Args:
             package: Package metadata from the export status.
@@ -725,7 +725,7 @@ class InvoicesService:
         )
 
     @deprecated(
-        "`wait_for_invoices()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`wait_for_invoices()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `search().wait()` instead."
     )
     def wait_for_invoices(
@@ -738,7 +738,7 @@ class InvoicesService:
         """Deprecated: poll invoice metadata until at least one invoice matches the filters.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``search(filters).wait()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``search(filters).wait()`` instead.
 
         Args:
             filters: Criteria selecting the invoices.
@@ -762,8 +762,8 @@ class InvoicesService:
         )
 
     @deprecated(
-        "`wait_for_export_package()` is deprecated and will be removed in "
-        "ksef2 1.10.0; use `export().wait()` instead."
+        "`wait_for_export_package()` is deprecated and will be removed no earlier than "
+        "ksef2 2.0.0; use `export().wait()` instead."
     )
     def wait_for_export_package(
         self,
@@ -775,7 +775,7 @@ class InvoicesService:
         """Deprecated: poll export status until KSeF exposes a downloadable package.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``export().wait()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``export().wait()`` instead.
 
         Args:
             reference_number: Reference number of the export, from ``ExportHandle.reference_number``.
@@ -819,7 +819,7 @@ class InvoicesService:
         return status.package
 
     @deprecated(
-        "`export_and_download()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`export_and_download()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `export().wait()` instead."
     )
     def export_and_download(
@@ -834,7 +834,7 @@ class InvoicesService:
         """Deprecated: schedule an export, wait for it, and download the decrypted package.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``export().wait()`` instead; ``ExportedInvoices.archive`` is the joined ZIP.
+            May be removed no earlier than ksef2 2.0.0. Use ``export().wait()`` instead; ``ExportedInvoices.archive`` is the joined ZIP.
 
         Args:
             filters: Criteria selecting the invoices to export.

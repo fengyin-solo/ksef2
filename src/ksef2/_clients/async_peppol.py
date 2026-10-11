@@ -63,7 +63,7 @@ class AsyncPeppolClient:
             current_params = current_params.next_page()
 
     @deprecated(
-        "`query()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`query()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `list()` instead."
     )
     def query(
@@ -74,7 +74,7 @@ class AsyncPeppolClient:
         """Deprecated: query one page of Peppol service providers.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``list()`` instead; ``first_page()`` fetches one page.
+            May be removed no earlier than ksef2 2.0.0. Use ``list()`` instead; ``first_page()`` fetches one page.
 
         Args:
             params: Pagination parameters.
@@ -85,7 +85,7 @@ class AsyncPeppolClient:
         return self._query(params=params)
 
     @deprecated(
-        "`all()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`all()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `list()` instead."
     )
     async def all(
@@ -94,7 +94,7 @@ class AsyncPeppolClient:
         """Deprecated: iterate over all Peppol service providers.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``list()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``list()`` instead.
 
         Args:
             params: Pagination parameters.

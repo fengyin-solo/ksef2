@@ -98,7 +98,7 @@ class AsyncInvoiceSessionsClient:
             yield response
 
     @deprecated(
-        "`query()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`query()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `list()` instead."
     )
     def query(
@@ -112,7 +112,7 @@ class AsyncInvoiceSessionsClient:
         """Deprecated: fetch one page of invoice session history for the chosen session type.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``list()`` instead; ``first_page()`` fetches one page.
+            May be removed no earlier than ksef2 2.0.0. Use ``list()`` instead; ``first_page()`` fetches one page.
 
         Args:
             session_type: Invoice session family to browse, such as ``"online"``
@@ -132,7 +132,7 @@ class AsyncInvoiceSessionsClient:
         )
 
     @deprecated(
-        "`all()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`all()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `list()` instead."
     )
     async def all(
@@ -144,7 +144,7 @@ class AsyncInvoiceSessionsClient:
         """Deprecated: iterate through all pages of invoice session history.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``list().pages()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``list().pages()`` instead.
 
         Args:
             session_type: Invoice session family to browse, such as ``"online"``

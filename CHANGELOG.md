@@ -1,3 +1,15 @@
+## v1.0.0 (unreleased)
+
+### Deprecated
+
+- Keep the former `ksef2.core`, `domain`, `infra`, `endpoints`, `services`,
+  client implementation, `config` and `logging` imports as warning aliases
+  throughout 1.x (#171). The private-module rename does not remove old imports.
+- Keep deprecated call names, including invoice send/wait/UPO, metadata search,
+  download and export aliases, through 1.x. Removal is a 2.0 decision and may
+  happen no earlier than 2.0.0, replacing the former 1.10.0 removal schedule.
+- Add English and Polish migration examples for legacy imports and workflows.
+
 ## v0.22.2 (2026-09-25)
 
 ## v0.22.1 (2026-09-25)

@@ -1,5 +1,6 @@
 """Unit tests for the FA(3) transaction sub-builder reached from the public builder."""
 
+import os
 from datetime import UTC, datetime, date
 from decimal import Decimal
 from typing import Any
@@ -16,6 +17,12 @@ from ksef2._domain.models.fa3.body import (
     TransactionTransport,
 )
 from ksef2._services.builders.fa3.sub.transaction import TransactionBuilder
+
+
+requires_unchecked_types = pytest.mark.skipif(
+    bool(os.environ.get("KSEF2_RUNTIME_CHECKS")),
+    reason="beartype rejects the out-of-contract value before the guard runs",
+)
 
 
 def started_standard_body() -> Any:
@@ -276,6 +283,7 @@ def test_add_transport_without_a_type_uses_other_transport_description() -> None
     assert transport.other_cargo_description == "Mixed electronics"
 
 
+@requires_unchecked_types
 def test_add_transport_with_an_unknown_type_is_rejected_on_build() -> None:
     with pytest.raises(ValueError, match="transport_type"):
         _ = (

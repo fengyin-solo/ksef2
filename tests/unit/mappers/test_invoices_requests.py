@@ -1,5 +1,6 @@
 """Unit tests for the invoice request mapper's enum and validation branches."""
 
+import os
 from datetime import datetime, timezone
 from typing import Any
 
@@ -11,6 +12,12 @@ from ksef2._domain.models.session import FormSchema
 from ksef2._infra.mappers.invoices import requests as requests_mapper
 from ksef2._infra.mappers.invoices.requests import to_spec
 from ksef2._infra.schema.api import spec
+
+
+requires_unchecked_types = pytest.mark.skipif(
+    bool(os.environ.get("KSEF2_RUNTIME_CHECKS")),
+    reason="beartype rejects the out-of-contract value before the guard runs",
+)
 
 
 def filter_for(role: str, **overrides: Any) -> domain_invoices.InvoicesFilter:
@@ -254,6 +261,7 @@ def test_invoicing_mode_covers_every_variant(
     assert output.invoicingMode == expected
 
 
+@requires_unchecked_types
 def test_unknown_invoicing_mode_is_rejected() -> None:
     with pytest.raises(ValueError, match="Unknown invoicing mode: 'semi_online'"):
         _ = mapped_filter(filter_for("seller", invoicing_mode="semi_online"))
@@ -276,6 +284,7 @@ def test_form_schema_covers_every_variant(schema: Any, expected: Any) -> None:
     assert output.formType == expected
 
 
+@requires_unchecked_types
 def test_unknown_form_schema_is_rejected() -> None:
     with pytest.raises(ValueError, match="Unknown invoice schema:"):
         _ = mapped_filter(filter_for("seller", invoice_schema="FA (4)"))

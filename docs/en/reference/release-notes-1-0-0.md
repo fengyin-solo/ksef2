@@ -3,6 +3,10 @@ title: ksef2 1.0.0 Release Notes
 description: Stability boundary and the documented public surface of the first stable ksef2 SDK release.
 ---
 
+> Release preparation is in progress. The release date is not set.
+> Compatibility work in [#171](https://github.com/stacking-hq/ksef2/issues/171)
+> must land before release; the aliases described below are a release requirement.
+
 ksef2 1.0.0 is the first release that treats documented application-facing
 imports as a compatibility contract for the 1.x line.
 The SDK currently targets KSeF OpenAPI version `2.8.1`.
@@ -59,9 +63,10 @@ through the method that starts it: `auth.online_session(state=saved)`.
 
 ## Deprecation policy
 
-A deprecated API is removed in a stated 1.x release. Every deprecation shipped
-with 1.0.0 is removed in **ksef2 1.10.0**, including the seven deprecated in
-0.19.0. See the [deprecated APIs](public-api.md#deprecated-apis) table.
+Old import paths and method names remain functional through 1.x. Removal is
+a 2.0 decision (#171), including APIs deprecated in 0.19.0. This supersedes
+the earlier 1.10.0 removal plan. See the
+[deprecated APIs](public-api.md#deprecated-apis) table.
 
 ## Errors
 
@@ -82,8 +87,13 @@ Details: UPO o numerze referencyjnym 20260101-EE-ABC nie zostało znalezione.
 Hint: KSeF has not issued the UPO yet. Wait for processing to finish and request it again.
 ```
 
-`download_upo()` on a submission or session now waits for processing instead of
-failing early.
+`download_upo()` fetches immediately and raises `KSeFNotReadyError` if the UPO
+is not ready. Call `wait(timeout=..., poll_interval=...)` first on the submission
+or closed session, then fetch the UPO (#169).
+
+KSeF Problem Details is requested by default. Use
+`TransportConfig(error_format="legacy")` for the older HTTP 400/429 format;
+HTTP 401, 403 and 410 always use Problem Details (#169, #175).
 
 ## Public but lower level
 
@@ -107,9 +117,10 @@ Do not build application code on these paths:
 
 The former internal packages (`ksef2.core`, `ksef2.domain`, `ksef2.infra`,
 `ksef2.endpoints`, `ksef2.services`, the client implementation modules,
-`ksef2.config` and `ksef2.logging`) are now underscore-prefixed, with no
-compatibility aliases: importing the old paths raises `ImportError`. Private
-modules can change without a 2.0 release.
+`ksef2.config` and `ksef2.logging`) moved to underscore-prefixed implementations.
+#171 must keep the old imports as deprecated compatibility aliases through 1.x,
+with warnings naming their public replacements. Use the documented public paths
+for new code. Private implementations can change within 1.x.
 
 ## Related pages
 

@@ -1,9 +1,9 @@
-## v1.0.0 (2026-10-03)
+## v1.0.0 (unreleased)
 
-ksef2 1.0.0 is the first stable release. It targets KSeF OpenAPI 2.8.1 and starts
-the 1.x compatibility contract. Since 0.22.2 there are two breaking changes
-(internal modules moved to private `_`-prefixed paths, and collective-identifier
-invoice queries); nothing else is removed. Read
+ksef2 1.0.0 is being prepared as the first stable release. It targets KSeF
+OpenAPI 2.8.1 and starts the 1.x compatibility contract. Collective-identifier
+invoice queries change because KSeF replaced the endpoint. Old SDK import paths
+and method names must remain functional through 1.x under #171. Read
 [Breaking changes](#breaking-changes) and [Deprecated](#deprecated) before upgrading.
 
 ### Highlights
@@ -27,31 +27,9 @@ invoice queries); nothing else is removed. Read
 - KSeF errors come from one pipeline with one message format, carry `ksef_code`,
   `trace_id` and `details`, and say what to do next in `hint` (#167).
 - Deprecations are visible to type checkers and IDEs (PEP 702 `@deprecated`) and
-  follow one stated policy: a deprecated API is removed in a named 1.x release.
-  Everything deprecated today is removed in **1.10.0**.
+  remain functional through the 1.x line. Removal is a 2.0 decision (#171).
 
 ### Breaking changes
-
-- **Internal modules moved to private `_`-prefixed paths (#153).** A module path
-  with no underscore is public; anything with an underscore is private. Internal
-  modules moved to underscore-prefixed paths, with no compatibility aliases, and
-  no runtime warning: importing an old path raises `ImportError`. Code that only
-  uses the documented public paths is unaffected.
-
-  | Old | New |
-  | --- | --- |
-  | `ksef2.core` | `ksef2._core` |
-  | `ksef2.domain` | `ksef2._domain` |
-  | `ksef2.infra` | `ksef2._infra` |
-  | `ksef2.endpoints` | `ksef2._endpoints` |
-  | `ksef2.services` | `ksef2._services` |
-  | `ksef2.clients.<module>` (`base`, `auth`, `online`, `async_*`, ...) | `ksef2._clients.<module>` (`ksef2.clients` stays the public facade with the same `__all__`) |
-  | `ksef2.config` | `ksef2._config` (names stay exported from `ksef2`) |
-  | `ksef2.logging` | `ksef2._logging` (names stay exported from `ksef2`) |
-  | `ksef2.raw.facade`, `ksef2.raw.async_facade` | `ksef2.raw._facade`, `ksef2.raw._async_facade` (names stay exported from `ksef2.raw`) |
-
-  If you imported something from an old path, import it from the public module
-  instead (see [Added](#added) for names newly exported from `ksef2.models`).
 
 - **Collective-identifier invoice queries (#128).** KSeF API 2.8.1 replaced
   `GET /collective-identifiers/{collectiveIdentifierNumber}/invoices` with
@@ -92,10 +70,31 @@ invoice queries); nothing else is removed. Read
 
 ### Deprecated
 
-Every replaced name stays as a `@deprecated` alias that keeps its old behavior and
-return type, warns once per call, and is removed in **ksef2 1.10.0**. That
-includes the seven APIs deprecated in 0.19.0, whose removal moves from 2.0 to
-1.10.0. See the
+- **Former implementation imports (#153, #171).** Implementations moved to
+  private `_`-prefixed paths. The old paths must remain as deprecated aliases
+  through 1.x, warning with the public replacement. #171 supplies those aliases
+  and the migration examples; it is a release dependency, not implemented by
+  this release PR. Use documented public modules rather than the private paths
+  in the table below for new code.
+
+  | Old import | Private implementation |
+  | --- | --- |
+  | `ksef2.core` | `ksef2._core` |
+  | `ksef2.domain` | `ksef2._domain` |
+  | `ksef2.infra` | `ksef2._infra` |
+  | `ksef2.endpoints` | `ksef2._endpoints` |
+  | `ksef2.services` | `ksef2._services` |
+  | `ksef2.clients.<module>` (`base`, `auth`, `online`, `async_*`, ...) | `ksef2._clients.<module>` (`ksef2.clients` stays the public facade with the same `__all__`) |
+  | `ksef2.config` | `ksef2._config` (names stay exported from `ksef2`) |
+  | `ksef2.logging` | `ksef2._logging` (names stay exported from `ksef2`) |
+  | `ksef2.raw.facade`, `ksef2.raw.async_facade` | `ksef2.raw._facade`, `ksef2.raw._async_facade` (names stay exported from `ksef2.raw`) |
+
+  If you imported something from an old path, import it from the public module
+  instead (see [Added](#added) for names newly exported from `ksef2.models`).
+
+Old SDK imports and method names remain functional through 1.x. Replaced
+methods keep their old behavior and return type and carry deprecation warnings.
+Removal is a 2.0 decision (#171), including APIs deprecated in 0.19.0. See the
 [deprecated APIs table](https://docs.stacking.me/sdk/reference/public-api/#deprecated-apis)
 on the public API page for every alias and its replacement.
 
@@ -152,7 +151,14 @@ on the public API page for every alias and its replacement.
 - `KSeFApiError.ksef_code` (the raw KSeF code, also for codes the SDK does not
   list), `trace_id` and `details`; `KSeFException.hint`, which says what to do next;
   and `KSeFNotReadyError` for KSeF codes 21165 and 21178 (#167).
-- `timeout` and `poll_interval` on `download_upo()` (#167).
+- Explicit processing waits through `wait(timeout=..., poll_interval=...)`;
+  `download_upo()` never polls (#169).
+- Problem Details responses by default, including trace IDs for HTTP 400 and
+  429. Set `TransportConfig(error_format="legacy")` for the older response
+  format; HTTP 401, 403 and 410 always use Problem Details (#169, #175).
+- `RetryConfig.max_retry_after`, defaulting to 120 seconds. Retry-After values
+  within this ceiling are honored even above `max_delay`; larger values fail
+  immediately with `KSeFRateLimitError` so the caller can reschedule (#178).
 - `Retry-After` is read in its HTTP-date form as well as in seconds, in errors and
   in the retry middleware (#167).
 - `ksef2.testdata` with `generate_nip()` and `generate_pesel()` for TEST-environment
@@ -181,9 +187,8 @@ on the public API page for every alias and its replacement.
 
 ### Changed
 
-- Deprecation policy: a deprecated API is removed in a stated 1.x release, not
-  only in the next major. The seven APIs deprecated in 0.19.0 move from 2.0 to
-  1.10.0 (#162).
+- Deprecation policy: old imports and methods remain functional through 1.x;
+  removal is a 2.0 decision (#171). This supersedes the earlier 1.10.0 plan.
 - `session.send_invoice()` keeps its name but now returns an `InvoiceSubmission`
   handle (#162).
 - Argument errors from `batch_session()`, `online_session()` and `export()` are
@@ -197,8 +202,9 @@ on the public API page for every alias and its replacement.
   response body is no longer dumped into the message; it stays on `e.response`.
   Messages are for people: branch on the exception class or `ksef_code`, never on
   message text (#167).
-- `download_upo()` on a submission, an online session or a batch session waits for
-  processing first instead of failing too early (#167).
+- `download_upo()` fetches immediately. To poll until the UPO is ready, use
+  `wait(timeout=..., poll_interval=...)` before `download_upo()` on a submission
+  or a closed online or batch session (#169).
 - `KSeFAuthError.exception_code` now reflects the KSeF code instead of always
   being `UNKNOWN_ERROR` (#167).
 
@@ -211,6 +217,8 @@ on the public API page for every alias and its replacement.
 
 ### Fixed
 
+- FA(3) tax exemptions write only the selected legal basis, and new-transport
+  annotations can be attached without supplying other annotation fields (#179, #176).
 - Give each invoice in the batch examples its own FA(3) number (#135).
 - Compare `(method, path)` pairs in the API coverage check and enforce the result,
   so a missing or SDK-only endpoint fails the check (#129).
@@ -229,8 +237,8 @@ on the public API page for every alias and its replacement.
   import from a module path with an underscore-prefixed component;
   `scripts/validate_docs_paths.py` and the OpenAPI-version check cover the docs
   pages (#148, #153, #136).
-- A module visibility contract test asserts that the public modules import and
-  that the old internal paths no longer exist (#153).
+- Public-module visibility checks cover the documented imports. #171 must
+  replace the old-path rejection checks with compatibility checks before release.
 - A docstring test and ruff pydocstyle keep every public API documented (#159).
 - `scripts/validate_docs_markdown.py` checks the docs Markdown (#158).
 - Remove the in-repo CLI script and its integration test; the CLI lives in the

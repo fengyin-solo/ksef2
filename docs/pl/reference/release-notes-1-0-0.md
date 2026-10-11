@@ -3,6 +3,10 @@ title: Notatki wydania 1.0.0
 description: Granica stabilności i udokumentowana publiczna powierzchnia pierwszego stabilnego wydania SDK.
 ---
 
+> Trwają przygotowania do wydania. Data wydania nie jest ustalona.
+> Przed wydaniem musi zostać ukończone [#171](https://github.com/stacking-hq/ksef2/issues/171).
+> Opisane poniżej aliasy są wymaganiem wydania.
+
 ksef2 1.0.0 to pierwsze wydanie, które traktuje udokumentowane, aplikacyjne
 ścieżki importu jako kontrakt kompatybilności dla linii 1.x.
 SDK obecnie celuje w wersję OpenAPI KSeF `2.8.1`.
@@ -59,9 +63,9 @@ metodą, która je uruchamia: `auth.online_session(state=saved)`.
 
 ## Polityka wycofywania
 
-Przestarzałe API jest usuwane w wskazanym wydaniu 1.x. Każde wycofanie dostarczone
-z 1.0.0 zostanie usunięte w **ksef2 1.10.0**, razem z siedmioma wycofanymi
-w 0.19.0. Zobacz tabelę [wycofywanych API](public-api.md#wycofywane-api).
+Stare ścieżki importu i nazwy metod pozostają działające przez całą linię 1.x.
+Usunięcie jest decyzją dla 2.0 (#171), także dla API wycofanych w 0.19.0.
+Ta decyzja zastępuje wcześniejszy plan usunięcia w 1.10.0. Zobacz tabelę [wycofywanych API](public-api.md#wycofywane-api).
 
 ## Błędy
 
@@ -82,8 +86,14 @@ Details: UPO o numerze referencyjnym 20260101-EE-ABC nie zostało znalezione.
 Hint: KSeF has not issued the UPO yet. Wait for processing to finish and request it again.
 ```
 
-`download_upo()` na zgłoszeniu lub sesji czeka teraz na zakończenie przetwarzania
-zamiast kończyć się zbyt wcześnie.
+`download_upo()` pobiera UPO od razu i zgłasza `KSeFNotReadyError`, jeśli UPO
+nie jest gotowe. Najpierw wywołaj
+`wait(timeout=..., poll_interval=...)` na zgłoszeniu lub zamkniętej sesji,
+a następnie pobierz UPO (#169).
+
+SDK domyślnie żąda Problem Details. `TransportConfig(error_format="legacy")`
+wybiera starszy format HTTP 400/429; HTTP 401, 403 i 410 zawsze używają
+Problem Details (#169, #175).
 
 ## Publiczne, ale niższopoziomowe
 
@@ -106,11 +116,11 @@ Nie buduj kodu aplikacji na tych ścieżkach:
 - repozytoryjnych `scripts/*`;
 - internali wygenerowanych schem poza `ksef2.raw.spec` i `ksef2.raw.supp`.
 
-Dawne pakiety wewnętrzne (`ksef2.core`, `ksef2.domain`, `ksef2.infra`,
-`ksef2.endpoints`, `ksef2.services`, moduły implementacji klientów,
-`ksef2.config` i `ksef2.logging`) mają teraz prefiks podkreślenia, bez aliasów
-kompatybilności: import starych ścieżek zgłasza `ImportError`. Moduły prywatne
-mogą zmieniać się bez wydania 2.0.
+Dawne pakiety implementacyjne przeniesiono pod ścieżki z prefiksem `_`.
+#171 musi zachować stare importy jako przestarzałe aliasy przez całą linię 1.x,
+z ostrzeżeniami wskazującymi publiczne zamienniki. Nowy kod powinien używać
+udokumentowanych publicznych ścieżek. Prywatne implementacje mogą się zmieniać
+w ramach 1.x.
 
 ## Powiązane strony
 

@@ -22,6 +22,7 @@ TransportConfig(
     trust_env=True,
     http2=True,
     auto_refresh_tokens=True,
+    error_format="problem-details",
 )
 ```
 
@@ -35,9 +36,10 @@ TransportConfig(
 | `trust_env` | `bool` | `True` | `httpx` environment-variable behavior |
 | `http2` | `bool` | `True` | `httpx` HTTP/2 flag |
 | `auto_refresh_tokens` | `bool` | `True` | Access-token refresh of authenticated clients, see [Access-token refresh](#access-token-refresh) |
+| `error_format` | `Literal["problem-details", "legacy"]` | `"problem-details"` | `X-Error-Format` header on KSeF API requests, see [Error format](errors.md#error-format) |
 
-`auto_refresh_tokens` is the one field that does not configure `httpx`, so it
-applies even when you pass your own `http_client`.
+`auto_refresh_tokens` and `error_format` do not configure `httpx`, so they
+apply even when you pass your own `http_client`.
 
 ## TimeoutConfig
 
@@ -76,6 +78,7 @@ retryable HTTP responses for retryable request types.
 | `max_attempts` | `3` |
 | `initial_delay` | `0.5` |
 | `max_delay` | `4.0` |
+| `max_retry_after` | `120.0` |
 | `backoff_multiplier` | `2.0` |
 | `retryable_status_codes` | `(429, 502, 503, 504)` |
 
@@ -85,8 +88,18 @@ Retry delay is exponential:
 min(initial_delay * backoff_multiplier ** (attempt - 1), max_delay)
 ```
 
-If KSeF sends `Retry-After`, as seconds or as an HTTP date, the retry middleware
-uses that value, capped at `max_delay`.
+`max_delay` caps only the exponential backoff. A `Retry-After` header (seconds
+or HTTP-date form) is honored exactly when it is at or below
+`max_retry_after`. When it exceeds the ceiling, the SDK does not sleep and does
+not retry: it gives up immediately and raises `KSeFRateLimitError` carrying the
+true header value, so the app can reschedule. The ceiling keeps a multi-hour
+`Retry-After` from stalling a process forever.
+
+The ceiling bounds one sleep, not the whole request. If KSeF repeats the same
+`Retry-After` on every attempt, a single request waits up to
+`(max_attempts - 1) * max_retry_after` before it gives up. With the defaults
+that is 240 seconds, because the SDK sleeps 120 seconds twice. Lower
+`max_attempts` or `max_retry_after` when a request handler cannot afford that.
 
 ## Retryable requests
 
@@ -131,6 +144,11 @@ resumed from.
 | Reactive | A `401` response triggers one refresh and one retry of the same request. A second `401` is raised as `KSeFAuthError`. |
 | Concurrency | Requests share a single refresh: a lock in `Client`, an `asyncio.Lock` in `AsyncClient`. |
 | Other statuses | `403` and every other error are not refreshed. |
+
+One refresh is not a full re-login: the SDK replays the original request once
+with the refreshed token. If that replay gets another `401`, the
+`KSeFAuthError` reaches the app, and the app decides whether to authenticate
+again or surface the failure.
 
 `auth.auth_tokens`, `auth.access_token` and `auth.resume_state()` always return
 the current tokens, so persist `resume_state()` again after long-running work.
@@ -186,8 +204,18 @@ exposes:
 | `status_code` | Always `429`. |
 | `response` | Parsed KSeF error payload when available. |
 
-Use `retry_after` to schedule background work. In request handlers, prefer
-returning or enqueueing retryable work over sleeping inside the request.
+For a `429`, the retry middleware honors `Retry-After` exactly when the value
+is at or below `max_retry_after`, sleeping and retrying up to `max_attempts`.
+When the header exceeds the ceiling, the middleware gives up immediately: no
+sleep, no retry, and the request fails with `KSeFRateLimitError` whose
+`retry_after` is the true header value. The ceiling bounds each sleep, so a
+repeated header can hold one request for `(max_attempts - 1) * max_retry_after`,
+which is 240 seconds with the defaults.
+
+What the app still owns: a `KSeFRateLimitError` means the SDK already gave up,
+so schedule the work for later instead of retrying blindly. Use `retry_after`
+to schedule background work. In request handlers, prefer returning or
+enqueueing retryable work over sleeping inside the request.
 
 ## Secret and logging boundaries
 

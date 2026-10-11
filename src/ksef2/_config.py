@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Literal
 
 
 class Environment(Enum):
@@ -62,7 +63,15 @@ class RetryConfig:
     initial_delay: float = 0.5
     """Seconds to wait before the first retry."""
     max_delay: float = 4.0
-    """Upper bound in seconds for the delay between retries."""
+    """Upper bound in seconds for the exponential backoff delay between retries."""
+    max_retry_after: float = 120.0
+    """Upper bound in seconds for a ``Retry-After`` value the SDK is willing to sleep.
+
+    When a retryable response carries ``Retry-After`` at or below this ceiling, the
+    SDK sleeps that exact value (not ``max_delay``) and retries. When it exceeds the
+    ceiling, the SDK does not sleep or retry: the request fails immediately with
+    ``KSeFRateLimitError`` carrying the true header value so callers can reschedule.
+    """
     backoff_multiplier: float = 2.0
     """Factor by which the delay grows after each retry."""
     retryable_status_codes: tuple[int, ...] = (429, 502, 503, 504)
@@ -99,3 +108,5 @@ class TransportConfig:
     """Whether to use HTTP/2 when the server supports it."""
     auto_refresh_tokens: bool = True
     """Whether authenticated clients refresh their access token automatically, shortly before it expires and once after a 401 response. Set to ``False`` to manage refreshing yourself."""
+    error_format: Literal["problem-details", "legacy"] = "problem-details"
+    """Error format requested from KSeF. ``"problem-details"`` sends ``X-Error-Format: problem-details``, so 400 and 429 errors carry ``trace_id`` and ``exc.response`` is a Problem Details model. ``"legacy"`` sends no header, so those errors come in the older format, without ``trace_id``. 401, 403 and 410 are always Problem Details."""

@@ -99,3 +99,16 @@ def test_public_builder_serializes_return_of_excise(value: bool | None) -> None:
     assert parse_invoice_xml(xml.encode("utf-8")).body.return_of_excise is (
         True if value else None
     )
+
+
+def test_rebuild_omits_line_amounts_the_source_xml_left_out() -> None:
+    invoice = parse_invoice_xml((SAMPLES / "KSEF_09_ROZ_A.xml").read_bytes())
+    xml = FA3InvoiceBuilder.from_invoice(invoice).to_xml()
+    document = etree.fromstring(xml.encode("utf-8"))
+
+    for tag in ("P_11Vat", "P_11A"):
+        assert document.xpath(f"//*[local-name()='{tag}']/text()") == []
+    assert document.xpath("//*[local-name()='P_14_2']/text()") == ["14814.81"]
+    assert document.xpath("//*[local-name()='P_15']/text()") == ["200000.00"]
+    assert invoice.body.rows[0].net_amount == Decimal("185185.19")
+    assert invoice.body.rows[0].vat_amount == Decimal("14814.82")

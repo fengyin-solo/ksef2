@@ -55,6 +55,24 @@ def test_corrected_buyer_to_spec_maps_optional_address_and_link_id() -> None:
     assert output.adres is None
 
 
+def test_corrected_buyer_to_spec_maps_nip_when_eu_vat_id_also_present() -> None:
+    output = to_spec(
+        CorrectedBuyerEntity(
+            name="Old Buyer",
+            tax_id="1234567890",
+            eu_vat_id="DE123456789",
+        )
+    )
+
+    assert isinstance(output, FakturaFaPodmiot2K)
+    assert output.dane_identyfikacyjne.nip == "1234567890"
+    assert output.dane_identyfikacyjne.kod_ue is None
+    assert output.dane_identyfikacyjne.nr_vat_ue is None
+    assert output.dane_identyfikacyjne.kod_kraju is None
+    assert output.dane_identyfikacyjne.nr_id is None
+    assert output.dane_identyfikacyjne.brak_id is None
+
+
 def test_corrected_buyer_to_spec_maps_no_id_flag() -> None:
     output = to_spec(
         CorrectedBuyerEntity(

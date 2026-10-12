@@ -904,3 +904,5 @@ class SendInvoicePayload(KSeFBaseModel):
     """Plain invoice XML bytes."""
     encrypted_bytes: bytes
     """Invoice XML encrypted with the session key."""
+    hash_of_corrected_invoice: str | None = None
+    """Base64-encoded SHA256 hash of the invoice being technically corrected."""

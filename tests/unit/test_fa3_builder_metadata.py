@@ -6,8 +6,10 @@ from pydantic.fields import FieldInfo
 
 from ksef2.fa3 import FA3InvoiceBuilder
 from ksef2._domain.models.fa3.body import VatRate
+from ksef2._domain.models.fa3.body.correction import CorrectionEffectType
 from ksef2._services.builders.fa3.body.base import BaseBodyBuilder
 from ksef2._services.builders.fa3.root import StandardInvoiceBuilder
+from ksef2._services.builders.fa3.sub.correction import CorrectionBuilder
 from ksef2._services.builders.fa3.sub.payment import PaymentBuilder
 from ksef2._services.builders.fa3.sub.rows import RowsBuilder
 
@@ -102,6 +104,23 @@ def test_payment_metadata_is_available_for_partial_payment() -> None:
         "x-builder-prefer-omit-when-null": True,
         "x-builder-format": "date",
     }
+
+
+def test_correction_effect_type_examples_build() -> None:
+    hints = _type_hints(cast(object, CorrectionBuilder.effect_type))
+    examples = cast(list[object], _field_info(hints["value"]).examples)
+
+    assert examples
+    assert set(examples) <= set(get_args(CorrectionEffectType))
+
+    for example in examples:
+        correction = (
+            CorrectionBuilder(parent=None, on_done=lambda value: None)
+            .effect_type(cast(CorrectionEffectType, example))
+            .build()
+        )
+
+        assert correction.correction_effect_type == example
 
 
 def test_runtime_builder_behavior_is_unchanged() -> None:

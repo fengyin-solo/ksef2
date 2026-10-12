@@ -25,6 +25,10 @@ def round_pln(value: Decimal) -> Decimal:
 class InvoiceOrderLine(KSeFBaseModel):
     """FA(3) order line used inside the invoice order block."""
 
+    row_number: int | None = Field(
+        default=None, description="nr_wiersza_zam: Original row number"
+    )
+    """Row number carried through conversion (``NrWierszaZam``). Defaults to list position."""
     name: str | None = Field(default=None, description="p_7_z")
     """Name of the ordered goods or service (``P_7Z``)."""
     quantity: Decimal | None = Field(default=None, description="p_8_bz")

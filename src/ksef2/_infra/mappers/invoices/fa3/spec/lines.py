@@ -120,6 +120,7 @@ def _(
     )
 
     return InvoiceRow(
+        row_number=schema.nr_wiersza_fa,
         name=schema.p_7,
         quantity=_to_decimal(schema.p_8_b),
         unit_of_measure=schema.p_8_a or "szt",
@@ -158,6 +159,7 @@ def _(
     tax_regime = _tax_regime_for_line(vat_rate_xii=schema.p_12_z_xii)
 
     return AdvanceOrderLine(
+        row_number=schema.nr_wiersza_zam,
         name=schema.p_7_z,
         quantity=_to_decimal(schema.p_8_bz),
         unit_of_measure=schema.p_8_az,

@@ -95,6 +95,11 @@ def _was_explicitly_set(request: InvoiceRow, field_name: str) -> bool:
     return field_name in request.model_fields_set
 
 
+def _row_number(supplied: int | None, position: int) -> int:
+    """Return the line's own row number, falling back to its list position."""
+    return position if supplied is None else supplied
+
+
 @overload
 def to_spec(request: InvoiceRow, row_number: int) -> FakturaFaFaWiersz: ...
 
@@ -110,7 +115,10 @@ def to_spec(request: BaseModel, row_number: int) -> object: ...
 
 
 def to_spec(request: BaseModel, row_number: int) -> object:
-    """Convert an invoice line domain model into the FA(3) row schema."""
+    """Convert an invoice line domain model into the FA(3) row schema.
+
+    The line's own ``row_number`` wins when set; ``row_number`` is the positional fallback.
+    """
     return _to_spec(request, row_number)
 
 
@@ -125,7 +133,7 @@ def _to_spec(request: BaseModel, row_number: int) -> object:
 @_to_spec.register
 def _(request: InvoiceRow, row_number: int) -> FakturaFaFaWiersz:
     return FakturaFaFaWiersz(
-        nr_wiersza_fa=row_number,
+        nr_wiersza_fa=_row_number(request.row_number, row_number),
         uu_id=request.unique_id,
         p_6_a=request.supply_date.isoformat()
         if request.supply_date is not None
@@ -170,7 +178,7 @@ def _(
     request: AdvanceOrderLine, row_number: int
 ) -> FakturaFaZamowienieZamowienieWiersz:
     return FakturaFaZamowienieZamowienieWiersz(
-        nr_wiersza_zam=row_number,
+        nr_wiersza_zam=_row_number(request.row_number, row_number),
         uu_idz=request.unique_id,
         p_7_z=request.name,
         indeks_z=request.sku,

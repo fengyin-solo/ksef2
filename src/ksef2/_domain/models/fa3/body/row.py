@@ -53,6 +53,10 @@ InvoiceProcedure = Literal[
 class InvoiceRow(KSeFBaseModel):
     """Line item stored in the FA(3) ``Fa/FaWiersz`` block."""
 
+    row_number: int | None = Field(
+        default=None, description="nr_wiersza_fa: Original row number"
+    )
+    """Row number carried through conversion (``NrWierszaFa``). Defaults to list position."""
     name: str | None = Field(default=None, description="p_7: Name of good/service")
     """Name of the goods or service (``P_7``)."""
     supply_date: date | None = Field(default=None, description="p_6_a: Date of supply")

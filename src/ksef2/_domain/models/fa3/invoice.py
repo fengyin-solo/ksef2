@@ -8,6 +8,7 @@ from pydantic import Field, model_validator
 
 from ksef2._domain.models.base import KSeFBaseModel, KSeFPersistedModel
 from ksef2._domain.models.fa3.attachment import Attachment
+from ksef2._domain.models.fa3.authorized_subject import InvoiceAuthorizedSubject
 from ksef2._domain.models.fa3.body import KsefInvoiceBody
 from ksef2._domain.models.fa3.footer import InvoiceFooter
 from ksef2._domain.models.fa3.header import InvoiceHeader
@@ -37,6 +38,11 @@ class KsefInvoiceDraft(KSeFPersistedModel):
         list[InvoiceThirdParty], Field(description="Draft third-party state.")
     ] = Field(default_factory=list)
     """Draft third-party state."""
+    authorized_subject: Annotated[
+        InvoiceAuthorizedSubject | None,
+        Field(description="Draft authorized-subject state."),
+    ] = None
+    """Draft authorized-subject state."""
     body: Annotated[
         KsefInvoiceBody | None, Field(description="Draft invoice body state.")
     ] = None
@@ -68,6 +74,11 @@ class KsefInvoiceDraft(KSeFPersistedModel):
                 third_party.model_copy(deep=True)
                 for third_party in invoice.third_parties
             ],
+            authorized_subject=(
+                invoice.authorized_subject.model_copy(deep=True)
+                if invoice.authorized_subject
+                else None
+            ),
             body=invoice.body.model_copy(deep=True),
             footer=invoice.footer.model_copy(deep=True) if invoice.footer else None,
             attachment=(
@@ -90,6 +101,11 @@ class KsefInvoice(KSeFBaseModel):
         Sequence[InvoiceThirdParty], Field(description="Maps to Faktura.Podmiot3")
     ] = Field(default_factory=tuple)
     """Additional subjects (``Faktura/Podmiot3``)."""
+    authorized_subject: Annotated[
+        InvoiceAuthorizedSubject | None,
+        Field(description="Maps to Faktura.PodmiotUpowazniony"),
+    ] = None
+    """Authorized subject (``Faktura/PodmiotUpowazniony``), if any."""
 
     body: Annotated[KsefInvoiceBody, Field(description="Maps to Faktura.Fa")]
     """Invoice body (``Faktura/Fa``)."""

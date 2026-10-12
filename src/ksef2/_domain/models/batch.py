@@ -286,8 +286,10 @@ class OpenBatchSessionResponse(KSeFBaseModel):
 class BatchSessionResumeState(BaseSessionResumeState):
     """Serializable resume state of a batch session.
 
-    This class holds all information needed to resume a batch session
-    or to upload file parts. Use ``to_json()`` when
+    This class holds the session identity, keys and presigned upload
+    instructions needed to resume a batch session. The encrypted parts stay in
+    the ``PreparedBatch``, so pass both to ``auth.batch_session()`` to finish an
+    interrupted upload. Use ``to_json()`` when
     intentionally exporting resumable JSON containing encryption material and
     presigned upload URLs.
 

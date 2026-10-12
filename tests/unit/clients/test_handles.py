@@ -98,6 +98,28 @@ class TestInvoiceSubmission:
         assert len(flavor.transport.calls) == 3
         assert len(hashes) == 1
 
+    def test_send_includes_hash_of_corrected_invoice(
+        self,
+        flavor: Flavor,
+        domain_online_session_state: BaseFactory[OnlineSessionResumeState],
+        inv_send_resp: BaseFactory[spec.SendInvoiceResponse],
+    ) -> None:
+        session = flavor.online_session(domain_online_session_state.build())
+        corrected_invoice_hash = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+        flavor.transport.enqueue(
+            inv_send_resp.build(referenceNumber=INVOICE_REF).model_dump(mode="json")
+        )
+
+        submission = flavor.run(
+            session.send_invoice(XML, hash_of_corrected_invoice=corrected_invoice_hash)
+        )
+
+        assert submission.reference_number == INVOICE_REF
+        assert len(flavor.transport.calls) == 1
+        body = flavor.transport.calls[0].json
+        assert body is not None
+        assert body["hashOfCorrectedInvoice"] == corrected_invoice_hash
+
     def test_wait_returns_final_status(
         self,
         flavor: Flavor,
@@ -175,7 +197,7 @@ class TestInvoiceSubmission:
         flavor.transport.enqueue(content=b"<upo />")
 
         with pytest.raises(KSeFClientClosedError):
-            flavor.run(session.get_status())
+            flavor.run(session.send_invoice(XML))
         status = flavor.run(submission.wait(timeout=1.0, poll_interval=0.0))
         upo = flavor.run(submission.download_upo())
 
@@ -369,6 +391,57 @@ class TestOnlineSessionWait:
         status = flavor.run(session.wait(timeout=1.0, poll_interval=0.0))
 
         assert status.status.code == 200
+
+    def test_read_operations_still_work_after_close(
+        self,
+        flavor: Flavor,
+        domain_online_session_state: BaseFactory[OnlineSessionResumeState],
+        inv_session_status_resp: BaseFactory[spec.SessionStatusResponse],
+        inv_session_invoices_resp: BaseFactory[spec.SessionInvoicesResponse],
+        inv_session_invoice_status_resp: BaseFactory[spec.SessionInvoiceStatusResponse],
+    ) -> None:
+        """Closing ends the session, it does not blind the handle (issue #206).
+
+        ``wait()`` only works once the session is closed and points at
+        ``list_failed_invoices()`` when processing fails, so status and invoice
+        reads have to survive closing. Sending must not.
+        """
+        state = domain_online_session_state.build()
+        session = flavor.online_session(state)
+        flavor.transport.enqueue(content=b"", status_code=204)
+        flavor.close(session)
+        flavor.transport.enqueue(session_status(inv_session_status_resp, 200))
+        flavor.transport.enqueue(session_status(inv_session_status_resp, 200))
+        flavor.transport.enqueue(
+            inv_session_invoices_resp.build(invoices=[]).model_dump(mode="json")
+        )
+        flavor.transport.enqueue(
+            inv_session_invoices_resp.build(invoices=[]).model_dump(mode="json")
+        )
+        flavor.transport.enqueue(
+            invoice_status(inv_session_invoice_status_resp, 200, KSEF_NUMBER)
+        )
+        flavor.transport.enqueue(content=b"<upo />")
+
+        assert flavor.run(session.wait(timeout=1.0, poll_interval=0.0)).status.code == (
+            200
+        )
+        assert flavor.run(session.get_status()).status.code == 200
+        assert flavor.run(session.list_invoices()).invoices == []
+        assert flavor.run(session.list_failed_invoices()).invoices == []
+        assert (
+            flavor.run(
+                session.get_invoice_status(invoice_reference_number=INVOICE_REF)
+            ).ksef_number
+            == KSEF_NUMBER
+        )
+        assert (
+            flavor.run(session.download_invoice_upo(reference_number=INVOICE_REF))
+            == b"<upo />"
+        )
+
+        with pytest.raises(KSeFClientClosedError, match="Session client is closed"):
+            flavor.run(session.send_invoice(XML))
 
     def test_wait_raises_when_ksef_fails_the_session(
         self,

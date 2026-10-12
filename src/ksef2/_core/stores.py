@@ -149,14 +149,14 @@ class CertificateStore:
             at: Time to evaluate at; the current time when ``None``. Naive values are read as UTC.
 
         Returns:
-            Certificates whose validity period contains ``at``.
+            Certificates whose validity period contains ``at``. Naive validity dates are read as UTC.
         """
         now = _make_aware(at) if at else datetime.now(tz=timezone.utc)
 
         return [
             cert
             for cert in self._certificates
-            if cert.valid_from <= now <= cert.valid_to
+            if _make_aware(cert.valid_from) <= now <= _make_aware(cert.valid_to)
         ]
 
     def by_usage(

@@ -129,6 +129,11 @@ def _(request: InvoiceEntity) -> FakturaPodmiot2:
             nazwa=request.name,
         ),
         adres=subject_to_spec(request.address) if request.address else None,
+        adres_koresp=(
+            subject_to_spec(request.correspondence_address)
+            if request.correspondence_address
+            else None
+        ),
         # Repeated FA(3) contact block used to publish buyer e-mail/phone details.
         dane_kontaktowe=_map_contact_details(request.contact),
         # ERP/customer contract identifier exposed as the FA(3) buyer customer number.

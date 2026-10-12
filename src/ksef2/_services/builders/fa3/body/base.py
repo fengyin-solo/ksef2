@@ -120,6 +120,17 @@ class BaseBodyBuilder:
         self._state["issue_date"] = value
         return self
 
+    def default_payment_date(self) -> date:
+        """Return the date used when a paid invoice omits its payment date.
+
+        FA(3) requires ``DataZaplaty`` whenever ``Zaplacono`` is present, so the
+        invoice issue date is used as the fallback payment date.
+
+        Returns:
+            The invoice issue date currently configured on this body.
+        """
+        return self._state["issue_date"]
+
     def issue_place(
         self,
         value: Annotated[

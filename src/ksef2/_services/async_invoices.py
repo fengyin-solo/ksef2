@@ -800,6 +800,7 @@ class AsyncInvoicesService:
             The package metadata once the export is ready.
 
         Raises:
+            KSeFExportFailedError: If KSeF reports a terminal export failure.
             KSeFExportTimeoutError: If polling exceeds ``timeout``.
         """
         return self._wait_for_export_package(
@@ -815,13 +816,21 @@ class AsyncInvoicesService:
         timeout: float = 120.0,
         poll_interval: float = 2.0,
     ) -> InvoicePackage:
+        def retry_export(status: InvoiceExportStatusResponse) -> bool:
+            if status.status.code >= 210:
+                raise exceptions.KSeFExportFailedError(
+                    reference_number=reference_number,
+                    status_code=status.status.code,
+                    description=status.status.description,
+                    details=status.status.details,
+                )
+            return not (status.package and status.package.parts)
+
         status = await async_poll_until(
             operation=lambda: self._client.get_export_status(
                 reference_number=reference_number
             ),
-            retry_predicate=lambda status: (
-                not (status.package and status.package.parts)
-            ),
+            retry_predicate=retry_export,
             poll_interval=poll_interval,
             timeout_seconds=timeout,
             timeout_error_factory=lambda: exceptions.KSeFExportTimeoutError(
@@ -864,6 +873,7 @@ class AsyncInvoicesService:
             NoCertificateAvailableError: If no valid symmetric-key certificate is
                 available.
             KSeFEncryptionError: If export key encryption or package decryption fails.
+            KSeFExportFailedError: If KSeF reports a terminal export failure.
             KSeFExportTimeoutError: If polling exceeds ``timeout``.
             KSeFExternalTransferError: If external storage rejects a part download or
                 its outcome cannot be determined.
@@ -890,19 +900,9 @@ class AsyncInvoicesService:
             only_metadata=only_metadata,
             compression_type=compression_type,
         )
-        status = await async_poll_until(
-            operation=lambda: self._client.get_export_status(
-                reference_number=handle.reference_number
-            ),
-            retry_predicate=lambda status: (
-                not (status.package and status.package.parts)
-            ),
+        package = await self._wait_for_export_package(
+            reference_number=handle.reference_number,
+            timeout=timeout,
             poll_interval=poll_interval,
-            timeout_seconds=timeout,
-            timeout_error_factory=lambda: exceptions.KSeFExportTimeoutError(
-                reference_number=handle.reference_number,
-                timeout=timeout,
-            ),
         )
-        assert status.package is not None
-        return await self._download_package_parts(package=status.package, export=handle)
+        return await self._download_package_parts(package=package, export=handle)

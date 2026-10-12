@@ -224,6 +224,32 @@ def test_body_builder_starts_from_an_existing_model(
     assert copied == prepared
 
 
+def test_switching_from_standard_to_correction_preserves_settlement() -> None:
+    """Switching a standard body to a plain correction body keeps settlement data."""
+    builder = started_invoice()
+    body = builder.standard()
+    add_rows(body)
+    _ = body.settlement().add_charge(amount=Decimal("10.00"), reason="Freight").done()
+    _ = body.done()
+
+    standard_body = builder.dump_state().body
+    assert standard_body is not None
+    settlement = standard_body.settlement
+    assert settlement is not None
+
+    correction_body = builder.correction()
+    add_correction(correction_body)
+    _ = correction_body.done()
+
+    switched = builder.dump_state().body
+    assert switched is not None
+    assert switched.invoice_type is InvoiceType.CORRECTING
+    switched_settlement = switched.settlement
+    assert switched_settlement is not None
+    assert switched_settlement == settlement
+    assert switched_settlement.charges[0].amount == Decimal("10.00")
+
+
 def test_base_body_fields_land_in_the_built_body() -> None:
     builder = started_invoice()
     body = builder.standard()
@@ -320,3 +346,21 @@ def test_body_from_model_replaces_the_previous_state() -> None:
 
     assert restored.invoice_number == prepared.invoice_number
     assert restored == prepared
+
+
+def test_already_paid_without_a_date_falls_back_to_the_issue_date() -> None:
+    """FA(3) requires DataZaplaty alongside Zaplacono, so an undated payment is valid."""
+    builder = started_invoice()
+    body = builder.standard()
+    _ = body.issue_date(date(2026, 1, 27)).invoice_number("FV/2026/01/0001")
+    add_rows(body)
+    _ = body.payment().already_paid().done()
+    _ = body.done()
+
+    draft = builder.dump_state()
+    assert draft.body is not None
+    assert draft.body.payment is not None
+    assert draft.body.payment.payment_date == date(2026, 1, 27)
+
+    xml = builder.to_xml()
+    assert "<DataZaplaty>2026-01-27</DataZaplaty>" in xml

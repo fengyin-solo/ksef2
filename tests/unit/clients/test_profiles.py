@@ -1,4 +1,5 @@
 import stat
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -302,6 +303,57 @@ def test_other_unknown_profile_keys_stay_ignored_without_warning(
 
     assert profile.max_poll_attempts is None
     assert not hasattr(profile, "output")
+
+
+def test_profile_store_rewrites_keep_unknown_settings_of_every_profile(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """[profiles.demo]
+environment = "demo"
+nip = "1234567890"
+output = "json"
+ca_bundle = "/custom/ca.pem"
+
+[profiles.demo.auth]
+type = "token"
+token_env = "KSEF_TOKEN"
+
+[profiles.other]
+environment = "test"
+nip = "2222222222"
+output = "text"
+
+[profiles.other.transport]
+connect_timeout = 5.0
+
+[profiles.other.auth]
+type = "test_certificate"
+"""
+    )
+    store = ProfileStore(config_path)
+
+    store.use("demo")
+    store.save(
+        "added",
+        Profile(
+            environment=Environment.TEST,
+            nip="3333333333",
+            auth=CertificateProfileAuth(),
+        ),
+        activate=False,
+    )
+    store.delete("added")
+
+    document = tomllib.loads(config_path.read_text(encoding="utf-8"))
+    assert document["active_profile"] == "demo"
+    assert document["profiles"]["demo"]["output"] == "json"
+    assert document["profiles"]["demo"]["ca_bundle"] == "/custom/ca.pem"
+    assert document["profiles"]["other"]["output"] == "text"
+    assert document["profiles"]["other"]["transport"] == {"connect_timeout": 5.0}
+    assert document["profiles"]["other"]["auth"] == {"type": "test_certificate"}
+    assert set(load_profile_config(config_path).profiles) == {"demo", "other"}
 
 
 def _profile(

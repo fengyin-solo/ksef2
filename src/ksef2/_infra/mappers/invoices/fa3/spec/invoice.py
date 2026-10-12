@@ -31,6 +31,9 @@ from ksef2._domain.models.fa3.references import (
 from ksef2._infra.mappers.invoices.fa3.spec.attachment import (
     from_spec as attachment_from_spec,
 )
+from ksef2._infra.mappers.invoices.fa3.spec.authorized_subject import (
+    from_spec as authorized_subject_from_spec,
+)
 from ksef2._infra.mappers.invoices.fa3.spec.annotations import (
     from_spec as annotations_from_spec,
 )
@@ -362,6 +365,11 @@ def _(schema: Faktura) -> KsefInvoice:
     seller = seller_from_spec(schema.podmiot1)
     buyer = buyer_from_spec(schema.podmiot2)
     third_parties = [third_party_from_spec(item) for item in (schema.podmiot3 or [])]
+    authorized_subject = (
+        authorized_subject_from_spec(schema.podmiot_upowazniony)
+        if schema.podmiot_upowazniony is not None
+        else None
+    )
     body = from_spec(schema.fa)
     footer = footer_from_spec(schema.stopka) if schema.stopka else None
     attachment = attachment_from_spec(schema.zalacznik) if schema.zalacznik else None
@@ -371,6 +379,7 @@ def _(schema: Faktura) -> KsefInvoice:
         seller=seller,
         buyer=buyer,
         third_parties=third_parties,
+        authorized_subject=authorized_subject,
         body=body,
         footer=footer,
         attachment=attachment,

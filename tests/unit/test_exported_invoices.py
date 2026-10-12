@@ -10,6 +10,7 @@ from polyfactory import BaseFactory
 
 from ksef2._clients.exported_invoices import ExportedInvoices
 from ksef2._core.exceptions import KSeFValidationError
+from ksef2._core.packages import MAX_ENTRY_UNCOMPRESSED_BYTES, PackageReader
 from ksef2._domain.models.invoices import InvoiceMetadata
 from ksef2._infra.schema.api import spec
 
@@ -59,6 +60,33 @@ class TestInvoicesAndArchive:
         )
 
         assert list(ExportedInvoices([archive]).invoices()) == [(KSEF_1, b"<one />")]
+
+    def test_reads_entries_up_to_the_limit_and_refuses_zip_bombs(
+        self, tmp_path: Path
+    ) -> None:
+        # Regression for #204: every reader decompressed a whole entry, however
+        # large, so one archived entry could exhaust the caller's memory or disk.
+        exported = ExportedInvoices([_zip({f"{KSEF_1}.xml": b"A" * (1024 * 1024)})])
+        assert len(next(exported.invoices())[1]) == 1024 * 1024
+
+        bomb = _zip(
+            {
+                f"{KSEF_1}.xml": b"A" * (MAX_ENTRY_UNCOMPRESSED_BYTES + 1),
+                "_metadata.json": b"B" * (MAX_ENTRY_UNCOMPRESSED_BYTES + 1),
+            }
+        )
+
+        with pytest.raises(KSeFValidationError, match="decompresses to more than"):
+            next(ExportedInvoices([bomb]).invoices())
+        with pytest.raises(KSeFValidationError, match="decompresses to more than"):
+            _ = ExportedInvoices([bomb]).metadata
+        with pytest.raises(KSeFValidationError, match="decompresses to more than"):
+            next(PackageReader(bomb).invoices())
+
+        target = tmp_path / "extracted"
+        with pytest.raises(KSeFValidationError, match="decompresses to more than"):
+            _ = ExportedInvoices([bomb]).save(target)
+        assert not target.exists()
 
     def test_empty_export_has_no_invoices_metadata_or_files(
         self, tmp_path: Path

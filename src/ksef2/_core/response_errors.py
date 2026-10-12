@@ -22,12 +22,19 @@ from ksef2._infra.schema.api import spec
 
 _SNIPPET_LENGTH = 200
 
+
+class _BadRequestProblemDetails(spec.BadRequestProblemDetails):
+    """Accept a missing title without discarding the error context."""
+
+    title: str = ""
+
+
 # Keyed by (media type, status); ``None`` as the status matches any status.
 # Problem Details is what the SDK asks for (``X-Error-Format: problem-details``);
 # ``application/json`` is the legacy format KSeF sends without that header. KSeF
 # sends its 401 as Problem Details labelled ``application/json`` (seen on TEST).
 _MODELS: dict[tuple[str, int | None], type[BaseModel]] = {
-    ("application/problem+json", 400): spec.BadRequestProblemDetails,
+    ("application/problem+json", 400): _BadRequestProblemDetails,
     ("application/problem+json", 401): spec.UnauthorizedProblemDetails,
     ("application/problem+json", 403): spec.ForbiddenProblemDetails,
     ("application/problem+json", 410): spec.GoneProblemDetails,

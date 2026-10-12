@@ -1,11 +1,20 @@
 """Public FA(3) party domain models."""
 
 import re
-from typing import NamedTuple
+from typing import Literal, NamedTuple
 
-from pydantic import field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from ksef2._domain.models.base import KSeFBaseModel
+
+
+TaxpayerStatus = Literal[
+    "in_liquidation",
+    "in_restructuring",
+    "in_bankruptcy",
+    "successor_enterprise",
+]
+"""Seller status reported in FA(3) ``StatusInfoPodatnika``."""
 
 
 class ContactInfoTuple(NamedTuple):
@@ -72,8 +81,22 @@ class InvoiceEntity(KSeFBaseModel):
     """Full name of the entity."""
     address: InvoiceAddress | None = None
     """Address of the entity."""
+    correspondence_address: InvoiceAddress | None = Field(
+        default=None,
+        description="adres_koresp: Optional mailing address for the seller or buyer.",
+    )
+    """Correspondence address, if different from ``address``."""
     contact: ContactInfo | None = None
     """Contact details of the entity."""
+    taxpayer_status: TaxpayerStatus | None = Field(
+        default=None,
+        description=(
+            "status_info_podatnika: Seller status, one of stan likwidacji, "
+            "postępowanie restrukturyzacyjne, stan upadłości or "
+            "przedsiębiorstwo w spadku."
+        ),
+    )
+    """Seller-only status; FA(3) ``Podmiot2`` has no matching element for the buyer."""
 
     @field_validator("eu_vat_id")
     @classmethod

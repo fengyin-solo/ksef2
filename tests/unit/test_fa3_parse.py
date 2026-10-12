@@ -22,6 +22,39 @@ def test_parse_and_rebuild_public_invoice(filename: str) -> None:
     assert invoice.body.invoice_number
 
 
+def test_parse_and_rebuild_keeps_authorized_subject() -> None:
+    source = (SAMPLES / "FA_3_Przykład_1.xml").read_text(encoding="utf-8")
+    block = (
+        "\t<PodmiotUpowazniony>\n"
+        "\t\t<DaneIdentyfikacyjne>\n"
+        "\t\t\t<NIP>5555555555</NIP>\n"
+        "\t\t\t<Nazwa>Komornik Sądowy przy Sądzie Rejonowym</Nazwa>\n"
+        "\t\t</DaneIdentyfikacyjne>\n"
+        "\t\t<Adres>\n"
+        "\t\t\t<KodKraju>PL</KodKraju>\n"
+        "\t\t\t<AdresL1>ul. Urzedowa 4</AdresL1>\n"
+        "\t\t\t<AdresL2>00-001 Warszawa</AdresL2>\n"
+        "\t\t</Adres>\n"
+        "\t\t<DaneKontaktowe>\n"
+        "\t\t\t<EmailPU>komornik@example.com</EmailPU>\n"
+        "\t\t\t<TelefonPU>666777888</TelefonPU>\n"
+        "\t\t</DaneKontaktowe>\n"
+        "\t\t<RolaPU>2</RolaPU>\n"
+        "\t</PodmiotUpowazniony>\n"
+    )
+    assert source.count("\t<Fa>") == 1
+    xml = source.replace("\t<Fa>", block + "\t<Fa>", 1)
+
+    invoice = parse_invoice_xml(xml.encode("utf-8"))
+    assert invoice.authorized_subject is not None
+    assert invoice.authorized_subject.tax_id == "5555555555"
+    assert invoice.authorized_subject.role == "bailiff"
+
+    rebuilt = FA3InvoiceBuilder.from_invoice(invoice).to_xml()
+    assert "PodmiotUpowazniony" in rebuilt
+    assert parse_invoice_xml(rebuilt.encode("utf-8")) == invoice
+
+
 @pytest.mark.parametrize(
     "xml, message",
     [
@@ -99,3 +132,16 @@ def test_public_builder_serializes_return_of_excise(value: bool | None) -> None:
     assert parse_invoice_xml(xml.encode("utf-8")).body.return_of_excise is (
         True if value else None
     )
+
+
+def test_rebuild_omits_line_amounts_the_source_xml_left_out() -> None:
+    invoice = parse_invoice_xml((SAMPLES / "KSEF_09_ROZ_A.xml").read_bytes())
+    xml = FA3InvoiceBuilder.from_invoice(invoice).to_xml()
+    document = etree.fromstring(xml.encode("utf-8"))
+
+    for tag in ("P_11Vat", "P_11A"):
+        assert document.xpath(f"//*[local-name()='{tag}']/text()") == []
+    assert document.xpath("//*[local-name()='P_14_2']/text()") == ["14814.81"]
+    assert document.xpath("//*[local-name()='P_15']/text()") == ["200000.00"]
+    assert invoice.body.rows[0].net_amount == Decimal("185185.19")
+    assert invoice.body.rows[0].vat_amount == Decimal("14814.82")

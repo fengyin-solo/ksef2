@@ -12,6 +12,7 @@ from xsdata.formats.dataclass.serializers import XmlSerializer
 from xsdata.formats.dataclass.serializers.config import SerializerConfig
 
 from ksef2._domain.models.fa3 import Attachment, InvoiceFooter, KsefInvoiceDraft
+from ksef2._domain.models.fa3.authorized_subject import InvoiceAuthorizedSubject
 from ksef2._domain.models.fa3.body.root import KsefInvoiceBody
 from ksef2._domain.protocols import BaseBuilderProtocol
 from ksef2._domain.models.fa3.header import InvoiceHeader
@@ -68,6 +69,7 @@ class StandardInvoiceBuilder(
         self._seller: InvoiceEntity | None = None
         self._buyer: InvoiceEntity | None = None
         self._third_parties: list[InvoiceThirdParty] | None = None
+        self._authorized_subject: InvoiceAuthorizedSubject | None = None
         self._body: KsefInvoiceBody | None = None
         self._footer: InvoiceFooter | None = None
         self._attachment: Attachment | None = None
@@ -428,7 +430,8 @@ class StandardInvoiceBuilder(
             The builder, for chaining.
 
         Raises:
-            ValueError: If an address line is provided without a country code.
+            ValueError: If an address is partially provided (missing country code
+            or missing first address line).
         """
         self._buyer = self._build_entity(
             name=name,
@@ -788,6 +791,29 @@ class StandardInvoiceBuilder(
         self._third_parties = []
         return self
 
+    def authorized_subject_model(
+        self, authorized_subject: InvoiceAuthorizedSubject
+    ) -> Self:
+        """Set the authorized subject from an existing domain model.
+
+        Args:
+            authorized_subject: Model to use.
+
+        Returns:
+            The builder, for chaining.
+        """
+        self._authorized_subject = authorized_subject
+        return self
+
+    def clear_authorized_subject(self) -> Self:
+        """Remove the authorized subject.
+
+        Returns:
+            The builder, for chaining.
+        """
+        self._authorized_subject = None
+        return self
+
     @override
     def footer_model(self, footer: InvoiceFooter) -> Self:
         """Set the footer from an existing domain model.
@@ -887,6 +913,11 @@ class StandardInvoiceBuilder(
                 third_party.model_copy(deep=True)
                 for third_party in (self._third_parties or [])
             ],
+            authorized_subject=(
+                self._authorized_subject.model_copy(deep=True)
+                if self._authorized_subject
+                else None
+            ),
             body=self._body.model_copy(deep=True) if self._body else None,
             footer=self._footer.model_copy(deep=True) if self._footer else None,
             attachment=(
@@ -920,6 +951,11 @@ class StandardInvoiceBuilder(
         self._third_parties = [
             third_party.model_copy(deep=True) for third_party in state.third_parties
         ]
+        self._authorized_subject = (
+            state.authorized_subject.model_copy(deep=True)
+            if state.authorized_subject
+            else None
+        )
         self._body = state.body.model_copy(deep=True) if state.body else None
         self._footer = state.footer.model_copy(deep=True) if state.footer else None
         self._attachment = (
@@ -989,6 +1025,7 @@ class StandardInvoiceBuilder(
             seller=self._seller,
             buyer=self._buyer,
             third_parties=self._third_parties,
+            authorized_subject=self._authorized_subject,
             body=self._body,
             footer=self._footer,
             attachment=self._attachment,
@@ -1069,9 +1106,13 @@ class StandardInvoiceBuilder(
     ) -> InvoiceEntity:
         contact = ContactInfo(email=email, phone=phone) if email or phone else None
         address = None
-        if address_line_1:
-            if country_code is None:
+        if address_line_1 or address_line_2 or country_code:
+            if not country_code:
                 raise ValueError("country_code is required when providing an address.")
+            if not address_line_1:
+                raise ValueError(
+                    "address_line_1 is required when providing an address."
+                )
             address = StandardInvoiceBuilder._build_address(
                 country_code=country_code,
                 address_line_1=address_line_1,

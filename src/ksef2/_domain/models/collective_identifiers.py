@@ -109,6 +109,8 @@ class CollectiveIdentifierInvoiceDetails(KSeFBaseModel):
 
     ksef_number: str
     """KSeF number of the invoice."""
+    collective_identifier_number: str
+    """Number of the collective identifier this invoice belongs to."""
     payment: CollectiveIdentifierInvoicePayment | None = None
     """Payment details; ``None`` when not provided."""
     description: str | None = None

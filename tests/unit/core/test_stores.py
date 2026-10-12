@@ -27,6 +27,27 @@ def test_empty_store_needs_refresh() -> None:
     assert store.needs_refresh("symmetric_key_encryption")
 
 
+def test_list_valid_accepts_naive_certificate_dates_as_utc() -> None:
+    certificate = PublicKeyCertificate(
+        certificate="test",
+        valid_from=datetime(2020, 1, 1),
+        valid_to=datetime(2100, 1, 1),
+        usage=["ksef_token_encryption"],
+    )
+    store = CertificateStore()
+    _ = store.load([certificate])
+
+    assert store.list_valid() == [certificate]
+    assert store.list_valid(at=datetime(2020, 1, 1, tzinfo=timezone.utc)) == [
+        certificate
+    ]
+    assert store.list_valid(at=datetime(2100, 1, 1, tzinfo=timezone.utc)) == [
+        certificate
+    ]
+    assert store.list_valid(at=datetime(2019, 12, 31, tzinfo=timezone.utc)) == []
+    assert store.list_valid(at=datetime(2100, 1, 2, tzinfo=timezone.utc)) == []
+
+
 def test_missing_usage_needs_refresh() -> None:
     store = CertificateStore()
     store.load([_certificate("ksef_token_encryption")])

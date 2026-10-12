@@ -173,7 +173,7 @@ class NewTransportSupply(KSeFBaseModel):
     """
 
     article_42_5_required: bool | None = Field(
-        default=None,
+        default=False,
         description="p_42_5: Indicates whether the reporting obligation from art. 42 ust. 5 applies.",
     )
     """Whether the supplier is required to fulfil the obligations of article 42(5) of the VAT Act (``P_42_5``)."""

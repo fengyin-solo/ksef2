@@ -7,16 +7,17 @@ callables, predicates, and exception factories.
 """
 
 from collections.abc import Awaitable, Callable
+import time
 from typing import TypeVar
 
 from tenacity import (
     AsyncRetrying,
     Retrying,
+    RetryCallState,
     RetryError as _RetryError,
     retry_if_result,
     stop_after_attempt,
     stop_after_delay,
-    wait_fixed,
 )
 from tenacity.stop import stop_base
 
@@ -55,20 +56,23 @@ def poll_until(
         BaseException: The exception produced by *timeout_error_factory* when retries are exhausted. SDK/domain exceptions raised by *operation* propagate unchanged.
     """
     stop = _build_stop(timeout_seconds, max_attempts)
+    deadline = _PollingDeadline(poll_interval, timeout_seconds, timeout_error_factory)
     if max_attempts is not None and max_attempts < 1:
         raise timeout_error_factory()
 
     if sleep is None:
         retryer = Retrying(
             stop=stop,
-            wait=wait_fixed(poll_interval),
+            wait=deadline.wait,
+            before=deadline.before,
             retry=retry_if_result(retry_predicate),
             reraise=True,
         )
     else:
         retryer = Retrying(
             stop=stop,
-            wait=wait_fixed(poll_interval),
+            wait=deadline.wait,
+            before=deadline.before,
             retry=retry_if_result(retry_predicate),
             reraise=True,
             sleep=sleep,
@@ -112,6 +116,7 @@ async def async_poll_until(
         BaseException: The exception produced by *timeout_error_factory* when retries are exhausted. SDK/domain exceptions raised by *operation* propagate unchanged.
     """
     stop = _build_stop(timeout_seconds, max_attempts)
+    deadline = _PollingDeadline(poll_interval, timeout_seconds, timeout_error_factory)
     if max_attempts is not None and max_attempts < 1:
         raise timeout_error_factory()
 
@@ -121,14 +126,16 @@ async def async_poll_until(
     if sleep is None:
         retryer = AsyncRetrying(
             stop=stop,
-            wait=wait_fixed(poll_interval),
+            wait=deadline.wait,
+            before=deadline.before,
             retry=retry_if_result(retry_predicate),
             reraise=True,
         )
     else:
         retryer = AsyncRetrying(
             stop=stop,
-            wait=wait_fixed(poll_interval),
+            wait=deadline.wait,
+            before=deadline.before,
             retry=retry_if_result(retry_predicate),
             reraise=True,
             sleep=sleep,
@@ -156,3 +163,31 @@ def _build_stop(
     if max_attempts is not None:
         return stop_after_attempt(max_attempts)
     raise ValueError("Either timeout_seconds or max_attempts must be provided.")
+
+
+class _PollingDeadline:
+    """Clamp retry waits and reject attempts after the polling deadline."""
+
+    def __init__(
+        self,
+        poll_interval: float,
+        timeout_seconds: float | None,
+        timeout_error_factory: Callable[[], BaseException],
+    ) -> None:
+        self.poll_interval = poll_interval
+        self.timeout_seconds = timeout_seconds
+        self.timeout_error_factory = timeout_error_factory
+
+    def wait(self, retry_state: RetryCallState) -> float:
+        if self.timeout_seconds is None:
+            return max(0.0, self.poll_interval)
+        remaining = self.timeout_seconds - (time.monotonic() - retry_state.start_time)
+        return max(0.0, min(self.poll_interval, remaining))
+
+    def before(self, retry_state: RetryCallState) -> None:
+        if (
+            self.timeout_seconds is not None
+            and retry_state.attempt_number > 1
+            and time.monotonic() - retry_state.start_time >= self.timeout_seconds
+        ):
+            raise self.timeout_error_factory()

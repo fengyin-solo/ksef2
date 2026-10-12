@@ -268,4 +268,5 @@ def _(request: invoices.SendInvoicePayload) -> spec.SendInvoiceRequest:
         encryptedInvoiceHash=sha256_b64(request.encrypted_bytes),
         encryptedInvoiceSize=len(request.encrypted_bytes),
         encryptedInvoiceContent=base64.b64encode(request.encrypted_bytes).decode(),
+        hashOfCorrectedInvoice=request.hash_of_corrected_invoice,
     )

@@ -11,6 +11,7 @@ from cryptography.x509.oid import NameOID
 from ksef2._core import crypto
 from ksef2._core.exceptions import KSeFEncryptionError
 from ksef2._domain.models.encryption import PublicKeyCertificate
+from ksef2.raw import encrypt_symmetric_key, encrypt_token
 
 
 def _certificate(private_key: rsa.RSAPrivateKey | ec.EllipticCurvePrivateKey) -> str:
@@ -141,10 +142,10 @@ def test_encryption_fails_when_the_message_is_too_long_for_the_key(
 def test_non_rsa_certificates_are_rejected() -> None:
     cert = _certificate(ec.generate_private_key(ec.SECP256R1()))
 
-    with pytest.raises(AssertionError, match="Expected RSA public key"):
-        crypto.encrypt_token("t", "1", cert)
-    with pytest.raises(AssertionError, match="Expected RSA public key"):
-        crypto.encrypt_symmetric_key(b"k" * 32, cert)
+    with pytest.raises(KSeFEncryptionError, match="Expected RSA public key"):
+        encrypt_token("t", "1", cert)
+    with pytest.raises(KSeFEncryptionError, match="Expected RSA public key"):
+        encrypt_symmetric_key(b"k" * 32, cert)
 
 
 def test_select_certificate_returns_the_first_match_or_raises() -> None:

@@ -6,13 +6,39 @@ from typing import overload
 from pydantic import BaseModel
 
 from ksef2._domain.models.fa3 import ContactInfo, InvoiceEntity
+from ksef2._domain.models.fa3.party import TaxpayerStatus
 from ksef2._infra.mappers.invoices.fa3.domain.subject import to_spec as subject_to_spec
 from ksef2._infra.schema.fa3.models.schemat import (
     FakturaPodmiot1,
+    FakturaPodmiot1AdresKoresp,
     FakturaPodmiot1DaneKontaktowe,
     TkodyKrajowUe,
     Tpodmiot1,
+    TstatusInfoPodatnika,
 )
+
+_TAXPAYER_STATUS: dict[TaxpayerStatus, TstatusInfoPodatnika] = {
+    "in_liquidation": TstatusInfoPodatnika.VALUE_1,
+    "in_restructuring": TstatusInfoPodatnika.VALUE_2,
+    "in_bankruptcy": TstatusInfoPodatnika.VALUE_3,
+    "successor_enterprise": TstatusInfoPodatnika.VALUE_4,
+}
+
+
+def _map_correspondence_address(
+    request: InvoiceEntity,
+) -> FakturaPodmiot1AdresKoresp | None:
+    address = request.correspondence_address
+    if address is None:
+        return None
+
+    mapped = subject_to_spec(address)
+    return FakturaPodmiot1AdresKoresp(
+        kod_kraju=mapped.kod_kraju,
+        adres_l1=mapped.adres_l1,
+        adres_l2=mapped.adres_l2,
+        gln=mapped.gln,
+    )
 
 
 def _map_contact_details(
@@ -78,6 +104,11 @@ def _(request: InvoiceEntity) -> FakturaPodmiot1:
             nazwa=request.name,
         ),
         adres=subject_to_spec(request.address),
+        adres_koresp=_map_correspondence_address(request),
         # Repeated FA(3) contact block used to publish seller e-mail/phone details.
         dane_kontaktowe=_map_contact_details(request.contact),
+        # Seller status: liquidation, restructuring, bankruptcy or succession.
+        status_info_podatnika=_TAXPAYER_STATUS.get(request.taxpayer_status)
+        if request.taxpayer_status
+        else None,
     )

@@ -2,6 +2,7 @@
 
 from ksef2._domain.models.fa3 import (
     ContactInfo,
+    InvoiceAuthorizedSubject,
     InvoiceAddress,
     InvoiceEntity,
     InvoiceHeader,
@@ -70,6 +71,7 @@ __all__ = [
     "ContactInfo",
     "FA3InvoiceBuilder",
     "InvoiceAddress",
+    "InvoiceAuthorizedSubject",
     "InvoiceEntity",
     "InvoiceHeader",
     "InvoiceSummaryOverrides",

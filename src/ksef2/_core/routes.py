@@ -1,6 +1,8 @@
 """Route registry: each constant is a (method, path) pair and its path string."""
 
 from enum import StrEnum
+from typing import override
+from urllib.parse import quote
 
 
 class HttpMethod(StrEnum):
@@ -28,6 +30,22 @@ class Route(StrEnum):
         obj.method = method
         obj.path = path
         return obj
+
+    @override
+    def format(self, *args: object, **kwargs: object) -> str:
+        """Format identifiers as individual URL path segments.
+
+        Empty identifiers and dot segments are rejected because URL parsers can
+        normalize them even when all reserved characters are escaped.
+        """
+        for value in (*args, *kwargs.values()):
+            if str(value) in ("", ".", ".."):
+                raise ValueError("A path identifier must not be empty or a dot segment")
+        encoded_args = tuple(quote(str(value), safe="") for value in args)
+        encoded_kwargs = {
+            key: quote(str(value), safe="") for key, value in kwargs.items()
+        }
+        return self.path.format(*encoded_args, **encoded_kwargs)
 
 
 class GrantPermissionsRoutes(Route):

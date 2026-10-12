@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Annotated, Literal
 
-from pydantic import Field, BaseModel
+from pydantic import Field, BaseModel, model_validator
 
 from ksef2._domain.models.base import KSeFBaseModel
 
@@ -250,6 +250,34 @@ class EuEntityQueryPermissionTypeEnum(StrEnum):
     INTROSPECTION = "introspection"
 
 
+def _require_identifier_filter(
+    type_field: str,
+    identifier_type: str | None,
+    value_field: str,
+    identifier_value: str | None,
+) -> None:
+    """Require an identifier filter to set both its type and a non-empty value.
+
+    Args:
+        type_field: Name of the identifier-type field, used in error messages.
+        identifier_type: Value of the identifier-type field.
+        value_field: Name of the identifier-value field, used in error messages.
+        identifier_value: Value of the identifier-value field.
+
+    Raises:
+        ValueError: If only one of the fields is set, or ``identifier_value`` is empty or whitespace.
+    """
+    if identifier_type is None and identifier_value is None:
+        return
+    if identifier_value is None or not identifier_value.strip():
+        raise ValueError(
+            f"{value_field} must have a non-empty value when {type_field} is set; "
+            f"leave {type_field} unset to query without this restriction"
+        )
+    if identifier_type is None:
+        raise ValueError(f"{type_field} must be set when {value_field} is provided")
+
+
 class ScopeLiteralEnum(StrEnum):
     """Runtime enum for simple invoice permission scopes."""
 
@@ -463,6 +491,24 @@ class EntityPermissionsQuery(KSeFBaseModel):
     context_value: str | None = None
     """Restrict results to this context identifier; ``None`` for no restriction."""
 
+    @model_validator(mode="after")
+    def validate_identifier_filters(self) -> "EntityPermissionsQuery":
+        """Check that the context filter is set as a complete pair.
+
+        Returns:
+            The validated query.
+
+        Raises:
+            ValueError: If only one of ``context_type`` and ``context_value`` is set, or ``context_value`` is empty.
+        """
+        _require_identifier_filter(
+            "context_type",
+            self.context_type,
+            "context_value",
+            self.context_value,
+        )
+        return self
+
 
 class EntityPermissionDetail(KSeFBaseModel):
     """Permission record returned from entity permission queries."""
@@ -522,6 +568,33 @@ class PersonPermissionsQuery(KSeFBaseModel):
     """Kind of identifier in ``target_value``."""
     target_value: str | None = None
     """Restrict results to permissions scoped to this target."""
+
+    @model_validator(mode="after")
+    def validate_identifier_filters(self) -> "PersonPermissionsQuery":
+        """Check that each identifier filter is set as a complete pair.
+
+        Returns:
+            The validated query.
+
+        Raises:
+            ValueError: If only one half of an author, authorized, context or target filter is set, or a supplied value is empty.
+        """
+        _require_identifier_filter(
+            "author_type", self.author_type, "author_value", self.author_value
+        )
+        _require_identifier_filter(
+            "authorized_type",
+            self.authorized_type,
+            "authorized_value",
+            self.authorized_value,
+        )
+        _require_identifier_filter(
+            "context_type", self.context_type, "context_value", self.context_value
+        )
+        _require_identifier_filter(
+            "target_type", self.target_type, "target_value", self.target_value
+        )
+        return self
 
 
 class PersonPermissionDetail(KSeFBaseModel):
@@ -595,6 +668,30 @@ class AuthorizationPermissionsQuery(KSeFBaseModel):
     authorized_value: str | None = None
     """Restrict results to grants received by this entity."""
 
+    @model_validator(mode="after")
+    def validate_identifier_filters(self) -> "AuthorizationPermissionsQuery":
+        """Check that each identifier filter is set as a complete pair.
+
+        Returns:
+            The validated query.
+
+        Raises:
+            ValueError: If only one half of an authorizing or authorized filter is set, or a supplied value is empty.
+        """
+        _require_identifier_filter(
+            "authorizing_type",
+            self.authorizing_type,
+            "authorizing_value",
+            self.authorizing_value,
+        )
+        _require_identifier_filter(
+            "authorized_type",
+            self.authorized_type,
+            "authorized_value",
+            self.authorized_value,
+        )
+        return self
+
 
 class AuthorizationGrantDetail(KSeFBaseModel):
     """Authorization grant returned from authorization queries."""
@@ -652,6 +749,24 @@ class PersonalPermissionsQuery(KSeFBaseModel):
     """Kind of identifier in ``target_value``."""
     target_value: str | None = None
     """Restrict results to permissions scoped to this target."""
+
+    @model_validator(mode="after")
+    def validate_identifier_filters(self) -> "PersonalPermissionsQuery":
+        """Check that each identifier filter is set as a complete pair.
+
+        Returns:
+            The validated query.
+
+        Raises:
+            ValueError: If only one half of a context or target filter is set, or a supplied value is empty.
+        """
+        _require_identifier_filter(
+            "context_type", self.context_type, "context_value", self.context_value
+        )
+        _require_identifier_filter(
+            "target_type", self.target_type, "target_value", self.target_value
+        )
+        return self
 
 
 class PersonalPermissionDetail(KSeFBaseModel):

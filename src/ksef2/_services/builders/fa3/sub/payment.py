@@ -2,7 +2,7 @@
 
 from datetime import date
 from decimal import Decimal
-from typing import Annotated, Self, TypedDict
+from typing import Annotated, TYPE_CHECKING, Self, TypedDict
 from collections.abc import Callable
 
 from pydantic import TypeAdapter
@@ -118,6 +118,7 @@ class PaymentBuilder[TParent]:
         parent: TParent,
         on_done: Callable[[InvoicePayment], None],
         existing_state: InvoicePayment | None = None,
+        default_payment_date: Callable[[], date] | None = None,
     ) -> None:
         """Create the builder.
 
@@ -125,9 +126,12 @@ class PaymentBuilder[TParent]:
             parent: Parent builder that ``done()`` returns to.
             on_done: Callback that receives the built model when ``done()`` is called.
             existing_state: Existing model to start from; ``None`` starts empty.
+            default_payment_date: Supplies the fallback payment date used when the
+                invoice is marked paid without one; ``None`` keeps the date unset.
         """
         self._parent = parent
         self._on_done = on_done
+        self._default_payment_date = default_payment_date
         self._state: InvoicePaymentState = adapter.validate_python(
             existing_state.model_dump() if existing_state else _default_state()
         )
@@ -158,6 +162,9 @@ class PaymentBuilder[TParent]:
 
     def already_paid(self, payment_date: PaymentDateParam = None) -> Self:
         """Mark the invoice as paid, optionally with a payment date.
+
+        FA(3) always pairs ``Zaplacono`` with ``DataZaplaty``, so an omitted
+        ``payment_date`` falls back to the invoice issue date when ``done()`` runs.
 
         Args:
             payment_date: Payment date linked to the invoice or a partial payment entry.
@@ -705,7 +712,9 @@ class PaymentBuilder[TParent]:
         Raises:
             ValueError: If the paid marker is combined with a partial payment
                 marker, if a payment form is combined with the other-form marker,
-                or if a custom payment form is enabled without a description.
+                if a custom payment form is enabled without a description, or
+                partial-payment entries and the partial-payment marker are not set
+                together.
         """
         self._validate_state()
         return InvoicePayment(**self._state)
@@ -722,7 +731,9 @@ class PaymentBuilder[TParent]:
         Raises:
             ValueError: If payment details are empty, if the paid marker is combined
                 with a partial payment marker, if a payment form is combined with the
-                other-form marker, or if a custom payment form has no description.
+                other-form marker, if a custom payment form has no description, or
+                partial-payment entries and the partial-payment marker are not set
+                together.
         """
         if self._is_empty():
             raise ValueError(
@@ -736,6 +747,11 @@ class PaymentBuilder[TParent]:
 
         if not self._state["paid"]:
             self._state["payment_date"] = None
+        elif (
+            self._state["payment_date"] is None
+            and self._default_payment_date is not None
+        ):
+            self._state["payment_date"] = self._default_payment_date()
 
         if self._state["paid"] and self._state["partial_payment_status"] is not None:
             raise ValueError(
@@ -757,11 +773,27 @@ class PaymentBuilder[TParent]:
                 "payment_description is required when other_payment_form is enabled"
             )
 
+        has_marker = self._state["partial_payment_status"] is not None
+        has_entries = bool(self._state["partial_payments"])
+        if has_entries and not has_marker:
+            raise ValueError(
+                "partial_payment_status is required when partial payments are added"
+            )
+        if has_marker and not has_entries:
+            raise ValueError(
+                "At least one partial payment is required when partial_payment_status is set"
+            )
+
 
 class PaymentBuilderMixin:
     """Mixin exposing the Payment sub-builder."""
 
     _payment: InvoicePayment | None = None
+
+    if TYPE_CHECKING:
+        # Provided by BaseBodyBuilder, which every invoice body that mixes this
+        # class in also inherits.
+        def default_payment_date(self) -> date: ...
 
     def payment(self) -> PaymentBuilder[Self]:
         """Start a payment sub-builder.
@@ -769,7 +801,12 @@ class PaymentBuilderMixin:
         Returns:
             A ``PaymentBuilder`` for this part of the invoice; call ``done()`` on it to attach the result and return to this builder.
         """
-        return PaymentBuilder(self, self._set_payment, self._payment)
+        return PaymentBuilder(
+            self,
+            self._set_payment,
+            self._payment,
+            default_payment_date=self.default_payment_date,
+        )
 
     def _set_payment(self, value: InvoicePayment) -> None:
         self._payment = value

@@ -153,6 +153,11 @@ def _(request: InvoicePayment) -> FakturaFaPlatnosc:
     factor_bank_accounts = [
         to_spec(account) for account in request.factor_bank_accounts
     ]
+    if (request.discount_terms is None) != (request.discount_amount is None):
+        raise ValueError(
+            "discount_terms and discount_amount must be set together for "
+            "FA(3) skonto mapping"
+        )
     discount = (
         FakturaFaPlatnoscSkonto(
             warunki_skonta=request.discount_terms,

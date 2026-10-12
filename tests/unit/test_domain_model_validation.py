@@ -3,8 +3,16 @@ from datetime import datetime, timezone
 import pytest
 from pydantic import ValidationError
 
+from pydantic import BaseModel
+
 from ksef2._domain.models.batch import BatchFileInfo, BatchFilePart
 from ksef2._domain.models.invoices import InvoicesFilter
+from ksef2._domain.models.permissions import (
+    AuthorizationPermissionsQuery,
+    EntityPermissionsQuery,
+    PersonPermissionsQuery,
+    PersonalPermissionsQuery,
+)
 
 
 def _batch_part(
@@ -210,3 +218,51 @@ def test_invoices_filter_accepts_explicit_offset_during_dst_overlap() -> None:
 
     assert filters.date_from == datetime(2026, 10, 25, 0, 30, tzinfo=timezone.utc)
     assert filters.date_to == datetime(2026, 10, 25, 1, 30, tzinfo=timezone.utc)
+
+
+@pytest.mark.parametrize(
+    ("model", "data", "message"),
+    [
+        (
+            PersonPermissionsQuery,
+            {
+                "query_type": "in_context",
+                "authorized_type": "nip",
+                "authorized_value": "",
+            },
+            "authorized_value must have a non-empty value when authorized_type is set",
+        ),
+        (
+            PersonPermissionsQuery,
+            {"query_type": "in_context", "target_type": "nip", "target_value": "  "},
+            "target_value must have a non-empty value when target_type is set",
+        ),
+        (
+            PersonPermissionsQuery,
+            {"query_type": "in_context", "author_value": "5261040828"},
+            "author_type must be set when author_value is provided",
+        ),
+        (
+            PersonalPermissionsQuery,
+            {"context_type": "internal_id"},
+            "context_value must have a non-empty value when context_type is set",
+        ),
+        (
+            EntityPermissionsQuery,
+            {"context_value": "5261040828"},
+            "context_type must be set when context_value is provided",
+        ),
+        (
+            AuthorizationPermissionsQuery,
+            {"query_type": "granted", "authorizing_type": "nip"},
+            "authorizing_value must have a non-empty value when authorizing_type is set",
+        ),
+    ],
+)
+def test_permission_queries_reject_incomplete_identifier_filters(
+    model: type[BaseModel],
+    data: dict[str, object],
+    message: str,
+) -> None:
+    with pytest.raises(ValidationError, match=message):
+        model.model_validate(data)

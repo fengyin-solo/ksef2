@@ -1,5 +1,6 @@
 """Mappings from FA(3) invoice line domain models to generated schema row models."""
 
+from collections.abc import Sequence
 from decimal import Decimal
 from functools import singledispatch
 from typing import overload
@@ -95,6 +96,51 @@ def _was_explicitly_set(request: InvoiceRow, field_name: str) -> bool:
     return field_name in request.model_fields_set
 
 
+def _row_number(supplied: int | None, position: int) -> int:
+    """Return the line's own row number, falling back to its list position."""
+    return position if supplied is None else supplied
+
+
+def assign_row_numbers(lines: Sequence[InvoiceRow | InvoiceOrderLine]) -> list[int]:
+    """Number FA(3) lines the way the schema expects them to be numbered.
+
+    A line that only marks the state before a correction shares the row number of
+    the corrected line that follows it, the way the FA(3) correction samples
+    number their before and after rows. Every other line takes the next free
+    number. Lines that already carry a ``row_number``, for example because they
+    were read from a schema model, keep it and the running number moves past it.
+
+    Args:
+        lines: Domain rows or order lines in document order.
+
+    Returns:
+        One row number per line, in the same order.
+    """
+    numbers: list[int] = []
+    position = 0
+    shared: list[int] = []
+    for index, line in enumerate(lines):
+        if line.row_number is None and line.before_correction:
+            shared.append(index)
+            numbers.append(0)
+            continue
+        if line.row_number is None:
+            position += 1
+            number = position
+        else:
+            number = line.row_number
+            position = max(position, number)
+        numbers.append(number)
+        if not line.before_correction:
+            for shared_index in shared:
+                numbers[shared_index] = number
+            shared.clear()
+    for shared_index in shared:
+        position += 1
+        numbers[shared_index] = position
+    return numbers
+
+
 @overload
 def to_spec(request: InvoiceRow, row_number: int) -> FakturaFaFaWiersz: ...
 
@@ -110,7 +156,10 @@ def to_spec(request: BaseModel, row_number: int) -> object: ...
 
 
 def to_spec(request: BaseModel, row_number: int) -> object:
-    """Convert an invoice line domain model into the FA(3) row schema."""
+    """Convert an invoice line domain model into the FA(3) row schema.
+
+    The line's own ``row_number`` wins when set; ``row_number`` is the positional fallback.
+    """
     return _to_spec(request, row_number)
 
 
@@ -125,7 +174,7 @@ def _to_spec(request: BaseModel, row_number: int) -> object:
 @_to_spec.register
 def _(request: InvoiceRow, row_number: int) -> FakturaFaFaWiersz:
     return FakturaFaFaWiersz(
-        nr_wiersza_fa=row_number,
+        nr_wiersza_fa=_row_number(request.row_number, row_number),
         uu_id=request.unique_id,
         p_6_a=request.supply_date.isoformat()
         if request.supply_date is not None
@@ -170,7 +219,7 @@ def _(
     request: AdvanceOrderLine, row_number: int
 ) -> FakturaFaZamowienieZamowienieWiersz:
     return FakturaFaZamowienieZamowienieWiersz(
-        nr_wiersza_zam=row_number,
+        nr_wiersza_zam=_row_number(request.row_number, row_number),
         uu_idz=request.unique_id,
         p_7_z=request.name,
         indeks_z=request.sku,

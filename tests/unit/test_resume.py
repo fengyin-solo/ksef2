@@ -9,12 +9,15 @@ from polyfactory import BaseFactory
 from pydantic import SecretStr
 
 from ksef2 import AsyncClient, Client
-from ksef2._core.crypto import encrypt_invoice
+from ksef2._core.crypto import encrypt_invoice, sha256_b64
 from ksef2._core.exceptions import KSeFExportFailedError
 from ksef2._core.routes import SessionRoutes
 from ksef2._domain.models.auth import AuthenticationResumeState, AuthTokens
 from ksef2._domain.models.batch import (
+    BatchEncryptionData,
     BatchFileInfo,
+    BatchFilePart,
+    BatchPreparedPart,
     BatchSessionResumeState,
     PreparedBatch,
 )
@@ -43,6 +46,36 @@ def _auth(flavor: Flavor, tokens: BaseFactory[AuthTokens]) -> Any:
 
 def _paths(flavor: Flavor) -> list[str]:
     return [call.path for call in flavor.transport.calls]
+
+
+def _prepared_batch() -> PreparedBatch:
+    return PreparedBatch(
+        batch_file=BatchFileInfo(
+            file_size=10,
+            file_hash=sha256_b64(b"plaintext"),
+            parts=[
+                BatchFilePart(
+                    ordinal_number=1,
+                    file_size=9,
+                    file_hash=sha256_b64(b"encrypted"),
+                )
+            ],
+        ),
+        parts=[
+            BatchPreparedPart(
+                ordinal_number=1,
+                content=b"encrypted",
+                file_size=9,
+                file_hash=sha256_b64(b"encrypted"),
+            )
+        ],
+        encryption=BatchEncryptionData.from_bytes(
+            aes_key=KEY,
+            iv=IV,
+            encrypted_key=b"enc-key",
+        ),
+        invoices=[],
+    )
 
 
 class TestOnlineSessionForms:
@@ -151,14 +184,31 @@ class TestBatchSessionForms:
             auth.batch_session(batch_file=file_info, state=state)
         with pytest.raises(TypeError, match="exactly one"):
             auth.batch_session(
-                prepared_batch=MagicMock(spec=PreparedBatch), state=state
-            )
-        with pytest.raises(TypeError, match="exactly one"):
-            auth.batch_session(
                 prepared_batch=MagicMock(spec=PreparedBatch), batch_file=file_info
             )
         with pytest.raises(TypeError, match="only with batch_file"):
             auth.batch_session(state=state, form_code=FormSchema.FA3)
+
+    def test_resumed_session_takes_back_its_prepared_batch_and_uploads_parts(
+        self,
+        flavor: Flavor,
+        domain_auth_tokens: BaseFactory[AuthTokens],
+        domain_batch_session_state: BaseFactory[BatchSessionResumeState],
+    ) -> None:
+        """A saved session finishes its upload instead of only waiting or closing."""
+        auth = _auth(flavor, domain_auth_tokens)
+        state = domain_batch_session_state.build()
+        saved = state.to_json()
+        flavor.transport.enqueue(status_code=201, json_body={})
+
+        resumed = flavor.run(
+            auth.batch_session(state=saved, prepared_batch=_prepared_batch())
+        )
+        flavor.run(resumed.upload_parts())
+
+        assert resumed.resume_state() == state
+        assert flavor.transport.calls[0].method == "PUT"
+        assert flavor.transport.calls[0].path == state.part_upload_requests[0].url
 
     @pytest.mark.parametrize("as_json", [False, True])
     def test_state_resumes_from_object_or_json(

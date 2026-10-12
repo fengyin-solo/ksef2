@@ -436,6 +436,17 @@ class KsefInvoiceBody(KSeFBaseModel):
             return Decimal("-1")
         return Decimal("1")
 
+    def _is_second_reduced_rate(self, line: InvoiceRow | InvoiceOrderLine) -> bool:
+        # FA(3) summarises reduced rates in groups instead of one field per rate:
+        # P_13_3 and P_14_3 are the second reduced-rate group. The schema still
+        # accepts the legacy 4% and 3% markers on a line, so those standard-regime
+        # lines are reported with 5% rather than dropping out of the summary.
+        return line.tax_regime == TaxRegime.STANDARD and line.sale_category in {
+            SaleCategory.RATE_5,
+            SaleCategory.RATE_4,
+            SaleCategory.RATE_3,
+        }
+
     def _sum_net(
         self, predicate: Callable[[InvoiceRow | InvoiceOrderLine], bool]
     ) -> Decimal:
@@ -590,7 +601,8 @@ class KsefInvoiceBody(KSeFBaseModel):
     def second_reduced_rate_net_total(
         self,
     ) -> Annotated[
-        Decimal, "p_13_3: Net total for the second reduced VAT rate bucket (5%)"
+        Decimal,
+        "p_13_3: Net total for the second reduced VAT rate bucket (5%, 4% or 3%)",
     ]:
         """Return the net total for the second reduced VAT-rate bucket.
 
@@ -599,19 +611,15 @@ class KsefInvoiceBody(KSeFBaseModel):
         """
         return self._summary_value(
             "second_reduced_rate_net_total",
-            self._sum_net(
-                lambda line: (
-                    line.tax_regime == TaxRegime.STANDARD
-                    and line.sale_category == SaleCategory.RATE_5
-                )
-            ),
+            self._sum_net(self._is_second_reduced_rate),
         )
 
     @property
     def second_reduced_rate_vat_total(
         self,
     ) -> Annotated[
-        Decimal, "p_14_3: VAT total for the second reduced VAT rate bucket (5%)"
+        Decimal,
+        "p_14_3: VAT total for the second reduced VAT rate bucket (5%, 4% or 3%)",
     ]:
         """Return the VAT total for the second reduced VAT-rate bucket.
 
@@ -620,12 +628,7 @@ class KsefInvoiceBody(KSeFBaseModel):
         """
         return self._summary_value(
             "second_reduced_rate_vat_total",
-            self._sum_vat(
-                lambda line: (
-                    line.tax_regime == TaxRegime.STANDARD
-                    and line.sale_category == SaleCategory.RATE_5
-                )
-            ),
+            self._sum_vat(self._is_second_reduced_rate),
         )
 
     @property
@@ -737,10 +740,7 @@ class KsefInvoiceBody(KSeFBaseModel):
         return self._summary_optional_value(
             "second_reduced_rate_vat_total_pln",
             self._vat_total_in_pln_for(
-                lambda line: (
-                    line.tax_regime == TaxRegime.STANDARD
-                    and line.sale_category == SaleCategory.RATE_5
-                ),
+                self._is_second_reduced_rate,
                 self.second_reduced_rate_vat_total,
             ),
         )

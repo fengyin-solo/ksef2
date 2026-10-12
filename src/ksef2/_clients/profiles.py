@@ -1,9 +1,11 @@
 """Profile configuration shared by SDK authentication clients."""
 
+import datetime
 import os
 import tomllib
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from enum import StrEnum
+from types import MappingProxyType
 import json
 import math
 from pathlib import Path
@@ -12,7 +14,14 @@ import warnings
 from typing import Self, cast
 
 from cryptography.x509 import Certificate
-from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    PrivateAttr,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from ksef2._config import Environment
 from ksef2._core import exceptions
@@ -55,7 +64,52 @@ class ProfileAuthType(StrEnum):
     XADES_P12 = "xades_p12"
 
 
-class ProfileAuthConfig(BaseModel):
+# ``auth_timeout`` is consumed by the deprecation mapping below, so rewriting a
+# profile drops it instead of carrying the deprecated key over.
+_MIGRATED_KEYS = frozenset({"auth_timeout"})
+
+
+class _UnknownKeyPreservingModel(BaseModel):
+    """Base for config models that keep unrecognised keys across rewrites.
+
+    The SDK ignores keys it does not model, but the config file is shared with
+    ``ksef2-cli`` and other tools. Unrecognised keys are captured on validation
+    and written back verbatim by ``render_profile_config()``.
+    """
+
+    _unknown_keys: dict[str, object] = PrivateAttr(default_factory=dict)
+    """Keys present in the source document that this model does not define."""
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def _capture_unknown_keys(
+        cls, data: object, handler: Callable[[object], Self]
+    ) -> Self:
+        model = handler(data)
+        if isinstance(data, Mapping):
+            known = set(cls.model_fields)
+            entries = cast(Mapping[object, object], data)
+            model._unknown_keys = {
+                key: value
+                for key, value in entries.items()
+                if isinstance(key, str)
+                and key not in known
+                and key not in _MIGRATED_KEYS
+            }
+        return model
+
+    def unknown_keys(self) -> Mapping[str, object]:
+        """Return the config keys this model read but does not define.
+
+        The SDK ignores these keys, but rewriting the config file keeps them.
+
+        Returns:
+            Unknown keys of this config table, in document order.
+        """
+        return MappingProxyType(self._unknown_keys)
+
+
+class ProfileAuthConfig(_UnknownKeyPreservingModel):
     """Authentication settings of a profile.
 
     Which fields are required depends on ``type``: token profiles need ``token_env``, PEM XAdES profiles need ``cert`` and ``key``, and PKCS#12 profiles need ``p12``. Secrets are never stored; the ``*_env`` fields name the environment variables that hold them.
@@ -140,7 +194,7 @@ class XadesP12ProfileAuth(ProfileAuthConfig):
     """Authentication method; ``xades_p12``."""
 
 
-class ProfileConfig(BaseModel):
+class ProfileConfig(_UnknownKeyPreservingModel):
     """One named profile: environment, NIP and authentication settings.
 
     Profiles are shared with ``ksef2-cli``, so both read the same config file.
@@ -171,7 +225,8 @@ class ProfileConfig(BaseModel):
 
         ``with_profile()`` waits ``max_poll_attempts * poll_interval`` seconds, so
         the equivalent attempt count is ``ceil(auth_timeout / poll_interval)``.
-        Explicit ``max_poll_attempts`` wins. Other unknown keys stay ignored.
+        Explicit ``max_poll_attempts`` wins. Other unknown keys are ignored by
+        the SDK and kept as-is when the file is rewritten.
         """
         if not isinstance(data, dict):
             return data
@@ -224,7 +279,7 @@ class ProfileConfig(BaseModel):
         return _profile_environment_to_sdk(self.environment)
 
 
-class CliProfileConfig(BaseModel):
+class CliProfileConfig(_UnknownKeyPreservingModel):
     """Contents of the ``ksef2-cli`` config file: profiles and the active profile name."""
 
     active_profile: str | None = None
@@ -497,12 +552,15 @@ def render_profile_config(config: CliProfileConfig) -> str:
     ]
     if config.active_profile is not None:
         lines.append(f"active_profile = {_toml_string(config.active_profile)}")
+    lines.extend(_render_unknown_scalars(config.unknown_keys()))
 
     for name, profile in config.profiles.items():
+        table = f"profiles.{_toml_key(name)}"
+        profile_keys = profile.unknown_keys()
         lines.extend(
             [
                 "",
-                f"[profiles.{_toml_key(name)}]",
+                f"[{table}]",
                 f"environment = {_toml_string(_profile_environment_value(profile.environment))}",
                 f"nip = {_toml_string(profile.nip)}",
             ]
@@ -511,12 +569,14 @@ def render_profile_config(config: CliProfileConfig) -> str:
             lines.append(f"poll_interval = {_toml_number(profile.poll_interval)}")
         if profile.max_poll_attempts is not None:
             lines.append(f"max_poll_attempts = {profile.max_poll_attempts}")
+        lines.extend(_render_unknown_scalars(profile_keys))
 
         auth = profile.auth
+        auth_keys = auth.unknown_keys()
         lines.extend(
             [
                 "",
-                f"[profiles.{_toml_key(name)}.auth]",
+                f"[{table}.auth]",
                 f"type = {_toml_string(auth.type.value)}",
             ]
         )
@@ -534,6 +594,11 @@ def render_profile_config(config: CliProfileConfig) -> str:
             lines.append(f"p12 = {_toml_string(str(auth.p12))}")
         if auth.p12_password_env is not None:
             lines.append(f"p12_password_env = {_toml_string(auth.p12_password_env)}")
+        lines.extend(_render_unknown_scalars(auth_keys))
+        lines.extend(_render_unknown_tables(f"{table}.auth", auth_keys))
+        lines.extend(_render_unknown_tables(table, profile_keys))
+
+    lines.extend(_render_unknown_tables(None, config.unknown_keys()))
 
     return "\n".join(lines) + "\n"
 
@@ -706,6 +771,81 @@ def _toml_key(value: str) -> str:
     if PROFILE_NAME_PATTERN.fullmatch(value):
         return value
     return _toml_string(value)
+
+
+def _render_unknown_scalars(values: Mapping[str, object]) -> list[str]:
+    """Render preserved unknown keys that are not TOML tables.
+
+    Args:
+        values: Unknown keys of one config table.
+
+    Returns:
+        ``key = value`` lines for the entries that are not nested tables.
+    """
+    return [
+        f"{_toml_key(key)} = {_toml_value(value)}"
+        for key, value in values.items()
+        if not isinstance(value, Mapping)
+    ]
+
+
+def _render_unknown_tables(
+    parent: str | None, values: Mapping[str, object]
+) -> list[str]:
+    """Render preserved unknown keys that are TOML tables.
+
+    Args:
+        parent: Table the entries belong to; ``None`` for the document root.
+        values: Unknown keys of one config table.
+
+    Returns:
+        Table blocks for the nested entries, including their own unknown keys.
+    """
+    lines: list[str] = []
+    for key, value in values.items():
+        if not isinstance(value, Mapping):
+            continue
+        nested = cast(Mapping[str, object], value)
+        table = f"{parent}.{_toml_key(key)}" if parent else _toml_key(key)
+        lines.extend(["", f"[{table}]"])
+        lines.extend(_render_unknown_scalars(nested))
+        lines.extend(_render_unknown_tables(table, nested))
+    return lines
+
+
+def _toml_value(value: object) -> str:
+    """Render one preserved config value as a TOML literal.
+
+    Args:
+        value: Value read from the config file.
+
+    Returns:
+        The TOML representation.
+
+    Raises:
+        KSeFValidationError: If the value has no TOML representation.
+    """
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, str):
+        return _toml_string(value)
+    if isinstance(value, int | float):
+        return str(value)
+    if isinstance(value, datetime.datetime | datetime.date | datetime.time):
+        return value.isoformat()
+    if isinstance(value, list):
+        items = cast(list[object], value)
+        return f"[{', '.join(_toml_value(item) for item in items)}]"
+    if isinstance(value, Mapping):
+        entries = cast(Mapping[object, object], value)
+        rendered = ", ".join(
+            f"{_toml_key(str(key))} = {_toml_value(item)}"
+            for key, item in entries.items()
+        )
+        return f"{{{rendered}}}"
+    raise exceptions.KSeFValidationError(
+        f"Cannot write profile setting of type {type(value).__name__} as TOML."
+    )
 
 
 def _toml_string(value: str) -> str:

@@ -22,7 +22,10 @@ from ksef2._infra.mappers.invoices.fa3.domain.correction_party import (
 )
 from ksef2._infra.mappers.invoices.fa3.domain.footer import to_spec as footer_to_spec
 from ksef2._infra.mappers.invoices.fa3.domain.header import to_spec as header_to_spec
-from ksef2._infra.mappers.invoices.fa3.domain.lines import to_spec as line_to_spec
+from ksef2._infra.mappers.invoices.fa3.domain.lines import (
+    assign_row_numbers,
+    to_spec as line_to_spec,
+)
 from ksef2._infra.mappers.invoices.fa3.domain.payment import to_spec as payment_to_spec
 from ksef2._infra.mappers.invoices.fa3.domain.seller import to_spec as seller_to_spec
 from ksef2._infra.mappers.invoices.fa3.domain.third_party import (
@@ -360,7 +363,11 @@ def _(request: KsefInvoiceBody) -> FakturaFa:
             wartosc_zamowienia=_format_decimal(request.order.total_value),
             zamowienie_wiersz=[
                 line_to_spec(line, row_number)
-                for row_number, line in enumerate(request.order.order_lines, start=1)
+                for line, row_number in zip(
+                    request.order.order_lines,
+                    assign_row_numbers(request.order.order_lines),
+                    strict=True,
+                )
             ],
         )
 
@@ -471,7 +478,11 @@ def _(request: KsefInvoiceBody) -> FakturaFa:
         # Finally, build the actual invoice lines
         fa_wiersz=[
             line_to_spec(line, row_number)
-            for row_number, line in enumerate(request.rows, start=1)
+            for line, row_number in zip(
+                request.rows,
+                assign_row_numbers(request.rows),
+                strict=True,
+            )
         ],
         rozliczenie=_map_rozliczenie(request),
         platnosc=payment_to_spec(request.payment) if request.payment else None,

@@ -1,5 +1,6 @@
 """Mappings from FA(3) invoice line domain models to generated schema row models."""
 
+from collections.abc import Sequence
 from decimal import Decimal
 from functools import singledispatch
 from typing import overload
@@ -98,6 +99,46 @@ def _was_explicitly_set(request: InvoiceRow, field_name: str) -> bool:
 def _row_number(supplied: int | None, position: int) -> int:
     """Return the line's own row number, falling back to its list position."""
     return position if supplied is None else supplied
+
+
+def assign_row_numbers(lines: Sequence[InvoiceRow | InvoiceOrderLine]) -> list[int]:
+    """Number FA(3) lines the way the schema expects them to be numbered.
+
+    A line that only marks the state before a correction shares the row number of
+    the corrected line that follows it, the way the FA(3) correction samples
+    number their before and after rows. Every other line takes the next free
+    number. Lines that already carry a ``row_number``, for example because they
+    were read from a schema model, keep it and the running number moves past it.
+
+    Args:
+        lines: Domain rows or order lines in document order.
+
+    Returns:
+        One row number per line, in the same order.
+    """
+    numbers: list[int] = []
+    position = 0
+    shared: list[int] = []
+    for index, line in enumerate(lines):
+        if line.row_number is None and line.before_correction:
+            shared.append(index)
+            numbers.append(0)
+            continue
+        if line.row_number is None:
+            position += 1
+            number = position
+        else:
+            number = line.row_number
+            position = max(position, number)
+        numbers.append(number)
+        if not line.before_correction:
+            for shared_index in shared:
+                numbers[shared_index] = number
+            shared.clear()
+    for shared_index in shared:
+        position += 1
+        numbers[shared_index] = position
+    return numbers
 
 
 @overload

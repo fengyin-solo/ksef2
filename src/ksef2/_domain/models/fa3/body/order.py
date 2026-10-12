@@ -28,7 +28,7 @@ class InvoiceOrderLine(KSeFBaseModel):
     row_number: int | None = Field(
         default=None, description="nr_wiersza_zam: Original row number"
     )
-    """Row number carried through conversion (``NrWierszaZam``). Defaults to list position."""
+    """Row number carried through conversion (``NrWierszaZam``). Assigned during FA(3) mapping when unset."""
     name: str | None = Field(default=None, description="p_7_z")
     """Name of the ordered goods or service (``P_7Z``)."""
     quantity: Decimal | None = Field(default=None, description="p_8_bz")

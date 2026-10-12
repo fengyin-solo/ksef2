@@ -428,3 +428,80 @@ def test_invoice_to_spec_maps_advance_before_correction_and_partial_payments() -
     assert output.fa.zaliczka_czesciowa[0].p_6_z == "2026-03-01"
     assert output.fa.zaliczka_czesciowa[0].p_15_z == "500.00"
     assert output.fa.zaliczka_czesciowa[0].kurs_waluty_zw == "4.400001"
+
+
+def test_invoice_to_spec_numbers_correction_rows_with_shared_row_numbers() -> None:
+    output = invoice_to_spec(
+        KsefInvoice(
+            header=InvoiceHeader(
+                generation_timestamp=datetime(2026, 2, 1, 12, 30, 45),
+                system_info="ACME ERP",
+            ),
+            seller=InvoiceEntity(
+                tax_id="1234567890",
+                name="Seller Sp. z o.o.",
+                address=make_polish_address(),
+            ),
+            buyer=InvoiceEntity(
+                tax_id="0987654321",
+                name="Buyer Sp. z o.o.",
+                address=make_polish_address(),
+            ),
+            body=KsefInvoiceBody(
+                issue_date=date(2026, 3, 29),
+                issue_place="Warszawa",
+                invoice_number="FK/1/2026",
+                invoice_type=InvoiceType.CORRECTING,
+                correction=CorrectionInvoiceContext(
+                    correction_reason="Quantity correction",
+                    corrected_invoices=[
+                        CorrectedInvoiceReference(
+                            issue_date=date(2026, 3, 1),
+                            invoice_number="FV/1/2026",
+                            ksef_id="1234567890-20260301-ABCDEF-ABCDEF-FF",
+                        )
+                    ],
+                ),
+                rows=[
+                    InvoiceRow(
+                        name="Consulting service",
+                        quantity=Decimal("1"),
+                        unit_price_net=Decimal("100.00"),
+                        net_amount=Decimal("100.00"),
+                        vat_rate=VatRate.VAT_23,
+                        vat_amount=Decimal("23.00"),
+                        before_correction=True,
+                    ),
+                    InvoiceRow(
+                        name="Consulting service",
+                        quantity=Decimal("1"),
+                        unit_price_net=Decimal("120.00"),
+                        net_amount=Decimal("120.00"),
+                        vat_rate=VatRate.VAT_23,
+                        vat_amount=Decimal("27.60"),
+                    ),
+                    InvoiceRow(
+                        name="Hosting service",
+                        quantity=Decimal("1"),
+                        unit_price_net=Decimal("50.00"),
+                        net_amount=Decimal("50.00"),
+                        vat_rate=VatRate.VAT_23,
+                        vat_amount=Decimal("11.50"),
+                    ),
+                    InvoiceRow(
+                        name="Support service",
+                        quantity=Decimal("1"),
+                        unit_price_net=Decimal("10.00"),
+                        net_amount=Decimal("10.00"),
+                        vat_rate=VatRate.VAT_23,
+                        vat_amount=Decimal("2.30"),
+                        row_number=9,
+                    ),
+                ],
+            ),
+        )
+    )
+
+    # The before-correction row shares the number of the row it corrects, and a
+    # row that supplies its own number keeps it.
+    assert [row.nr_wiersza_fa for row in output.fa.fa_wiersz] == [1, 1, 2, 9]

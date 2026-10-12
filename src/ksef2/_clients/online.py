@@ -162,7 +162,9 @@ class OnlineSessionClient:
 
     Send invoices with ``send_invoice()``, close the session by leaving the
     ``with`` block, then call ``wait()`` for the terminal session status and
-    ``download_upo()`` for the session UPO.
+    ``download_upo()`` for the session UPO. Closing ends sending; reading session
+    status and invoices keeps working afterwards, because KSeF only processes a
+    session once it is closed.
 
     Catch ``KSeFException`` for SDK-classified failures raised by this session
     branch, and ``httpx.HTTPError`` for transport failures.
@@ -172,7 +174,7 @@ class OnlineSessionClient:
             ``KSeFAuthError`` for authentication or authorization failures and
             ``KSeFRateLimitError`` for throttling.
         KSeFValidationError: If a KSeF response cannot be parsed into SDK models.
-        KSeFClientClosedError: If an operation is attempted after closing the session.
+        KSeFClientClosedError: If an invoice is sent after closing the session.
         httpx.HTTPError: If the HTTP transport fails before KSeF returns a response.
     """
 
@@ -198,7 +200,11 @@ class OnlineSessionClient:
         self._resumed = resumed
 
     def _ensure_open(self) -> None:
-        """Reject operations after the session client has been closed."""
+        """Reject sending after the session client has been closed.
+
+        Reads are deliberately not gated: the closed session stays readable at
+        KSeF and ``wait()`` points at them when processing fails.
+        """
         if self._closed:
             raise exceptions.KSeFClientClosedError("Session client is closed.")
 
@@ -317,10 +323,11 @@ class OnlineSessionClient:
     def get_status(self) -> SessionStatusResponse:
         """Fetch the current state of the online session.
 
+        Works after the session is closed.
+
         Returns:
             The session status, including invoice counters.
         """
-        self._ensure_open()
         return self._session_status()
 
     def _session_status(self) -> SessionStatusResponse:
@@ -338,6 +345,8 @@ class OnlineSessionClient:
     ) -> SessionInvoicesResponse:
         """Fetch one page of invoices submitted in this session.
 
+        Works after the session is closed.
+
         Args:
             page_size: Number of invoices per page (10–1000).
             continuation_token: Token from the previous page's response; ``None`` requests the first page.
@@ -345,7 +354,6 @@ class OnlineSessionClient:
         Returns:
             One page of invoices submitted in the session, with a continuation token when more exist.
         """
-        self._ensure_open()
         return session_from_spec(
             self._invoice_eps.list_session_invoices(
                 reference_number=self._state.reference_number,
@@ -359,13 +367,14 @@ class OnlineSessionClient:
     ) -> SessionInvoiceStatusResponse:
         """Fetch processing status for one invoice sent in this session.
 
+        Works after the session is closed.
+
         Args:
             invoice_reference_number: Reference number of the invoice within the session, as exposed by the handle ``send_invoice()`` returned.
 
         Returns:
             The processing status of the invoice.
         """
-        self._ensure_open()
         return self._invoice_status(invoice_reference_number=invoice_reference_number)
 
     def _invoice_status(
@@ -421,7 +430,6 @@ class OnlineSessionClient:
         timeout: float = 60.0,
         poll_interval: float = 2.0,
     ) -> SessionInvoiceStatusResponse:
-        self._ensure_open()
         submission = InvoiceSubmission(
             self,
             invoices.SendInvoiceResponse(reference_number=invoice_reference_number),
@@ -436,6 +444,9 @@ class OnlineSessionClient:
     ) -> SessionInvoicesResponse:
         """Fetch one page of invoices that failed within this session.
 
+        Works after the session is closed; ``wait()`` points here when processing
+        fails.
+
         Args:
             page_size: Number of invoices per page (10–1000).
             continuation_token: Token from the previous page's response; ``None`` requests the first page.
@@ -443,7 +454,6 @@ class OnlineSessionClient:
         Returns:
             One page of invoices that failed processing, with a continuation token when more exist.
         """
-        self._ensure_open()
         return session_from_spec(
             self._invoice_eps.list_failed_session_invoices(
                 reference_number=self._state.reference_number,
@@ -460,6 +470,8 @@ class OnlineSessionClient:
     ) -> bytes:
         """Download the UPO of one invoice accepted in this session.
 
+        Works after the session is closed.
+
         Args:
             ksef_number: KSeF number of the invoice. Pass this or ``reference_number``.
             reference_number: Reference number of the invoice within the session, as exposed by the handle ``send_invoice()`` returned. Pass this or ``ksef_number``.
@@ -470,7 +482,6 @@ class OnlineSessionClient:
         Raises:
             KSeFValidationError: If both or neither of ``ksef_number`` and ``reference_number`` are given.
         """
-        self._ensure_open()
         if (ksef_number is None) == (reference_number is None):
             raise exceptions.KSeFValidationError(
                 "Pass exactly one of ksef_number or reference_number."

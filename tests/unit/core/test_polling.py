@@ -206,3 +206,55 @@ def test_async_poll_until_does_not_sleep_after_final_attempt() -> None:
         return sleeps
 
     assert asyncio.run(_run()) == [0.25, 0.25]
+
+
+@pytest.mark.parametrize("is_async", [False, True])
+def test_polling_respects_timeout_before_next_attempt(
+    monkeypatch: pytest.MonkeyPatch, is_async: bool
+) -> None:
+    now = 0.0
+    attempts = 0
+    sleeps: list[float] = []
+    monkeypatch.setattr("time.monotonic", lambda: now)
+
+    def operation() -> bool:
+        nonlocal attempts
+        attempts += 1
+        return False
+
+    def sleep(delay: float) -> None:
+        nonlocal now
+        sleeps.append(delay)
+        now += delay
+
+    async def async_operation() -> bool:
+        return operation()
+
+    async def async_sleep(delay: float) -> None:
+        sleep(delay)
+
+    with pytest.raises(TimeoutError):
+        if is_async:
+            _ = asyncio.run(
+                async_poll_until(
+                    operation=async_operation,
+                    retry_predicate=lambda result: not result,
+                    poll_interval=0.03,
+                    timeout_seconds=0.005,
+                    timeout_error_factory=TimeoutError,
+                    sleep=async_sleep,
+                )
+            )
+        else:
+            _ = poll_until(
+                operation=operation,
+                retry_predicate=lambda result: not result,
+                poll_interval=0.03,
+                timeout_seconds=0.005,
+                timeout_error_factory=TimeoutError,
+                sleep=sleep,
+            )
+
+    assert sleeps == [0.005]
+    assert now == 0.005
+    assert attempts == 1

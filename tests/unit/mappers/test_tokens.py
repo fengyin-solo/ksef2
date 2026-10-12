@@ -1,6 +1,7 @@
 from polyfactory import BaseFactory
 
 from ksef2._domain.models import tokens
+from ksef2._domain.models.pagination import TokenListParams
 from ksef2._infra.mappers.tokens.requests import to_spec
 from ksef2._infra.mappers.tokens.responses import from_spec
 from ksef2._infra.schema.api import spec
@@ -143,6 +144,22 @@ class TestTokensResponseMapper:
         assert isinstance(output, tokens.QueryTokensResponse)
         assert output.continuation_token == mapped_input.continuationToken
         assert len(output.tokens) == len(mapped_input.tokens)
+
+
+class TestTokenListParamsQuery:
+    def test_list_params_send_openapi_filter_enums(self):
+        params = TokenListParams(
+            status=["active", "revoked"],
+            description="Integration test",
+            author_identifier="5200000000",
+            author_identifier_type="nip",
+        ).to_query_params()
+
+        assert params.get("status") == ["Active", "Revoked"]
+        assert params.get("authorIdentifierType") == "Nip"
+        assert params.get("description") == "Integration test"
+        assert params.get("authorIdentifier") == "5200000000"
+        assert params.get("pageSize") == 10
 
 
 class TestTokensRequestMapper:

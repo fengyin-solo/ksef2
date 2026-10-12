@@ -68,6 +68,86 @@ class TokenContextIdentifierTypeEnum(StrEnum):
     PEPPOL_ID = "peppol_id"
 
 
+type TokenStatusSpecValue = Literal[
+    "Pending", "Active", "Revoking", "Revoked", "Failed"
+]
+
+
+type TokenAuthorIdentifierTypeSpecValue = Literal["Nip", "Pesel", "Fingerprint"]
+
+_TOKEN_STATUS_TO_SPEC: dict[TokenStatus, TokenStatusSpecValue] = {
+    "pending": "Pending",
+    "active": "Active",
+    "revoking": "Revoking",
+    "revoked": "Revoked",
+    "failed": "Failed",
+}
+_TOKEN_AUTHOR_IDENTIFIER_TYPE_TO_SPEC: dict[
+    TokenAuthorIdentifierType, TokenAuthorIdentifierTypeSpecValue
+] = {
+    "nip": "Nip",
+    "pesel": "Pesel",
+    "fingerprint": "Fingerprint",
+}
+
+
+def normalize_token_status(value: TokenStatus | TokenStatusEnum | str) -> TokenStatus:
+    """Normalize SDK or OpenAPI token status values to SDK literals.
+
+    OpenAPI capitalizes these values (``Active``) while the SDK literals are
+    lowercase (``active``), so matching is case-insensitive.
+
+    Raises:
+        ValueError: If ``value`` is not a supported token status.
+    """
+    lowered_value = value.strip().lower()
+    if lowered_value in _TOKEN_STATUS_TO_SPEC:
+        return lowered_value
+
+    raise ValueError(
+        f"Invalid token status: {value}. Valid token statuses are: "
+        f"{', '.join(_TOKEN_STATUS_TO_SPEC)}"
+    )
+
+
+def normalize_token_author_identifier_type(
+    value: TokenAuthorIdentifierType | TokenAuthorIdentifierTypeEnum | str,
+) -> TokenAuthorIdentifierType:
+    """Normalize SDK or OpenAPI author identifier types to SDK literals.
+
+    OpenAPI capitalizes these values (``Nip``) while the SDK literals are
+    lowercase (``nip``), so matching is case-insensitive.
+
+    Raises:
+        ValueError: If ``value`` is not a supported author identifier type.
+    """
+    lowered_value = value.strip().lower()
+    if lowered_value in _TOKEN_AUTHOR_IDENTIFIER_TYPE_TO_SPEC:
+        return lowered_value
+
+    raise ValueError(
+        f"Invalid token author identifier type: {value}. Valid token author "
+        f"identifier types are: "
+        f"{', '.join(_TOKEN_AUTHOR_IDENTIFIER_TYPE_TO_SPEC)}"
+    )
+
+
+def token_status_to_spec(
+    value: TokenStatus | TokenStatusEnum | str,
+) -> TokenStatusSpecValue:
+    """Convert a token status value to the OpenAPI representation."""
+    return _TOKEN_STATUS_TO_SPEC[normalize_token_status(value)]
+
+
+def token_author_identifier_type_to_spec(
+    value: TokenAuthorIdentifierType | TokenAuthorIdentifierTypeEnum | str,
+) -> TokenAuthorIdentifierTypeSpecValue:
+    """Convert an author identifier type to the OpenAPI representation."""
+    return _TOKEN_AUTHOR_IDENTIFIER_TYPE_TO_SPEC[
+        normalize_token_author_identifier_type(value)
+    ]
+
+
 class TokenAuthorIdentifier(KSeFBaseModel):
     """Identifies the subject that created the token."""
 

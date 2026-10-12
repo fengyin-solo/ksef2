@@ -315,7 +315,7 @@ class AsyncAuthClient:
             An authenticated client for the profile's context.
 
         Raises:
-            KSeFValidationError: If the profile's environment differs from the client's, or the profile is missing a required secret.
+            KSeFValidationError: If the profile's environment differs from the client's, the profile is missing a required secret, or a token profile declares a non-``nip`` ``auth.context_type``.
             KSeFAuthError: If authentication fails.
             KSeFAuthPollingTimeoutError: If polling exceeds ``timeout``.
 
@@ -359,10 +359,21 @@ class AsyncAuthClient:
                         f"ksef2-cli profile {profile_name!r} requires auth.token_env.",
                         profile_name=profile_name,
                     )
+                context_type = profile_context_type(auth)
+                if context_type != "nip":
+                    raise exceptions.KSeFValidationError(
+                        f"ksef2-cli profile {profile_name!r} sets auth.context_type "
+                        f"to {context_type!r}, but a profile stores only a NIP, so "
+                        f"the {context_type} identifier is unknown. Authenticate "
+                        f"with client.authentication.with_token(ksef_token=..., "
+                        f"nip=<identifier>, context_type={context_type!r}) instead.",
+                        profile_name=profile_name,
+                        context_type=context_type,
+                    )
                 return await self.with_token(
                     ksef_token=token,
                     nip=profile.nip,
-                    context_type=profile_context_type(auth),
+                    context_type=context_type,
                     timeout=effective_timeout,
                     poll_interval=effective_poll_interval,
                 )

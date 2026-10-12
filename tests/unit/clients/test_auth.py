@@ -458,6 +458,41 @@ class TestAuthClient:
             poll_interval=1.5,
         )
 
+    @patch.object(AuthClient, "with_token")
+    def test_with_profile_refuses_to_send_a_nip_as_a_non_nip_context(
+        self,
+        mock_with_token: MagicMock,
+        fake_transport: FakeTransport,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path,
+    ) -> None:
+        config_path = tmp_path / "config.toml"
+        config_path.write_text(
+            """
+            [profiles.demo]
+            environment = "test"
+            nip = "1111111111"
+
+            [profiles.demo.auth]
+            type = "token"
+            token_env = "KSEF2_TOKEN"
+            context_type = "internal_id"
+            """,
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("KSEF2_TOKEN", "secret-token")
+        client = _build_auth_client(fake_transport, environment=Environment.TEST)
+
+        with pytest.raises(
+            KSeFValidationError,
+            match=r"profile 'demo' sets auth\.context_type to 'internal_id'",
+        ) as excinfo:
+            _ = client.with_profile("demo", config_path=config_path)
+
+        assert excinfo.value.context["context_type"] == "internal_id"
+        mock_with_token.assert_not_called()
+        assert fake_transport.calls == []
+
     @patch.object(AuthClient, "with_test_certificate")
     def test_with_profile_uses_named_test_certificate_profile(
         self,

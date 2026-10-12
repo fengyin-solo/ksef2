@@ -5,6 +5,10 @@ from ksef2._domain.models.fa3.attachment import (
     AttachmentTable,
     DataBlock,
 )
+from ksef2._domain.models.fa3.authorized_subject import (
+    AuthorizedSubjectRole,
+    InvoiceAuthorizedSubject,
+)
 from ksef2._domain.models.fa3.invoice import KsefInvoice, KsefInvoiceDraft
 from ksef2._domain.models.fa3.footer import (
     FooterRegistry,
@@ -64,6 +68,7 @@ __all__ = [
     "AdditionalDescriptionEntry",
     "AdvanceOrderLine",
     "AttachmentTable",
+    "AuthorizedSubjectRole",
     "ContactInfo",
     "CorrectedBuyerEntity",
     "CorrectedSellerEntity",
@@ -72,6 +77,7 @@ __all__ = [
     "DraftIntent",
     "FooterRegistry",
     "InvoiceAddress",
+    "InvoiceAuthorizedSubject",
     "InvoiceEntity",
     "InvoiceFooter",
     "InvoiceThirdParty",

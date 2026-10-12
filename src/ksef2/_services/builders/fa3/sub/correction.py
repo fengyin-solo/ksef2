@@ -119,7 +119,11 @@ class CorrectionBuilder[TParent]:
             CorrectionEffectType | None,
             builder_param(
                 "Correction effect type required by the FA(3) correction section.",
-                examples=["increase", "decrease"],
+                examples=[
+                    "original_entry_date",
+                    "correction_issue_date",
+                    "other_date",
+                ],
                 format="enum-string",
                 priority="advanced",
             ),

@@ -320,3 +320,21 @@ def test_body_from_model_replaces_the_previous_state() -> None:
 
     assert restored.invoice_number == prepared.invoice_number
     assert restored == prepared
+
+
+def test_already_paid_without_a_date_falls_back_to_the_issue_date() -> None:
+    """FA(3) requires DataZaplaty alongside Zaplacono, so an undated payment is valid."""
+    builder = started_invoice()
+    body = builder.standard()
+    _ = body.issue_date(date(2026, 1, 27)).invoice_number("FV/2026/01/0001")
+    add_rows(body)
+    _ = body.payment().already_paid().done()
+    _ = body.done()
+
+    draft = builder.dump_state()
+    assert draft.body is not None
+    assert draft.body.payment is not None
+    assert draft.body.payment.payment_date == date(2026, 1, 27)
+
+    xml = builder.to_xml()
+    assert "<DataZaplaty>2026-01-27</DataZaplaty>" in xml

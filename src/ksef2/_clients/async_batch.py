@@ -351,8 +351,9 @@ class AsyncBatchSessionClient:
         if self._prepared_batch is None:
             raise exceptions.KSeFValidationError(
                 "Batch session has no prepared batch attached. "
-                "Open it through auth.batch_session(prepared_batch=...) "
-                "or send the batch with auth.batch.submit()."
+                "Open a new session through auth.batch_session(prepared_batch=...) "
+                "or reattach the parts to the saved one through "
+                "auth.batch_session(state=..., prepared_batch=...)."
             )
 
         upload_requests = {

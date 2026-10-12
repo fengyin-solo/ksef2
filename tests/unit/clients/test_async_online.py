@@ -74,7 +74,7 @@ class TestAsyncOnlineSessionClient:
         with pytest.raises(KSeFSessionError, match="close failed"):
             asyncio.run(_run())
 
-    def test_aclose_is_idempotent_and_blocks_further_calls(
+    def test_aclose_is_idempotent_and_blocks_sending(
         self,
         async_fake_transport: AsyncFakeTransport,
         domain_online_session_state: BaseFactory[OnlineSessionResumeState],
@@ -95,7 +95,7 @@ class TestAsyncOnlineSessionClient:
         )
 
         with pytest.raises(KSeFClientClosedError, match="Session client is closed"):
-            asyncio.run(client.get_status())
+            asyncio.run(client.send_invoice("<Faktura>zażółć</Faktura>"))
 
     @legacy_api
     def test_wait_for_invoice_ready_returns_processed_status(

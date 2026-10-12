@@ -317,6 +317,7 @@ class AuthenticatedClient:
         self,
         *,
         state: BatchSessionResumeState | str,
+        prepared_batch: PreparedBatch | None = None,
     ) -> BatchSessionClient: ...
 
     def batch_session(
@@ -330,9 +331,11 @@ class AuthenticatedClient:
     ) -> BatchSessionClient:
         """Open a batch session for upload work, or resume one from saved state.
 
-        Pass exactly one of ``prepared_batch``, ``batch_file`` (open a new
-        session) or ``state`` (resume). When resuming, everything comes from the
-        state, including the form code, keys and part upload requests. Leaving the
+        Pass ``batch_file``, or ``prepared_batch``, or ``state`` (resume). Only
+        ``prepared_batch`` may accompany ``state``: it reattaches the encrypted
+        parts to the resumed session so ``upload_parts()`` can finish an upload
+        that a saved state started. Otherwise everything comes from the state,
+        including the form code, keys and part upload requests. Leaving the
         ``with`` block closes the session in every case; closing an already-closed
         session is a no-op.
 
@@ -341,13 +344,13 @@ class AuthenticatedClient:
             batch_file: Declared ZIP package metadata and encrypted part metadata.
             form_code: Invoice schema declared for the batch session when ``batch_file`` is provided directly; defaults to ``FormSchema.FA3``.
             offline_mode: Whether to declare offline invoicing mode for the batch when ``batch_file`` is provided directly; defaults to ``False``.
-            state: State from ``session.resume_state()``, or its JSON string, to resume a batch session.
+            state: State from ``session.resume_state()``, or its JSON string, to resume a batch session. Pair it with ``prepared_batch`` to keep uploading into the saved session.
 
         Returns:
             A bound batch session client exposing presigned upload instructions.
 
         Raises:
-            KSeFArgumentError: If not exactly one of ``prepared_batch``, ``batch_file`` and ``state`` is given, or ``form_code`` or ``offline_mode`` is combined with ``prepared_batch`` or ``state``.
+            KSeFArgumentError: If ``batch_file`` is combined with another form, if no form is given, or if ``form_code`` or ``offline_mode`` is combined with ``prepared_batch`` or ``state``.
             NoCertificateAvailableError: If certificate-backed encryption material is
                 needed but no valid certificate is available.
             KSeFEncryptionError: If symmetric-key encryption fails.
@@ -366,6 +369,10 @@ class AuthenticatedClient:
 
             with auth.batch_session(state=saved) as session:
                 final = session.wait()
+
+            # Or finish an upload that a saved state started.
+            with auth.batch_session(state=saved, prepared_batch=prepared) as s:
+                s.upload_parts()
             ```
         """
         given = [
@@ -377,10 +384,15 @@ class AuthenticatedClient:
             )
             if value is not None
         ]
-        if len(given) != 1:
+        if batch_file is not None and len(given) != 1:
             raise exceptions.KSeFArgumentError(
                 "batch_session() takes exactly one of prepared_batch, batch_file "
-                f"or state; got {', '.join(given) if given else 'none'}."
+                f"or state; batch_file cannot be combined; got {', '.join(given)}."
+            )
+        if batch_file is None and not given:
+            raise exceptions.KSeFArgumentError(
+                "batch_session() takes exactly one of prepared_batch, batch_file "
+                "or state; got none."
             )
         if batch_file is None and (form_code is not None or offline_mode is not None):
             raise exceptions.KSeFArgumentError(
@@ -388,7 +400,9 @@ class AuthenticatedClient:
                 "prepared batch or saved state already carries them."
             )
         if state is not None:
-            return self._resume_batch_session_async(state)
+            # The state carries the session, its keys and its presigned upload
+            # instructions; only the encrypted parts live on in the prepared batch.
+            return self._resume_batch_session_async(state, prepared_batch)
         return self._open_batch_session_from_input(
             prepared_batch=prepared_batch,
             batch_file=batch_file,
@@ -397,12 +411,17 @@ class AuthenticatedClient:
         )
 
     def _resume_batch_session_async(
-        self, state: BatchSessionResumeState | str
+        self,
+        state: BatchSessionResumeState | str,
+        prepared_batch: PreparedBatch | None = None,
     ) -> BatchSessionClient:
-        return self._rebind_batch_session(state)
+        return self._rebind_batch_session(state, prepared_batch=prepared_batch)
 
     def _rebind_batch_session(
-        self, state: BatchSessionResumeState | str
+        self,
+        state: BatchSessionResumeState | str,
+        *,
+        prepared_batch: PreparedBatch | None = None,
     ) -> BatchSessionClient:
         resume = (
             BatchSessionResumeState.from_json(state)
@@ -413,6 +432,7 @@ class AuthenticatedClient:
             transport=self._authed_transport,
             state=resume,
             upload_transport=self._transfer_transport,
+            prepared_batch=prepared_batch,
             access_token=self.access_token,
             resumed=True,
         )

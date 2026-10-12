@@ -25,7 +25,7 @@ def _build_client(
 
 
 class TestOnlineSessionClient:
-    def test_close_is_idempotent_and_blocks_further_calls(
+    def test_close_is_idempotent_and_blocks_sending(
         self,
         fake_transport: FakeTransport,
         domain_online_session_state: BaseFactory[OnlineSessionResumeState],
@@ -44,7 +44,7 @@ class TestOnlineSessionClient:
         )
 
         with pytest.raises(KSeFClientClosedError, match="Session client is closed"):
-            _ = client.get_status()
+            _ = client.send_invoice("<Faktura>zażółć</Faktura>")
 
     @legacy_api
     def test_wait_for_invoice_ready_returns_processed_status(

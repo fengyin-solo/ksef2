@@ -22,6 +22,39 @@ def test_parse_and_rebuild_public_invoice(filename: str) -> None:
     assert invoice.body.invoice_number
 
 
+def test_parse_and_rebuild_keeps_authorized_subject() -> None:
+    source = (SAMPLES / "FA_3_Przykład_1.xml").read_text(encoding="utf-8")
+    block = (
+        "\t<PodmiotUpowazniony>\n"
+        "\t\t<DaneIdentyfikacyjne>\n"
+        "\t\t\t<NIP>5555555555</NIP>\n"
+        "\t\t\t<Nazwa>Komornik Sądowy przy Sądzie Rejonowym</Nazwa>\n"
+        "\t\t</DaneIdentyfikacyjne>\n"
+        "\t\t<Adres>\n"
+        "\t\t\t<KodKraju>PL</KodKraju>\n"
+        "\t\t\t<AdresL1>ul. Urzedowa 4</AdresL1>\n"
+        "\t\t\t<AdresL2>00-001 Warszawa</AdresL2>\n"
+        "\t\t</Adres>\n"
+        "\t\t<DaneKontaktowe>\n"
+        "\t\t\t<EmailPU>komornik@example.com</EmailPU>\n"
+        "\t\t\t<TelefonPU>666777888</TelefonPU>\n"
+        "\t\t</DaneKontaktowe>\n"
+        "\t\t<RolaPU>2</RolaPU>\n"
+        "\t</PodmiotUpowazniony>\n"
+    )
+    assert source.count("\t<Fa>") == 1
+    xml = source.replace("\t<Fa>", block + "\t<Fa>", 1)
+
+    invoice = parse_invoice_xml(xml.encode("utf-8"))
+    assert invoice.authorized_subject is not None
+    assert invoice.authorized_subject.tax_id == "5555555555"
+    assert invoice.authorized_subject.role == "bailiff"
+
+    rebuilt = FA3InvoiceBuilder.from_invoice(invoice).to_xml()
+    assert "PodmiotUpowazniony" in rebuilt
+    assert parse_invoice_xml(rebuilt.encode("utf-8")) == invoice
+
+
 @pytest.mark.parametrize(
     "xml, message",
     [

@@ -51,6 +51,9 @@ def _(schema: FakturaPodmiot2) -> InvoiceEntity:
         other_id=identity.nr_id,
         name=identity.nazwa,
         address=subject_from_spec(schema.adres) if schema.adres else None,
+        correspondence_address=subject_from_spec(schema.adres_koresp)
+        if schema.adres_koresp
+        else None,
         contact=contact,
         customer_number=schema.nr_klienta,
         buyer_id=schema.idnabywcy,

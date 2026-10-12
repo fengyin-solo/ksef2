@@ -1,5 +1,7 @@
 """Domain models for effective and overrideable KSeF limits."""
 
+from typing import Literal
+
 from ksef2._domain.models.base import KSeFBaseModel
 
 
@@ -48,6 +50,9 @@ class SubjectEnrollmentLimits(KSeFBaseModel):
 
 class SubjectLimits(KSeFBaseModel):
     """Subject-level limits for certificate enrollment and issuance."""
+
+    subject_identifier_type: Literal["Nip", "Pesel", "Fingerprint"] = "Nip"
+    """Identifier type targeted by the limit override; defaults to NIP."""
 
     certificate: SubjectCertificateLimits | None = None
     """Certificate issuance limit override; ``None`` when no override is set."""

@@ -224,6 +224,32 @@ def test_body_builder_starts_from_an_existing_model(
     assert copied == prepared
 
 
+def test_switching_from_standard_to_correction_preserves_settlement() -> None:
+    """Switching a standard body to a plain correction body keeps settlement data."""
+    builder = started_invoice()
+    body = builder.standard()
+    add_rows(body)
+    _ = body.settlement().add_charge(amount=Decimal("10.00"), reason="Freight").done()
+    _ = body.done()
+
+    standard_body = builder.dump_state().body
+    assert standard_body is not None
+    settlement = standard_body.settlement
+    assert settlement is not None
+
+    correction_body = builder.correction()
+    add_correction(correction_body)
+    _ = correction_body.done()
+
+    switched = builder.dump_state().body
+    assert switched is not None
+    assert switched.invoice_type is InvoiceType.CORRECTING
+    switched_settlement = switched.settlement
+    assert switched_settlement is not None
+    assert switched_settlement == settlement
+    assert switched_settlement.charges[0].amount == Decimal("10.00")
+
+
 def test_base_body_fields_land_in_the_built_body() -> None:
     builder = started_invoice()
     body = builder.standard()

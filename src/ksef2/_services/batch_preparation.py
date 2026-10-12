@@ -91,7 +91,7 @@ def prepare_batch_package(
         public_key_id: Identifier of the KSeF public key used for ``encrypted_key``; ``None`` for the default.
         form_code: Invoice schema of the batch.
         offline_mode: Whether the invoices were issued in offline mode.
-        max_part_size: Maximum size in bytes of one encrypted part.
+        max_part_size: Maximum size in bytes of one encrypted part, including padding; at least 16.
 
     Returns:
         The prepared batch: package metadata, encrypted parts and encryption material.
@@ -105,7 +105,8 @@ def prepare_batch_package(
     validate_max_part_size(max_part_size)
 
     zip_bytes = build_zip(normalized)
-    raw_parts = split_bytes(zip_bytes, max_part_size=max_part_size)
+    plaintext_part_size = (max_part_size // 16) * 16 - 1
+    raw_parts = split_bytes(zip_bytes, max_part_size=plaintext_part_size)
 
     prepared_parts: list[BatchPreparedPart] = []
     declared_parts: list[BatchFilePart] = []
@@ -188,9 +189,9 @@ def validate_max_part_size(max_part_size: int) -> None:
     Raises:
         KSeFValidationError: If ``max_part_size`` is outside KSeF limits.
     """
-    if max_part_size < 1 or max_part_size > MAX_BATCH_PART_SIZE:
+    if max_part_size < 16 or max_part_size > MAX_BATCH_PART_SIZE:
         raise exceptions.KSeFValidationError(
-            "max_part_size must be between 1 and 100000000 bytes.",
+            "max_part_size must be between 16 and 100000000 bytes.",
             max_part_size=max_part_size,
         )
 

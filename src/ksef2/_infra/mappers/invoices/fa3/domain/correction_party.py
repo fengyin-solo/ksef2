@@ -53,6 +53,45 @@ def _split_eu_vat_id(eu_vat_id: str | None) -> tuple[TkodyKrajowUe | None, str |
         raise ValueError(f"Unsupported FA(3) EU VAT prefix: {country_prefix}") from None
 
 
+def _map_identity_fields(
+    request: CorrectedBuyerEntity,
+) -> tuple[
+    str | None,
+    TkodyKrajowUe | None,
+    str | None,
+    TkodKraju | None,
+    str | None,
+    Twybor1 | None,
+]:
+    """Select the one buyer identity branch that ``TPodmiot2`` allows.
+
+    FA(3) declares NIP, KodUE+NrVatUE, KodKraju+NrID and BrakID as an XSD
+    choice, so a corrected buyer carrying several identifiers still serializes
+    exactly one branch, in the order the XSD lists them.
+    """
+    if request.no_id:
+        return None, None, None, None, None, Twybor1.VALUE_1
+
+    if request.tax_id is not None:
+        return request.tax_id, None, None, None, None, None
+
+    if request.eu_vat_id is not None:
+        kod_ue, nr_vat_ue = _split_eu_vat_id(request.eu_vat_id)
+        return None, kod_ue, nr_vat_ue, None, None, None
+
+    if request.other_id is not None:
+        return (
+            None,
+            None,
+            None,
+            _to_country_code(request.country_code),
+            request.other_id,
+            None,
+        )
+
+    return None, None, None, None, None, None
+
+
 @overload
 def to_spec(request: CorrectedSellerEntity) -> FakturaFaPodmiot1K: ...
 
@@ -96,14 +135,20 @@ def _(request: CorrectedSellerEntity) -> FakturaFaPodmiot1K:
 
 @_to_spec.register
 def _(request: CorrectedBuyerEntity) -> FakturaFaPodmiot2K:
-    country_prefix, eu_vat_number = _split_eu_vat_id(request.eu_vat_id)
+    nip, kod_ue, nr_vat_ue, kod_kraju, nr_id, brak_id = _map_identity_fields(request)
     buyer_identity = Tpodmiot2(
-        nip=request.tax_id,
-        kod_ue=country_prefix,
-        nr_vat_ue=eu_vat_number,
-        kod_kraju=_to_country_code(request.country_code),
-        nr_id=request.other_id,
-        brak_id=Twybor1.VALUE_1 if request.no_id else None,
+        # Polish NIP used when the corrected buyer has a domestic tax identifier.
+        nip=nip,
+        # EU VAT prefix extracted from a cross-border corrected buyer VAT number.
+        kod_ue=kod_ue,
+        # EU VAT number body stored separately from the country prefix in FA(3).
+        nr_vat_ue=nr_vat_ue,
+        # Country code used together with an alternate corrected buyer identifier.
+        kod_kraju=kod_kraju,
+        # Alternate identifier used when neither Polish NIP nor EU VAT applies.
+        nr_id=nr_id,
+        # KSeF flag meaning "corrected buyer identifier missing on the invoice".
+        brak_id=brak_id,
         nazwa=request.name,
     )
     buyer_address = subject_to_spec(request.address) if request.address else None

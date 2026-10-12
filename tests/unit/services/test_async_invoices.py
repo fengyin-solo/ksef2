@@ -288,12 +288,16 @@ class TestAsyncInvoicesService:
     ) -> None:
         service = _build_service(async_fake_transport)
         async_fake_transport.enqueue(
-            inv_export_status_resp.build(package=None).model_dump(mode="json")
+            inv_export_status_resp.build(
+                status=spec.StatusInfo(code=100, description="Export pending"),
+                package=None,
+            ).model_dump(mode="json")
         )
         async_fake_transport.enqueue(
-            inv_export_status_resp.build(package=_ready_export_package()).model_dump(
-                mode="json"
-            )
+            inv_export_status_resp.build(
+                status=spec.StatusInfo(code=200, description="Export ready"),
+                package=_ready_export_package(),
+            ).model_dump(mode="json")
         )
 
         package = asyncio.run(
@@ -315,7 +319,10 @@ class TestAsyncInvoicesService:
     ) -> None:
         service = _build_service(async_fake_transport)
         async_fake_transport.enqueue(
-            inv_export_status_resp.build(package=None).model_dump(mode="json")
+            inv_export_status_resp.build(
+                status=spec.StatusInfo(code=100, description="Export pending"),
+                package=None,
+            ).model_dump(mode="json")
         )
 
         with pytest.raises(KSeFExportTimeoutError):

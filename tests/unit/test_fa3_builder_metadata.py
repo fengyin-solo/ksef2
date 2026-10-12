@@ -143,7 +143,6 @@ def test_runtime_builder_behavior_is_unchanged() -> None:
         .invoice_number("FV/2026/04/0001")
         .payment()
         .via("bank_transfer")
-        .already_paid(date(2026, 4, 10))
         .partial_payment_status("partial")
         .add_partial_payment(
             amount=Decimal("50.00"),

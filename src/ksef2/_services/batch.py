@@ -104,7 +104,7 @@ class BatchService:
             invoices: Invoices to include. Each item is invoice XML as ``bytes`` or ``str`` (named ``invoice-<position>.xml``), a ``Path`` to an XML file (keeps its file name) or a ``BatchInvoice`` with an explicit file name.
             form_code: Invoice schema declared for the batch session.
             offline_mode: Whether to declare offline invoicing mode for the batch.
-            max_part_size: Maximum size of each ZIP part before encryption.
+            max_part_size: Maximum size of each encrypted ZIP part, including padding; at least 16.
 
         Returns:
             A prepared batch with encrypted part payloads and the metadata required
@@ -165,7 +165,7 @@ class BatchService:
             batch: A prepared batch from ``prepare()``, or the invoices themselves, which are prepared first (same item types as ``prepare()``).
             form_code: Invoice schema declared for the batch session. Ignored for a prepared batch, which carries its own.
             offline_mode: Whether to declare offline invoicing mode for the batch. Ignored for a prepared batch.
-            max_part_size: Maximum size of each ZIP part before encryption. Ignored for a prepared batch.
+            max_part_size: Maximum size of each encrypted ZIP part, including padding; at least 16. Ignored for a prepared batch.
 
         Returns:
             The closed batch session client. Call its ``wait()`` for the terminal status, ``list_failed_invoices()`` for rejected invoices and ``download_upo()`` for the UPO pages.
@@ -221,7 +221,7 @@ class BatchService:
             invoices: Invoice XML payloads to include in the batch package.
             form_code: Invoice schema declared for the batch session.
             offline_mode: Whether to declare offline invoicing mode for the batch.
-            max_part_size: Maximum size of each ZIP part before encryption.
+            max_part_size: Maximum size of each encrypted ZIP part, including padding; at least 16.
 
         Returns:
             A prepared batch with encrypted part payloads and the metadata required
@@ -261,7 +261,7 @@ class BatchService:
             invoice_paths: Paths to XML files that should be added to the batch.
             form_code: Invoice schema declared for the batch session.
             offline_mode: Whether to declare offline invoicing mode for the batch.
-            max_part_size: Maximum size of each ZIP part before encryption.
+            max_part_size: Maximum size of each encrypted ZIP part, including padding; at least 16.
 
         Returns:
             A prepared batch with encrypted parts ready to be uploaded.
@@ -459,7 +459,7 @@ class BatchService:
             invoices: Invoice XML payloads to include in the batch package.
             form_code: Invoice schema declared for the batch session.
             offline_mode: Whether to declare offline invoicing mode for the batch.
-            max_part_size: Maximum size of each ZIP part before encryption.
+            max_part_size: Maximum size of each encrypted ZIP part, including padding; at least 16.
 
         Returns:
             Serializable state of the submitted batch session.

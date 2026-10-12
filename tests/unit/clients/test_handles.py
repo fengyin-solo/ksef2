@@ -98,6 +98,28 @@ class TestInvoiceSubmission:
         assert len(flavor.transport.calls) == 3
         assert len(hashes) == 1
 
+    def test_send_includes_hash_of_corrected_invoice(
+        self,
+        flavor: Flavor,
+        domain_online_session_state: BaseFactory[OnlineSessionResumeState],
+        inv_send_resp: BaseFactory[spec.SendInvoiceResponse],
+    ) -> None:
+        session = flavor.online_session(domain_online_session_state.build())
+        corrected_invoice_hash = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+        flavor.transport.enqueue(
+            inv_send_resp.build(referenceNumber=INVOICE_REF).model_dump(mode="json")
+        )
+
+        submission = flavor.run(
+            session.send_invoice(XML, hash_of_corrected_invoice=corrected_invoice_hash)
+        )
+
+        assert submission.reference_number == INVOICE_REF
+        assert len(flavor.transport.calls) == 1
+        body = flavor.transport.calls[0].json
+        assert body is not None
+        assert body["hashOfCorrectedInvoice"] == corrected_invoice_hash
+
     def test_wait_returns_final_status(
         self,
         flavor: Flavor,

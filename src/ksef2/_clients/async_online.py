@@ -225,11 +225,17 @@ class AsyncOnlineSessionClient:
             self, invoices.SendInvoiceResponse(reference_number=reference_number)
         )
 
-    async def send_invoice(self, invoice_xml: bytes | str) -> AsyncInvoiceSubmission:
+    async def send_invoice(
+        self,
+        invoice_xml: bytes | str,
+        *,
+        hash_of_corrected_invoice: str | None = None,
+    ) -> AsyncInvoiceSubmission:
         """Encrypt and submit one invoice into the open session.
 
         Args:
             invoice_xml: Invoice XML, valid against the session's schema. A ``str`` is encoded as UTF-8.
+            hash_of_corrected_invoice: Base64-encoded SHA256 hash of the corrected invoice, required for a technical correction.
 
         Returns:
             A handle exposing the submission's ``reference_number``. Call its ``wait()`` for the processing result and ``download_upo()`` for the invoice UPO.
@@ -258,6 +264,7 @@ class AsyncOnlineSessionClient:
             SendInvoicePayload(
                 xml_bytes=xml_bytes,
                 encrypted_bytes=encrypted,
+                hash_of_corrected_invoice=hash_of_corrected_invoice,
             )
         )
 

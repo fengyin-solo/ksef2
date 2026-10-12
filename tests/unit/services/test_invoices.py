@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -9,6 +10,7 @@ from polyfactory import BaseFactory
 from ksef2._core.exceptions import (
     ExceptionCode,
     KSeFApiError,
+    KSeFExportFailedError,
     KSeFExportTimeoutError,
     KSeFInvoiceDownloadTimeoutError,
     KSeFInvoiceQueryTimeoutError,
@@ -16,8 +18,9 @@ from ksef2._core.exceptions import (
 from ksef2._core.stores import CertificateStore
 from ksef2._domain.models import invoices
 from ksef2._infra.schema.api import spec
+from ksef2._services.async_invoices import AsyncInvoicesService
 from ksef2._services.invoices import InvoicesService
-from tests.unit.fakes.transport import FakeTransport
+from tests.unit.fakes.transport import AsyncFakeTransport, FakeTransport
 from tests.unit.helpers import legacy_api
 
 
@@ -270,12 +273,16 @@ class TestInvoicesService:
     ) -> None:
         service = _build_service(fake_transport)
         fake_transport.enqueue(
-            inv_export_status_resp.build(package=None).model_dump(mode="json")
+            inv_export_status_resp.build(
+                status=spec.StatusInfo(code=100, description="Export pending"),
+                package=None,
+            ).model_dump(mode="json")
         )
         fake_transport.enqueue(
-            inv_export_status_resp.build(package=_ready_export_package()).model_dump(
-                mode="json"
-            )
+            inv_export_status_resp.build(
+                status=spec.StatusInfo(code=200, description="Export ready"),
+                package=_ready_export_package(),
+            ).model_dump(mode="json")
         )
 
         package = service.wait_for_export_package(
@@ -295,7 +302,10 @@ class TestInvoicesService:
     ) -> None:
         service = _build_service(fake_transport)
         fake_transport.enqueue(
-            inv_export_status_resp.build(package=None).model_dump(mode="json")
+            inv_export_status_resp.build(
+                status=spec.StatusInfo(code=100, description="Export pending"),
+                package=None,
+            ).model_dump(mode="json")
         )
 
         with pytest.raises(KSeFExportTimeoutError):
@@ -304,3 +314,36 @@ class TestInvoicesService:
                 timeout=0.0,
                 poll_interval=0.0,
             )
+
+
+@legacy_api
+@pytest.mark.parametrize("async_mode", [False, True])
+def test_wait_for_export_package_reports_terminal_failure(
+    async_mode: bool,
+    inv_export_status_resp: BaseFactory[spec.InvoiceExportStatusResponse],
+) -> None:
+    response = inv_export_status_resp.build(
+        status=spec.StatusInfo(
+            code=210, description="Export failed", details=["failure detail"]
+        ),
+        package=None,
+    ).model_dump(mode="json")
+    transport = AsyncFakeTransport() if async_mode else FakeTransport()
+    transport.enqueue(response)
+
+    with pytest.raises(KSeFExportFailedError) as error:
+        if isinstance(transport, AsyncFakeTransport):
+            service = AsyncInvoicesService(transport, transport, CertificateStore())
+            _ = asyncio.run(
+                service.wait_for_export_package(reference_number="test", timeout=0.0)
+            )
+        else:
+            _ = InvoicesService(
+                transport, transport, CertificateStore()
+            ).wait_for_export_package(reference_number="test", timeout=0.0)
+
+    assert error.value.reference_number == "test"
+    assert error.value.export_status_code == 210
+    assert error.value.description == "Export failed"
+    assert error.value.details == ["failure detail"]
+    assert len(transport.calls) == 1

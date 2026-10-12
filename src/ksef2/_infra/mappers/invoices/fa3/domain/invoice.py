@@ -16,6 +16,9 @@ from ksef2._domain.models.fa3 import KsefInvoice
 from ksef2._infra.mappers.invoices.fa3.domain.attachment import (
     to_spec as attachment_to_spec,
 )
+from ksef2._infra.mappers.invoices.fa3.domain.authorized_subject import (
+    to_spec as authorized_subject_to_spec,
+)
 from ksef2._infra.mappers.invoices.fa3.domain.buyer import to_spec as buyer_to_spec
 from ksef2._infra.mappers.invoices.fa3.domain.correction_party import (
     to_spec as correction_party_to_spec,
@@ -489,6 +492,11 @@ def _(request: KsefInvoice) -> Faktura:
         podmiot1=seller_to_spec(request.seller),
         podmiot2=buyer_to_spec(request.buyer),
         podmiot3=[third_party_to_spec(subject) for subject in request.third_parties],
+        podmiot_upowazniony=(
+            authorized_subject_to_spec(request.authorized_subject)
+            if request.authorized_subject is not None
+            else None
+        ),
         fa=to_spec(request.body),  # Assuming request.details holds the KsefInvoiceBody
         stopka=footer_to_spec(request.footer) if request.footer else None,
         zalacznik=attachment_to_spec(request.attachment)

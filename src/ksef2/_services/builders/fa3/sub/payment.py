@@ -710,7 +710,8 @@ class PaymentBuilder[TParent]:
             The built ``InvoicePayment``.
 
         Raises:
-            ValueError: If a custom payment form is enabled without a description.
+            ValueError: If a custom payment form is enabled without a description, or
+                partial-payment entries and the partial-payment marker are not set together.
         """
         self._validate_state()
         return InvoicePayment(**self._state)
@@ -725,8 +726,9 @@ class PaymentBuilder[TParent]:
             The parent builder.
 
         Raises:
-            ValueError: If payment details are empty, or a custom payment form has
-                no description.
+            ValueError: If payment details are empty, a custom payment form has
+                no description, or partial-payment entries and the partial-payment
+                marker are not set together.
         """
         if self._is_empty():
             raise ValueError(
@@ -749,6 +751,17 @@ class PaymentBuilder[TParent]:
         if self._state["other_payment_form"] and not self._state["payment_description"]:
             raise ValueError(
                 "payment_description is required when other_payment_form is enabled"
+            )
+
+        has_marker = self._state["partial_payment_status"] is not None
+        has_entries = bool(self._state["partial_payments"])
+        if has_entries and not has_marker:
+            raise ValueError(
+                "partial_payment_status is required when partial payments are added"
+            )
+        if has_marker and not has_entries:
+            raise ValueError(
+                "At least one partial payment is required when partial_payment_status is set"
             )
 
 

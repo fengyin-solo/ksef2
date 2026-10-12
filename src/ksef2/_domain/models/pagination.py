@@ -1,7 +1,7 @@
 """Reusable pagination and filter parameter models."""
 
 from datetime import datetime
-from typing import Self
+from typing import Self, cast
 
 from pydantic import BaseModel, Field, field_serializer, field_validator
 
@@ -19,7 +19,14 @@ from ksef2._domain.models.session import (
     session_status_to_spec,
     session_type_to_spec,
 )
-from ksef2._domain.models.tokens import TokenAuthorIdentifierType, TokenStatus
+from ksef2._domain.models.tokens import (
+    TokenAuthorIdentifierType,
+    TokenStatus,
+    normalize_token_author_identifier_type,
+    normalize_token_status,
+    token_author_identifier_type_to_spec,
+    token_status_to_spec,
+)
 from ksef2._domain.types import (
     CollectiveIdentifierQueryParams,
     InvoiceMetadataQueryParams,
@@ -179,6 +186,42 @@ class TokenListParams(KSeFBaseParams[ListTokensQueryParams], PageSizeMixin):
     """Match tokens created by this identifier."""
     author_identifier_type: TokenAuthorIdentifierType | None = None
     """Kind of identifier in ``author_identifier``."""
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def _normalize_status(cls, value: object) -> object:
+        if value is None:
+            return None
+        if isinstance(value, list):
+            statuses: list[TokenStatus] = []
+            for status in cast(list[object], value):
+                if isinstance(status, str):
+                    statuses.append(normalize_token_status(status))
+                else:
+                    statuses.append(cast(TokenStatus, status))
+            return statuses
+        return value
+
+    @field_validator("author_identifier_type", mode="before")
+    @classmethod
+    def _normalize_author_identifier_type(cls, value: object) -> object:
+        if isinstance(value, str):
+            return normalize_token_author_identifier_type(value)
+        return value
+
+    @field_serializer("status")
+    def _serialize_status(self, value: list[TokenStatus] | None) -> list[str] | None:
+        if value is None:
+            return None
+        return [token_status_to_spec(status) for status in value]
+
+    @field_serializer("author_identifier_type")
+    def _serialize_author_identifier_type(
+        self, value: TokenAuthorIdentifierType | None
+    ) -> str | None:
+        if value is None:
+            return None
+        return token_author_identifier_type_to_spec(value)
 
 
 class ListSessionsQuery(

@@ -183,6 +183,41 @@ def test_invoice_body_accepts_xsd_maximum_invoice_number_length() -> None:
     assert len(body.invoice_number) == 256
 
 
+def test_second_reduced_bucket_covers_four_and_three_percent_standard_lines() -> None:
+    """FA(3) has no field per legacy rate, so 4% and 3% must reach a P_13/P_14 bucket."""
+    for vat_rate, expected_vat in ((VatRate.VAT_4, "4.00"), (VatRate.VAT_3, "3.00")):
+        body = KsefInvoiceBody(
+            issue_date=date(2026, 10, 12),
+            issue_place=None,
+            invoice_number="FV/1/2026",
+            rows=[InvoiceRow(net_amount=Decimal("100.00"), vat_rate=vat_rate)],
+        )
+
+        assert body.second_reduced_rate_net_total == Decimal("100.00")
+        assert body.second_reduced_rate_vat_total == Decimal(expected_vat)
+        assert body.second_reduced_rate_vat_total_pln is None
+        assert (
+            body.second_reduced_rate_net_total + body.second_reduced_rate_vat_total
+            == body.total_gross
+        )
+
+    taxi_body = KsefInvoiceBody(
+        issue_date=date(2026, 10, 12),
+        issue_place=None,
+        invoice_number="FV/1/2026",
+        rows=[
+            InvoiceRow(
+                net_amount=Decimal("100.00"),
+                vat_rate=VatRate.VAT_4,
+                tax_regime=TaxRegime.TAXI_FLAT_RATE,
+            )
+        ],
+    )
+
+    assert taxi_body.taxi_flat_rate_net_total == Decimal("100.00")
+    assert taxi_body.second_reduced_rate_net_total == Decimal("0.00")
+
+
 def test_invoice_system_context_accepts_valid_values() -> None:
     context = InvoiceHeader(
         generation_timestamp=datetime(2026, 2, 1, 12, 30, 45),

@@ -15,6 +15,28 @@ from tests.unit.fakes.transport import FakeTransport
 PROBLEM = {"content-type": "application/problem+json"}
 
 
+def test_bad_request_without_title_preserves_code_and_trace_id():
+    response = httpx.Response(
+        400,
+        headers=PROBLEM,
+        json={
+            "status": 400,
+            "instance": "/test",
+            "detail": "bad",
+            "errors": [{"code": 12345, "description": "bad"}],
+            "timestamp": "2026-10-12T00:00:00Z",
+            "traceId": "trace-test",
+        },
+    )
+
+    with pytest.raises(exceptions.KSeFApiError) as exc_info:
+        response_errors.raise_for_ksef_status(response, method="POST", path="/test")
+
+    assert exc_info.value.ksef_code == 12345
+    assert exc_info.value.trace_id == "trace-test"
+    assert isinstance(exc_info.value.response, spec.BadRequestProblemDetails)
+
+
 def _raise(
     status: int,
     *,

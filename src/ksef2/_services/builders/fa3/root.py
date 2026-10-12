@@ -428,7 +428,8 @@ class StandardInvoiceBuilder(
             The builder, for chaining.
 
         Raises:
-            ValueError: If an address line is provided without a country code.
+            ValueError: If an address is partially provided (missing country code
+            or missing first address line).
         """
         self._buyer = self._build_entity(
             name=name,
@@ -1069,9 +1070,13 @@ class StandardInvoiceBuilder(
     ) -> InvoiceEntity:
         contact = ContactInfo(email=email, phone=phone) if email or phone else None
         address = None
-        if address_line_1:
-            if country_code is None:
+        if address_line_1 or address_line_2 or country_code:
+            if not country_code:
                 raise ValueError("country_code is required when providing an address.")
+            if not address_line_1:
+                raise ValueError(
+                    "address_line_1 is required when providing an address."
+                )
             address = StandardInvoiceBuilder._build_address(
                 country_code=country_code,
                 address_line_1=address_line_1,

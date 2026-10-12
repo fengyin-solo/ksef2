@@ -119,7 +119,11 @@ class CorrectionBuilder[TParent]:
             CorrectionEffectType | None,
             builder_param(
                 "Correction effect type required by the FA(3) correction section.",
-                examples=["increase", "decrease"],
+                examples=[
+                    "original_entry_date",
+                    "correction_issue_date",
+                    "other_date",
+                ],
                 format="enum-string",
                 priority="advanced",
             ),
@@ -465,10 +469,17 @@ class CorrectionBuilder[TParent]:
 
         Returns:
             The builder, for chaining.
+
+        Raises:
+            ValueError: If an address line is given without a country code.
         """
         address = None
-        address_code = address_country_code or country_code
-        if address_code is not None and address_line_1 is not None:
+        if address_line_1 is not None:
+            address_code = address_country_code or country_code
+            if address_code is None:
+                raise ValueError(
+                    "address_country_code or country_code is required when providing an address."
+                )
             address = _build_address(
                 country_code=address_code,
                 address_line_1=address_line_1,

@@ -52,7 +52,8 @@ def encrypt_token(token: str, timestamp: str, cert_b64: str) -> str:
     """
     plaintext = f"{token}|{timestamp}".encode()
     public_key = _load_public_key(cert_b64)
-    assert isinstance(public_key, rsa.RSAPublicKey), "Expected RSA public key"
+    if not isinstance(public_key, rsa.RSAPublicKey):
+        raise KSeFEncryptionError("Expected RSA public key")
     try:
         ciphertext = public_key.encrypt(
             plaintext,
@@ -90,7 +91,8 @@ def encrypt_symmetric_key(key: bytes, cert_b64: str) -> bytes:
         KSeFEncryptionError: If the certificate cannot be loaded or encryption fails.
     """
     public_key = _load_public_key(cert_b64)
-    assert isinstance(public_key, rsa.RSAPublicKey), "Expected RSA public key"
+    if not isinstance(public_key, rsa.RSAPublicKey):
+        raise KSeFEncryptionError("Expected RSA public key")
     try:
         ciphertext = public_key.encrypt(
             key,

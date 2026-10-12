@@ -9,6 +9,7 @@ from pathlib import Path, PurePosixPath
 from typing import cast, final
 
 from ksef2._core import exceptions
+from ksef2._core.packages import check_entry_size, read_entry, write_entry
 from ksef2._domain.models.invoices import InvoiceMetadata, InvoicePackage
 from ksef2._infra.mappers.invoices import from_spec
 from ksef2._infra.schema.api import spec
@@ -70,7 +71,8 @@ class ExportedInvoices:
             The parsed ``invoices`` list of ``_metadata.json``, or ``None`` if the package has no such file.
 
         Raises:
-            KSeFValidationError: If ``_metadata.json`` is not valid metadata.
+            KSeFValidationError: If ``_metadata.json`` is not valid metadata, or
+                decompresses past the 64 MiB entry limit.
             zipfile.BadZipFile: If the archive is not a valid ZIP file.
         """
         if not self._metadata_loaded:
@@ -86,6 +88,8 @@ class ExportedInvoices:
 
         Raises:
             zipfile.BadZipFile: If the archive is not a valid ZIP file.
+            KSeFValidationError: If an entry decompresses past the 64 MiB
+                entry limit.
         """
         if not self._archive:
             return
@@ -96,14 +100,15 @@ class ExportedInvoices:
                     continue
                 if name.name.startswith("_"):
                     continue
-                yield name.stem, archive.read(info)
+                yield name.stem, read_entry(archive, info)
 
     def save(self, directory: Path | str) -> list[Path]:
         """Extract the package into a directory.
 
-        Every entry path is validated first, and nothing is written if one is
-        unsafe: absolute paths, ``..`` segments, backslashes, drive letters and NUL
-        bytes are refused.
+        Every entry is checked before anything is written: the path has to be
+        safe (absolute paths, ``..`` segments, backslashes, drive letters and NUL
+        bytes are refused) and the entry has to fit the 64 MiB entry limit, so a
+        package built to fill the caller's disk does not reach it.
 
         Args:
             directory: Directory to extract into; created if missing.
@@ -114,6 +119,8 @@ class ExportedInvoices:
         Raises:
             ValueError: If an archive entry path would escape ``directory``.
             zipfile.BadZipFile: If the archive is not a valid ZIP file.
+            KSeFValidationError: If an entry is larger than the 64 MiB entry
+                limit.
             OSError: If a file or directory cannot be written.
         """
         root = Path(directory)
@@ -128,6 +135,7 @@ class ExportedInvoices:
                 target = root.joinpath(*PurePosixPath(info.filename).parts)
                 if not target.resolve().is_relative_to(resolved_root):
                     raise ValueError(f"Unsafe archive entry path: {info.filename!r}")
+                check_entry_size(info)
                 targets.append((info, target))
 
             root.mkdir(parents=True, exist_ok=True)
@@ -137,7 +145,7 @@ class ExportedInvoices:
                     target.mkdir(parents=True, exist_ok=True)
                     continue
                 target.parent.mkdir(parents=True, exist_ok=True)
-                _ = target.write_bytes(archive.read(info))
+                write_entry(archive, info, target)
                 written.append(target)
         return written
 
@@ -153,7 +161,7 @@ class ExportedInvoices:
                     continue
                 try:
                     payload = cast(
-                        dict[str, list[object]], json.loads(archive.read(info))
+                        dict[str, list[object]], json.loads(read_entry(archive, info))
                     )
                     return [
                         from_spec(spec.InvoiceMetadata.model_validate(item))

@@ -59,6 +59,11 @@ class CorrectionBodyBuilder[TParent](
             if existing_state and existing_state.transaction_conditions is not None
             else None
         )
+        self._settlement = (
+            existing_state.settlement.model_copy(deep=True)
+            if existing_state and existing_state.settlement is not None
+            else None
+        )
         self._correction = (
             existing_state.correction.model_copy(deep=True)
             if existing_state and existing_state.correction is not None
@@ -78,6 +83,7 @@ class CorrectionBodyBuilder[TParent](
             payment=self._payment,
             annotations=self._annotations,
             transaction_conditions=self._transaction_conditions,
+            settlement=self._settlement,
             correction=self._correction,
         )
 
@@ -101,6 +107,9 @@ class CorrectionBodyBuilder[TParent](
             body.transaction_conditions.model_copy(deep=True)
             if body.transaction_conditions
             else None
+        )
+        self._settlement = (
+            body.settlement.model_copy(deep=True) if body.settlement else None
         )
         self._correction = (
             body.correction.model_copy(deep=True) if body.correction else None

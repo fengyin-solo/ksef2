@@ -27,6 +27,9 @@ class SendInvoiceRequest(BaseSupp):
     encryptedInvoiceSize: Annotated[int, Field(ge=1)]
     encryptedInvoiceContent: str
     offlineMode: bool = False
+    hashOfCorrectedInvoice: Annotated[
+        str | None, Field(max_length=44, min_length=44)
+    ] = None
 
 
 class SessionInvoiceStatusResponse(BaseSupp):

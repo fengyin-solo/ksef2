@@ -19,6 +19,7 @@ from ksef2._domain.models.fa3.body import (
     InvoiceRow,
     VatRate,
 )
+from ksef2._services.builders.fa3.sub.correction import CorrectionBuilder
 
 
 def make_polish_address() -> InvoiceAddress:
@@ -59,6 +60,31 @@ def test_corrected_buyer_entity_rejects_no_id_with_identifiers() -> None:
             tax_id="1234567890",
             name="Buyer Sp. z o.o.",
         )
+
+
+def test_corrected_buyer_builder_requires_a_country_code_for_its_address() -> None:
+    builder: CorrectionBuilder[None] = CorrectionBuilder(
+        parent=None, on_done=lambda _: None
+    )
+
+    with pytest.raises(
+        ValueError, match="address_country_code or country_code is required"
+    ):
+        builder.add_corrected_buyer(
+            name="Buyer", no_id=True, address_line_1="Main Street 1"
+        )
+
+    builder.add_corrected_buyer(
+        name="Buyer",
+        no_id=True,
+        address_country_code="pl",
+        address_line_1="Main Street 1",
+    )
+
+    address = builder.build().corrected_buyers[0].address
+    assert address is not None
+    assert address.country_code == "PL"
+    assert address.address_line_1 == "Main Street 1"
 
 
 def test_invoice_body_rejects_correction_parties_on_non_correcting_invoice() -> None:

@@ -1,7 +1,7 @@
 """Reusable pagination and filter parameter models."""
 
 from datetime import datetime
-from typing import Self
+from typing import Self, cast
 
 from pydantic import BaseModel, Field, field_serializer, field_validator
 
@@ -193,10 +193,13 @@ class TokenListParams(KSeFBaseParams[ListTokensQueryParams], PageSizeMixin):
         if value is None:
             return None
         if isinstance(value, list):
-            return [
-                normalize_token_status(status) if isinstance(status, str) else status
-                for status in value
-            ]
+            statuses: list[TokenStatus] = []
+            for status in cast(list[object], value):
+                if isinstance(status, str):
+                    statuses.append(normalize_token_status(status))
+                else:
+                    statuses.append(cast(TokenStatus, status))
+            return statuses
         return value
 
     @field_validator("author_identifier_type", mode="before")

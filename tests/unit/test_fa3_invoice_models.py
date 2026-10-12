@@ -188,6 +188,7 @@ def test_second_reduced_bucket_covers_four_and_three_percent_standard_lines() ->
     for vat_rate, expected_vat in ((VatRate.VAT_4, "4.00"), (VatRate.VAT_3, "3.00")):
         body = KsefInvoiceBody(
             issue_date=date(2026, 10, 12),
+            issue_place=None,
             invoice_number="FV/1/2026",
             rows=[InvoiceRow(net_amount=Decimal("100.00"), vat_rate=vat_rate)],
         )
@@ -202,6 +203,7 @@ def test_second_reduced_bucket_covers_four_and_three_percent_standard_lines() ->
 
     taxi_body = KsefInvoiceBody(
         issue_date=date(2026, 10, 12),
+        issue_place=None,
         invoice_number="FV/1/2026",
         rows=[
             InvoiceRow(

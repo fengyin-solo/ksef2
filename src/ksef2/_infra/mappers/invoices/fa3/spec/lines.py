@@ -119,7 +119,7 @@ def _(
         vat_rate_xii=schema.p_12_xii,
     )
 
-    return InvoiceRow(
+    row = InvoiceRow(
         name=schema.p_7,
         quantity=_to_decimal(schema.p_8_b),
         unit_of_measure=schema.p_8_a or "szt",
@@ -148,6 +148,15 @@ def _(
         currency_exchange_rate=_to_decimal(schema.kurs_waluty),
         before_correction=schema.stan_przed in {Twybor1.VALUE_1, Twybor12.VALUE_1},
     )
+
+    # Row validation derives amounts the source omitted, so forget the ones this XML
+    # never carried. Otherwise parsing and serializing writes back line VAT and gross
+    # amounts the document totals were not built from.
+    if schema.p_11_a is None:
+        row.model_fields_set.discard("gross_amount")
+    if schema.p_11_vat is None:
+        row.model_fields_set.discard("vat_amount")
+    return row
 
 
 @_from_spec.register

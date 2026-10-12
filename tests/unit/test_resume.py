@@ -9,7 +9,6 @@ from polyfactory import BaseFactory
 from pydantic import SecretStr
 
 from ksef2 import AsyncClient, Client
-from ksef2._core.crypto import encrypt_invoice
 from ksef2._core.exceptions import KSeFExportFailedError
 from ksef2._core.routes import SessionRoutes
 from ksef2._domain.models.auth import AuthenticationResumeState, AuthTokens
@@ -23,18 +22,21 @@ from ksef2._domain.models.session import FormSchema, OnlineSessionResumeState
 from ksef2._infra.schema.api import spec
 from tests.unit.flavors import Flavor
 from tests.unit.payloads import (
+    EXPORT_IV,
+    EXPORT_KEY,
     INVOICE_REF,
     KSEF_1,
     KSEF_2,
     archive,
+    export_part,
     invoice_status,
     package_status,
     session_status,
 )
 from tests.unit.test_invoice_workflows_helpers import filters
 
-KEY = b"k" * 32
-IV = b"v" * 16
+KEY = EXPORT_KEY
+IV = EXPORT_IV
 
 
 def _auth(flavor: Flavor, tokens: BaseFactory[AuthTokens]) -> Any:
@@ -336,9 +338,11 @@ class TestExportResume:
         # A fresh service, as after a process restart.
         restarted = flavor.invoices_service()
         resumed = flavor.run(restarted.export(state=saved))
-        flavor.transport.enqueue(package_status(inv_export_status_resp, 200, 2))
-        flavor.transport.enqueue(content=encrypt_invoice(first, key=KEY, iv=IV))
-        flavor.transport.enqueue(content=encrypt_invoice(second, key=KEY, iv=IV))
+        flavor.transport.enqueue(
+            package_status(inv_export_status_resp, 200, plaintext_parts=[first, second])
+        )
+        flavor.transport.enqueue(content=export_part(first))
+        flavor.transport.enqueue(content=export_part(second))
 
         exported = flavor.run(resumed.wait(timeout=1.0, poll_interval=0.0))
 

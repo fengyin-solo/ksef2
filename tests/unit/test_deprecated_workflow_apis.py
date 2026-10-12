@@ -35,10 +35,13 @@ from ksef2._infra.schema.api import spec
 from tests.unit.flavors import Flavor
 from tests.unit.helpers import VALID_PUBLIC_KEY_ID
 from tests.unit.payloads import (
+    EXPORT_IV,
+    EXPORT_KEY,
     INVOICE_REF,
     KSEF_NUMBER,
     UPO_REFS,
     archive,
+    export_part,
     invoice_status,
     metadata_page,
     package_status,
@@ -46,8 +49,8 @@ from tests.unit.payloads import (
 )
 
 SUFFIX = "will be removed no earlier than ksef2 2.0.0; use `{new}` instead."
-KEY = b"k" * 32
-IV = b"v" * 16
+KEY = EXPORT_KEY
+IV = EXPORT_IV
 
 
 def _once(flavor: Flavor, call: Callable[[], Any], old: str, new: str) -> Any:
@@ -605,7 +608,9 @@ class TestInvoicesServiceAliases:
     def _package(
         self, factory: BaseFactory[spec.InvoiceExportStatusResponse], parts: int
     ) -> InvoicePackage:
-        raw = package_status(factory, 200, parts)["package"]
+        raw = package_status(factory, 200, plaintext_parts=[b"part-1"] * parts)[
+            "package"
+        ]
         return InvoicePackage.model_validate(
             {
                 "invoice_count": raw["invoiceCount"],
@@ -617,10 +622,10 @@ class TestInvoicesServiceAliases:
                         "part_name": part["partName"],
                         "method": "GET",
                         "url": f"https://example.com/export/part-{part['ordinalNumber']}",
-                        "part_size": 1,
-                        "part_hash": "x",
-                        "encrypted_part_size": 1,
-                        "encrypted_part_hash": "x",
+                        "part_size": part["partSize"],
+                        "part_hash": part["partHash"],
+                        "encrypted_part_size": part["encryptedPartSize"],
+                        "encrypted_part_hash": part["encryptedPartHash"],
                         "expiration_date": datetime(2030, 1, 1, tzinfo=UTC),
                     }
                     for part in raw["parts"]
@@ -633,11 +638,9 @@ class TestInvoicesServiceAliases:
         flavor: Flavor,
         inv_export_status_resp: BaseFactory[spec.InvoiceExportStatusResponse],
     ) -> None:
-        from ksef2._core.crypto import encrypt_invoice
-
         service = flavor.invoices_service()
         handle = ExportHandle(reference_number="export-ref", aes_key=KEY, iv=IV)
-        flavor.transport.enqueue(content=encrypt_invoice(b"part-1", key=KEY, iv=IV))
+        flavor.transport.enqueue(content=export_part(b"part-1"))
 
         parts = _once(
             flavor,
@@ -656,11 +659,9 @@ class TestInvoicesServiceAliases:
         inv_export_status_resp: BaseFactory[spec.InvoiceExportStatusResponse],
         tmp_path: Path,
     ) -> None:
-        from ksef2._core.crypto import encrypt_invoice
-
         service = flavor.invoices_service()
         handle = ExportHandle(reference_number="export-ref", aes_key=KEY, iv=IV)
-        flavor.transport.enqueue(content=encrypt_invoice(b"part-1", key=KEY, iv=IV))
+        flavor.transport.enqueue(content=export_part(b"part-1"))
 
         written = _once(
             flavor,
@@ -682,8 +683,6 @@ class TestInvoicesServiceAliases:
     ) -> None:
         from unittest.mock import patch
 
-        from ksef2._core.crypto import encrypt_invoice
-
         service = flavor.invoices_service()
         handle = ExportHandle(reference_number="export-ref", aes_key=KEY, iv=IV)
 
@@ -704,8 +703,10 @@ class TestInvoicesServiceAliases:
                 "schedule_export()",
                 "export()",
             )
-            flavor.transport.enqueue(package_status(inv_export_status_resp, 200, 1))
-            flavor.transport.enqueue(content=encrypt_invoice(archive(), key=KEY, iv=IV))
+            flavor.transport.enqueue(
+                package_status(inv_export_status_resp, 200, plaintext_parts=[archive()])
+            )
+            flavor.transport.enqueue(content=export_part(archive()))
             parts = _once(
                 flavor,
                 lambda: service.export_and_download(

@@ -6,6 +6,7 @@ import httpx
 import pytest
 from polyfactory import BaseFactory
 
+from ksef2._core.crypto import sha256_b64
 from ksef2._core.exceptions import (
     ExceptionCode,
     KSeFApiError,
@@ -48,7 +49,13 @@ def _ready_export_package() -> spec.InvoicePackage:
     )
 
 
-def _invoice_package_with_part_name(part_name: str) -> invoices.InvoicePackage:
+def _invoice_package_with_part_name(
+    part_name: str,
+    *,
+    plaintext: bytes = b"decrypted",
+    encrypted: bytes = b"encrypted",
+) -> invoices.InvoicePackage:
+    """Package with one part whose reported size and hash match the bytes served."""
     return invoices.InvoicePackage.model_validate(
         {
             "invoice_count": 1,
@@ -59,10 +66,10 @@ def _invoice_package_with_part_name(part_name: str) -> invoices.InvoicePackage:
                     "part_name": part_name,
                     "method": "GET",
                     "url": "https://example.com/export/part-1?sig=secret",
-                    "part_size": 64,
-                    "part_hash": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
-                    "encrypted_part_size": 128,
-                    "encrypted_part_hash": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
+                    "part_size": len(plaintext),
+                    "part_hash": sha256_b64(plaintext),
+                    "encrypted_part_size": len(encrypted),
+                    "encrypted_part_hash": sha256_b64(encrypted),
                     "expiration_date": datetime.now(timezone.utc),
                 }
             ],
@@ -198,7 +205,7 @@ class TestInvoicesService:
         tmp_path: Path,
     ) -> None:
         service = _build_service(fake_transport)
-        package = _invoice_package_with_part_name(part_name)
+        package = _invoice_package_with_part_name(part_name, plaintext=b"x")
         handle = invoices.ExportHandle(
             reference_number="ref",
             aes_key=b"0" * 32,

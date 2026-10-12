@@ -189,9 +189,7 @@ def _map_new_transport_supply(
         p_22=Twybor1.VALUE_1,
         p_42_5=Twybor12.VALUE_1
         if new_transport_supply.article_42_5_required
-        else Twybor12.VALUE_2
-        if new_transport_supply.article_42_5_required is not None
-        else None,
+        else Twybor12.VALUE_2,
         nowy_srodek_transportu=items,
     )
 

@@ -31,7 +31,11 @@ from ksef2._domain.models.fa3.body.transaction import (
     TransactionConditions,
     TransactionTransport,
 )
+from ksef2._infra.mappers.invoices.fa3.domain.invoice import (
+    _map_new_transport_supply,
+)
 from ksef2._infra.mappers.invoices.fa3.domain.invoice import to_spec as invoice_to_spec
+from xsdata.formats.dataclass.serializers import XmlSerializer
 from ksef2._infra.schema.fa3.models.elementarne_typy_danych_v10_0_e import (
     Twybor1,
     Twybor12,
@@ -370,6 +374,18 @@ def test_invoice_to_spec_maps_foreign_currency_vat_and_annotations() -> None:
         output.fa.adnotacje.nowe_srodki_transportu.nowy_srodek_transportu[0].p_22_b1
         == "YV2RT40A1KA123456"
     )
+
+
+def test_new_transport_supply_maps_required_p_42_5_by_default() -> None:
+    """The FA(3) XSD requires P_42_5 whenever new means of transport are supplied."""
+    supply = NewTransportSupply(
+        items=[NewTransportMeansItem(available_from=date(2026, 1, 1), row_number=1)]
+    )
+
+    mapped = _map_new_transport_supply(supply)
+
+    assert mapped.p_42_5 is Twybor12.VALUE_2
+    assert ">2</ns0:P_42_5>" in XmlSerializer().render(mapped)
 
 
 def test_invoice_to_spec_maps_advance_before_correction_and_partial_payments() -> None:

@@ -42,6 +42,18 @@ class TestLimitRequestMappers:
         assert request.enrollment is not None
         assert result.enrollment.maxEnrollments == request.enrollment.max_enrollments
 
+    def test_to_spec_subject_identifier_type(self) -> None:
+        assert (
+            to_spec(SubjectLimits()).model_dump(mode="json")["subjectIdentifierType"]
+            == "Nip"
+        )
+        for identifier_type in ("Nip", "Pesel", "Fingerprint"):
+            request = SubjectLimits(subject_identifier_type=identifier_type)
+            assert (
+                to_spec(request).model_dump(mode="json")["subjectIdentifierType"]
+                == identifier_type
+            )
+
     def test_to_spec_api_rate_limits(
         self,
         domain_limit_rate: BaseFactory[ApiRateLimits],

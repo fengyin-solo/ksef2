@@ -110,6 +110,7 @@ def _(
         invoices=[
             CollectiveIdentifierInvoiceDetails(
                 ksef_number=item.ksefNumber,
+                collective_identifier_number=item.collectiveIdentifierNumber,
                 payment=(
                     CollectiveIdentifierInvoicePayment(
                         amount=item.payment.amount,

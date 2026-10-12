@@ -36,7 +36,11 @@ from ksef2._domain.models.invoices import (
 )
 from ksef2._domain.models.pagination import InvoiceMetadataParams
 from ksef2._logging import get_logger
-from ksef2._services.export_parts import safe_part_filename
+from ksef2._services.export_parts import (
+    safe_part_filename,
+    verify_decrypted_part,
+    verify_encrypted_part,
+)
 
 logger = get_logger(__name__)
 
@@ -143,7 +147,8 @@ class AsyncExportJob(
         Raises:
             KSeFExportFailedError: If KSeF reports that the export failed, was cancelled or expired.
             KSeFExportTimeoutError: If polling exceeds ``timeout``.
-            KSeFEncryptionError: If a downloaded package part cannot be decrypted.
+            KSeFEncryptionError: If a downloaded package part cannot be decrypted or
+                its size or hash does not match what KSeF reported for it.
             KSeFExternalTransferError: If external storage rejects a part download or
                 its outcome cannot be determined.
         """
@@ -631,7 +636,8 @@ class AsyncInvoicesService:
             The paths of the written part files.
 
         Raises:
-            KSeFEncryptionError: If a downloaded package part cannot be decrypted.
+            KSeFEncryptionError: If a downloaded package part cannot be decrypted or
+                its size or hash does not match what KSeF reported for it.
             ValueError: If a package part name is unsafe for local filesystem output.
             OSError: If the target directory or output file cannot be written.
             KSeFExternalTransferError: If external storage rejects a part download or
@@ -692,7 +698,8 @@ class AsyncInvoicesService:
             The decrypted package parts, in order.
 
         Raises:
-            KSeFEncryptionError: If a downloaded package part cannot be decrypted.
+            KSeFEncryptionError: If a downloaded package part cannot be decrypted or
+                its size or hash does not match what KSeF reported for it.
             KSeFExternalTransferError: If external storage rejects a part download or
                 its outcome cannot be determined.
         """
@@ -721,12 +728,15 @@ class AsyncInvoicesService:
             reference_number=export.reference_number,
             part_ordinal=part.ordinal_number,
         )
-        return await asyncio.to_thread(
+        verify_encrypted_part(encrypted_part, part=part)
+        decrypted_part = await asyncio.to_thread(
             decrypt_aes_cbc,
             encrypted_part,
             key=export.aes_key,
             iv=export.iv,
         )
+        verify_decrypted_part(decrypted_part, part=part)
+        return decrypted_part
 
     @deprecated(
         "`wait_for_invoices()` is deprecated and will be removed no earlier than ksef2 2.0.0; "

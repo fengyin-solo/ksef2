@@ -8,10 +8,10 @@ import httpx
 import pytest
 from polyfactory import BaseFactory
 
-from ksef2._core.crypto import encrypt_invoice
 from ksef2._core.exceptions import (
     ExceptionCode,
     KSeFApiError,
+    KSeFEncryptionError,
     KSeFExportFailedError,
     KSeFExportTimeoutError,
     KSeFInvoiceDownloadTimeoutError,
@@ -22,15 +22,18 @@ from ksef2._domain.models.pagination import InvoiceMetadataParams
 from ksef2._infra.schema.api import spec
 from tests.unit.flavors import Flavor
 from tests.unit.payloads import (
+    EXPORT_IV,
+    EXPORT_KEY,
     KSEF_1,
     KSEF_2,
     archive,
+    export_part,
     metadata_page,
     package_status,
 )
 
-KEY = b"k" * 32
-IV = b"v" * 16
+KEY = EXPORT_KEY
+IV = EXPORT_IV
 
 
 def _filters() -> InvoicesFilter:
@@ -237,9 +240,11 @@ class TestExport:
         # KSeF encrypts each part on its own; the SDK decrypts and then joins them.
         first, second = payload[: len(payload) // 2], payload[len(payload) // 2 :]
         flavor.transport.enqueue(package_status(inv_export_status_resp, 100))
-        flavor.transport.enqueue(package_status(inv_export_status_resp, 200, 2))
-        flavor.transport.enqueue(content=encrypt_invoice(first, key=KEY, iv=IV))
-        flavor.transport.enqueue(content=encrypt_invoice(second, key=KEY, iv=IV))
+        flavor.transport.enqueue(
+            package_status(inv_export_status_resp, 200, plaintext_parts=[first, second])
+        )
+        flavor.transport.enqueue(content=export_part(first))
+        flavor.transport.enqueue(content=export_part(second))
 
         exported = flavor.run(job.wait(timeout=1.0, poll_interval=0.0))
 
@@ -249,6 +254,33 @@ class TestExport:
         assert exported.package is not None
         assert exported.package.invoice_count == 2
         assert job.reference_number == "export-ref"
+
+    def test_wait_raises_when_a_part_does_not_match_ksef_metadata(
+        self,
+        flavor: Flavor,
+        inv_export_status_resp: BaseFactory[spec.InvoiceExportStatusResponse],
+    ) -> None:
+        job = _export_job(flavor)
+        plaintext = archive()
+        encrypted = export_part(plaintext)
+        corruptions = [
+            ("partSize", len(plaintext) + 1, "wrong size"),
+            ("partHash", "A" * 43 + "=", "wrong hash"),
+            ("encryptedPartSize", len(encrypted) + 1, "wrong size"),
+            ("encryptedPartHash", "B" * 43 + "=", "wrong hash"),
+        ]
+
+        for field, value, reason in corruptions:
+            payload = package_status(
+                inv_export_status_resp, 200, plaintext_parts=[plaintext]
+            )
+            payload["package"]["parts"][0][field] = value
+            flavor.transport.clear()
+            flavor.transport.enqueue(payload)
+            flavor.transport.enqueue(content=encrypted)
+
+            with pytest.raises(KSeFEncryptionError, match=reason):
+                flavor.run(job.wait(timeout=1.0, poll_interval=0.0))
 
     def test_wait_raises_when_ksef_fails_the_export(
         self,

@@ -1,6 +1,8 @@
 from datetime import date
 from decimal import Decimal
 
+import pytest
+
 from ksef2._domain.models.fa3.body.payment import (
     BankAccount,
     InvoicePayment,
@@ -86,6 +88,13 @@ def test_payment_to_spec_maps_nested_payment_data() -> None:
         == "https://pay.example.com/invoice?IPKSeF=123ABCDEFGHIJ"
     )
     assert output.ipkse_f == "123ABCDEFGHIJ"
+
+
+def test_payment_to_spec_rejects_discount_terms_without_amount() -> None:
+    payment = InvoicePayment(discount_terms="Pay within 7 days")
+
+    with pytest.raises(ValueError, match="discount_terms and discount_amount"):
+        to_spec(payment)
 
 
 def test_payment_from_spec_restores_domain_model() -> None:

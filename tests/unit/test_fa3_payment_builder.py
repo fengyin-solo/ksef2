@@ -54,3 +54,26 @@ def test_partial_payment_marker_and_entries_are_required_together() -> None:
 
     assert invoice_payment.partial_payment_status == "partial"
     assert invoice_payment.partial_payments[0].amount == Decimal("10.00")
+
+
+def test_build_rejects_mutually_exclusive_statuses_and_forms() -> None:
+    with pytest.raises(ValueError, match="paid and partial_payment_status"):
+        (
+            started_payment_builder()
+            .already_paid(date(2026, 4, 15))
+            .partial_payment_status("partial")
+            .add_partial_payment(
+                amount=Decimal("1.00"),
+                payment_date=date(2026, 4, 15),
+            )
+            .build()
+        )
+
+    with pytest.raises(ValueError, match="payment_form and other_payment_form"):
+        (
+            started_payment_builder()
+            .via("cash")
+            .other_form()
+            .description("custom")
+            .build()
+        )

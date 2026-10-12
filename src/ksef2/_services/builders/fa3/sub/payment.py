@@ -710,8 +710,11 @@ class PaymentBuilder[TParent]:
             The built ``InvoicePayment``.
 
         Raises:
-            ValueError: If a custom payment form is enabled without a description, or
-                partial-payment entries and the partial-payment marker are not set together.
+            ValueError: If the paid marker is combined with a partial payment
+                marker, if a payment form is combined with the other-form marker,
+                if a custom payment form is enabled without a description, or
+                partial-payment entries and the partial-payment marker are not set
+                together.
         """
         self._validate_state()
         return InvoicePayment(**self._state)
@@ -726,9 +729,11 @@ class PaymentBuilder[TParent]:
             The parent builder.
 
         Raises:
-            ValueError: If payment details are empty, a custom payment form has
-                no description, or partial-payment entries and the partial-payment
-                marker are not set together.
+            ValueError: If payment details are empty, if the paid marker is combined
+                with a partial payment marker, if a payment form is combined with the
+                other-form marker, if a custom payment form has no description, or
+                partial-payment entries and the partial-payment marker are not set
+                together.
         """
         if self._is_empty():
             raise ValueError(
@@ -747,6 +752,21 @@ class PaymentBuilder[TParent]:
             and self._default_payment_date is not None
         ):
             self._state["payment_date"] = self._default_payment_date()
+
+        if self._state["paid"] and self._state["partial_payment_status"] is not None:
+            raise ValueError(
+                "paid and partial_payment_status are mutually exclusive. Use either "
+                "already_paid() or partial_payment_status(), not both."
+            )
+
+        if (
+            self._state["payment_form"] is not None
+            and self._state["other_payment_form"]
+        ):
+            raise ValueError(
+                "payment_form and other_payment_form are mutually exclusive. Use "
+                "either via() or other_form(), not both."
+            )
 
         if self._state["other_payment_form"] and not self._state["payment_description"]:
             raise ValueError(

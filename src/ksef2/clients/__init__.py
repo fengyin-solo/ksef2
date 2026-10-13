@@ -52,10 +52,10 @@ from ksef2._clients.tokens import GeneratedToken
 from ksef2._clients.tokens import TokensClient
 from ksef2._domain.models.session import deprecation_message
 from ksef2._services.async_batch import AsyncBatchService
-from ksef2._services.async_invoices import AsyncExportJob
+from ksef2._services.async_invoices import AsyncExportJob, AsyncInvoiceSearchPager
 from ksef2._services.async_invoices import AsyncInvoicesService
 from ksef2._services.batch import BatchService
-from ksef2._services.invoices import ExportJob
+from ksef2._services.invoices import ExportJob, InvoiceSearchPager
 from ksef2._services.invoices import InvoicesService
 
 
@@ -85,12 +85,14 @@ def __getattr__(name: str) -> object:
 
 __all__ = [
     "AsyncExportJob",
+    "AsyncInvoiceSearchPager",
     "AsyncGeneratedToken",
     "AsyncInvoiceSubmission",
     "AsyncOperationHandle",
     "AsyncPager",
     "AsyncPermissionOperation",
     "ExportJob",
+    "InvoiceSearchPager",
     "ExportedInvoices",
     "GeneratedToken",
     "InvoiceSubmission",

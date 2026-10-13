@@ -473,7 +473,7 @@ class TestInvoicesServiceAliases:
             flavor,
             lambda: service.query_metadata(filters=_filters()),
             "query_metadata()",
-            "search()",
+            "search().first_response()",
         )
 
         assert len(page.invoices) == 2
@@ -492,7 +492,7 @@ class TestInvoicesServiceAliases:
             flavor,
             lambda: service.query_metadata_pages(filters=_filters()),
             "query_metadata_pages()",
-            "search()",
+            "search().responses()",
         )
 
         assert [len(page.invoices) for page in pages] == [2]

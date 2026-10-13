@@ -392,6 +392,9 @@ class PackagePart(KSeFBaseModel):
 class InvoicePackage(KSeFBaseModel):
     """Package metadata returned when an invoice export is ready."""
 
+    compression_type: CompressionType = "zip"
+    """Archive compression reported by KSeF; ZIP for older callers."""
+
     invoice_count: int
     """Number of invoices in the package."""
     size: int

@@ -133,6 +133,7 @@ class InvoicePackagePart(BaseSupp):
 
 
 class InvoicePackage(BaseSupp):
+    compressionType: CompressionType = CompressionType.Zip
     invoiceCount: Annotated[int, Field(ge=0, le=10000)]
     size: Annotated[int, Field(ge=0)]
     parts: list[InvoicePackagePart]

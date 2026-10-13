@@ -10,6 +10,12 @@
   `auth.invoice_sessions.download_upo()`, selecting it by invoice reference,
   KSeF number or session UPO reference. No open session is needed, and a UPO
   KSeF has not issued raises `KSeFNotReadyError` (#172).
+- Resume a failed batch upload with
+  `auth.batch_session(state=..., prepared_batch=...)`. `KSeFBatchUploadError` keeps
+  the exact prepared payload and returns it from `recovery_prepared_batch()`, so a
+  batch prepared inside `submit(invoices)` recovers too. A payload that no longer
+  matches the session is rejected before anything is uploaded, and part bytes plus
+  encryption material stay out of repr and model dumps (#256).
 
 ### Deprecated
 

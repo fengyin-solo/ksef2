@@ -1,0 +1,37 @@
+name: Runtime checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  runtime-checks:
+    runs-on: ubuntu-latest
+    name: runtime-checks (${{ matrix.python-version }})
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.14"]
+    env:
+      UV_PYTHON: ${{ matrix.python-version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+
+      - uses: extractions/setup-just@v2
+
+      - name: Install Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: just sync
+
+      - name: Unit tests with beartype runtime checks
+        run: just test-runtime-checks
+
+      - name: Sync/async parity with runtime checks off and on
+        run: just test-parity

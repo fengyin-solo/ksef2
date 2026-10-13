@@ -25,6 +25,12 @@ test-runtime-checks:
     KSEF2_RUNTIME_CHECKS=1 uv run --extra runtime-checks python -m pytest tests/unit/ -q
 
 
+# Sync/async parity must hold with runtime type checking both off and on
+test-parity:
+    uv run python -m pytest tests/unit/test_sync_async_parity.py -q
+    KSEF2_RUNTIME_CHECKS=1 uv run --extra runtime-checks python -m pytest tests/unit/test_sync_async_parity.py -q
+
+
 test-fa3-contracts:
     uv run python -m pytest tests/integration/builders/fa3/ -m integration -q
 

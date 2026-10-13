@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from ksef2._clients.profiles import (
+from ksef2.profiles import (
     CONFIG_ENV_VAR,
     PROFILE_ENV_VAR,
     CliProfileConfig,
@@ -151,6 +151,61 @@ def test_profile_store_saves_cli_compatible_token_profile(tmp_path) -> None:
     assert loaded_profile.max_poll_attempts == 12
     assert stat.S_IMODE(config_path.stat().st_mode) == 0o600
     assert 'active_profile = "prod-token"' in config_path.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "folder",
+    [
+        "certificates",
+        "zażółć",
+        "📁",
+        'zażółć📁"\\' + "".join(map(chr, range(32))) + "\x7f",
+    ],
+    ids=["ascii", "polish", "non-bmp", "escaping"],
+)
+def test_profile_store_round_trips_unicode_and_escaped_paths(
+    tmp_path: Path, folder: str
+) -> None:
+    store = ProfileStore(tmp_path / "config.toml")
+    existing = Profile(
+        environment="test",
+        nip="1111111111",
+        auth=TokenProfileAuth(token_env="KSEF2_TOKEN"),
+    )
+    _ = store.save("existing", existing)
+    cert = Path("/tmp") / folder / "company.pem"
+    key = Path("/tmp") / folder / "company.key"
+    p12 = Path("/tmp") / folder / "company.p12"
+    pem = Profile(
+        environment="test",
+        nip="5261040828",
+        auth=XadesPemProfileAuth(cert=cert, key=key),
+    )
+    _ = store.save("company", pem, activate=False)
+
+    loaded = store.load()
+    assert loaded.active_profile == "existing"
+    assert loaded.profiles["existing"].nip == "1111111111"
+    assert loaded.profiles["existing"].auth.token_env == "KSEF2_TOKEN"
+    assert store.get("company").auth.cert == cert
+    assert store.get("company").auth.key == key
+
+    pkcs12 = Profile(
+        environment="test",
+        nip="5261040828",
+        auth=XadesP12ProfileAuth(p12=p12),
+    )
+    name = f"company-{folder}"
+    _ = store.save(name, pkcs12)
+
+    loaded = store.load()
+    assert loaded.active_profile == name
+    assert loaded.profiles[name].auth.p12 == p12
+    assert loaded.profiles["company"].auth.cert == cert
+    assert loaded.profiles["company"].auth.key == key
+    assert loaded.profiles["existing"].nip == "1111111111"
+    assert loaded.profiles["existing"].auth.token_env == "KSEF2_TOKEN"
+    assert stat.S_IMODE(store.path.stat().st_mode) == 0o600
 
 
 def test_profile_store_supports_all_public_auth_shapes(tmp_path) -> None:

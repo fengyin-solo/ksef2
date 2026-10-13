@@ -709,7 +709,7 @@ def _toml_key(value: str) -> str:
 
 
 def _toml_string(value: str) -> str:
-    return json.dumps(value)
+    return json.dumps(value, ensure_ascii=False).replace("\x7f", "\\u007f")
 
 
 def _toml_number(value: float) -> str:

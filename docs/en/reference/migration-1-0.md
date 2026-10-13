@@ -119,9 +119,10 @@ archive = exported.archive
 ```
 
 `query_metadata()` returns a `QueryInvoicesMetadataResponse`, while `first_page()` returns
-its list of invoices. Paging flags stay on the deprecated page response if your
-application still needs them. Search is lazy and requests data when consumed.
-In async code, use `async for`, await `first_page()` and `download()`, and use
+its list of invoices. Use `pager.first_response()` for the complete typed response,
+including pagination flags and `permanent_storage_hwm_date`, or `pager.responses()`
+for all responses. Search is lazy and requests data when consumed.
+In async code, use `async for`, await `first_page()`, `first_response()` and `download()`, and use
 `job = await auth.invoices.export(filters=filters)` followed by
 `exported = await job.wait()`.
 

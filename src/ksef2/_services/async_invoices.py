@@ -151,6 +151,70 @@ class AsyncExportJob(
 
 
 @final
+class AsyncInvoiceSearchPager(AsyncPager[InvoiceMetadata]):
+    """Invoice search with item lists and complete metadata responses.
+
+    Iteration, ``pages()`` and ``first_page()`` retain the generic pager's item
+    contracts. Use ``responses()`` or ``first_response()`` to read pagination
+    flags and ``permanent_storage_hwm_date``, including on empty pages. Each
+    consumption starts a fresh query; no responses are cached.
+    """
+
+    def __init__(
+        self,
+        client: AsyncInvoicesClient,
+        filters: InvoicesFilter,
+        params: InvoiceMetadataParams | None = None,
+    ) -> None:
+        """Create a lazy search over the invoice metadata API.
+
+        Args:
+            client: Invoice API client used to fetch responses.
+            filters: Criteria selecting the invoices.
+            params: Page size, initial page offset and sort order.
+        """
+        self._client = client
+        self._filters = filters
+        self._params = params
+        super().__init__(
+            self._invoice_pages,
+            timeout_error=lambda timeout: exceptions.KSeFInvoiceQueryTimeoutError(
+                timeout=timeout
+            ),
+        )
+
+    async def _invoice_pages(self) -> AsyncGenerator[list[InvoiceMetadata], None]:
+        async for response in self.responses():
+            yield list(response.invoices)
+
+    def responses(self) -> AsyncIterator[QueryInvoicesMetadataResponse]:
+        """Fetch complete responses, following page and truncation boundaries.
+
+        Returns:
+            A fresh iterator over typed responses, including empty pages and
+            the server's pagination flags and permanent-storage high-water mark.
+
+        Raises:
+            KSeFMetadataPaginationError: If KSeF returns inconsistent pagination
+                boundaries while paging.
+        """
+        return self._client.query_metadata_pages(
+            filters=self._filters, params=self._params
+        )
+
+    async def first_response(self) -> QueryInvoicesMetadataResponse:
+        """Fetch one complete response at the configured initial page offset.
+
+        Returns:
+            The typed response with invoices, pagination flags and the optional
+            permanent-storage high-water mark. Makes exactly one metadata request.
+        """
+        return await self._client.query_metadata(
+            filters=self._filters, params=self._params
+        )
+
+
+@final
 class AsyncInvoicesService:
     """Async invoice workflows with encryption, polling, and export helpers.
 
@@ -199,13 +263,14 @@ class AsyncInvoicesService:
         self,
         filters: InvoicesFilter,
         params: InvoiceMetadataParams | None = None,
-    ) -> AsyncPager[InvoiceMetadata]:
+    ) -> AsyncInvoiceSearchPager:
         """Search invoice metadata, following KSeF page and truncation mechanics.
 
         Nothing is requested until the result is consumed. Iterate it for every
         matching invoice, call ``pages()`` for page-sized lists, ``first_page()``
         for one request only, or ``wait()`` to poll until KSeF has indexed at
-        least one matching invoice.
+        least one matching invoice. Use ``responses()`` or ``first_response()``
+        for typed responses with pagination flags and the storage high-water mark.
 
         Args:
             filters: Criteria selecting the invoices.
@@ -227,20 +292,7 @@ class AsyncInvoicesService:
                 print(invoice.ksef_number, invoice.gross_amount)
             ```
         """
-
-        async def _pages() -> AsyncGenerator[list[InvoiceMetadata], None]:
-            async for page in self._client.query_metadata_pages(
-                filters=filters,
-                params=params,
-            ):
-                yield list(page.invoices)
-
-        return AsyncPager(
-            _pages,
-            timeout_error=lambda timeout: exceptions.KSeFInvoiceQueryTimeoutError(
-                timeout=timeout
-            ),
-        )
+        return AsyncInvoiceSearchPager(self._client, filters, params)
 
     async def download(
         self,
@@ -367,7 +419,7 @@ class AsyncInvoicesService:
 
     @deprecated(
         "`query_metadata()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
-        "use `search()` instead."
+        "use `search().first_response()` instead."
     )
     def query_metadata(
         self,
@@ -378,7 +430,7 @@ class AsyncInvoicesService:
         """Deprecated: fetch one invoice metadata page matching the provided filters.
 
         Deprecated:
-            May be removed no earlier than ksef2 2.0.0. Use ``search()`` instead; ``first_page()`` fetches one page.
+            May be removed no earlier than ksef2 2.0.0. Use ``search().first_response()`` instead to keep the complete response.
 
         Args:
             filters: Criteria selecting the invoices.
@@ -391,7 +443,7 @@ class AsyncInvoicesService:
 
     @deprecated(
         "`query_metadata_pages()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
-        "use `search()` instead."
+        "use `search().responses()` instead."
     )
     async def query_metadata_pages(
         self,
@@ -402,7 +454,7 @@ class AsyncInvoicesService:
         """Deprecated: fetch metadata pages, following KSeF page and truncation mechanics.
 
         Deprecated:
-            May be removed no earlier than ksef2 2.0.0. Use ``search().pages()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``search().responses()`` instead to keep the complete responses.
 
         Args:
             filters: Criteria selecting the invoices.

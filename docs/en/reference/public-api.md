@@ -146,7 +146,7 @@ outside `__main__` and test runners, so run your tests with
 | `auth.batch.get_status()`, `list_invoices()`, `list_failed_invoices()`, `get_upo()` and `wait_for_completion()` (with `session=`) | The same operations on the session client, with `wait()` and `download_upo()` | 2.0.0 or later |
 | `auth.open_batch_session(aes_key=..., iv=..., ...)` | `auth.raw` | 2.0.0 or later |
 | `auth.resume_online_session(state)` and `auth.resume_batch_session(state)` | `auth.online_session(state=...)` and `auth.batch_session(state=...)` | 2.0.0 or later |
-| `auth.invoices.query_metadata()`, `query_metadata_pages()`, `all_metadata()` and `wait_for_invoices()` | `auth.invoices.search(...)` with `.pages()`, `.first_page()` and `.wait()` | 2.0.0 or later |
+| `auth.invoices.query_metadata()`, `query_metadata_pages()`, `all_metadata()` and `wait_for_invoices()` | `auth.invoices.search(...)` with `.responses()`, `.first_response()`, `.pages()`, `.first_page()` and `.wait()` | 2.0.0 or later |
 | `auth.invoices.download_invoice()` and `wait_for_invoice_download()` | `auth.invoices.download(...)` | 2.0.0 or later |
 | `auth.invoices.schedule_export()`, `get_export_status()`, `wait_for_export_package()`, `fetch_package()`, `fetch_package_bytes()` and `export_and_download()` | `auth.invoices.export(...)`, then `ExportJob.wait()` | 2.0.0 or later |
 | `auth.tokens.wait_for_activation(reference_number=...)` | `auth.tokens.generate(...).wait()` | 2.0.0 or later |

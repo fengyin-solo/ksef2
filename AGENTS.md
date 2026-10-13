@@ -27,3 +27,9 @@
   be deleted, skipped or loosened without a stated reason in the pull request.
   Every allowlist entry justifies the removal it approves. `BASELINE_VERSIONS`
   gains an entry when a 1.x release is published and never loses one during 1.x.
+
+- Batch upload recovery must be tested through the public API after a local
+  storage failure. Resume the same session with its exact original prepared
+  payload, including batches prepared internally by convenience submission.
+  Reject mismatched payloads before upload and keep keys, payload bytes and
+  presigned URLs out of generic repr and serialization.

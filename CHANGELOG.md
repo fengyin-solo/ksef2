@@ -2,6 +2,10 @@
 
 ### Added
 
+- Read complete invoice search responses with `responses()` and `first_response()`,
+  including the permanent-storage checkpoint on empty pages. Correct the English
+  and Polish incremental-sync examples (#258).
+
 - Download a UPO after a restart from a stored session reference with
   `auth.invoice_sessions.download_upo()`, selecting it by invoice reference,
   KSeF number or session UPO reference. No open session is needed, and a UPO

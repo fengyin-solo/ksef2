@@ -147,7 +147,7 @@ wskazują miejsca użycia, i może zostać usunięte nie wcześniej niż w ksef2
 | `auth.batch.get_status()`, `list_invoices()`, `list_failed_invoices()`, `get_upo()` i `wait_for_completion()` (z `session=`) | Te same operacje na kliencie sesji, z `wait()` i `download_upo()` | 2.0.0 lub później |
 | `auth.open_batch_session(aes_key=..., iv=..., ...)` | `auth.raw` | 2.0.0 lub później |
 | `auth.resume_online_session(state)` i `auth.resume_batch_session(state)` | `auth.online_session(state=...)` i `auth.batch_session(state=...)` | 2.0.0 lub później |
-| `auth.invoices.query_metadata()`, `query_metadata_pages()`, `all_metadata()` i `wait_for_invoices()` | `auth.invoices.search(...)` z `.pages()`, `.first_page()` i `.wait()` | 2.0.0 lub później |
+| `auth.invoices.query_metadata()`, `query_metadata_pages()`, `all_metadata()` i `wait_for_invoices()` | `auth.invoices.search(...)` z `.responses()`, `.first_response()`, `.pages()`, `.first_page()` i `.wait()` | 2.0.0 lub później |
 | `auth.invoices.download_invoice()` i `wait_for_invoice_download()` | `auth.invoices.download(...)` | 2.0.0 lub później |
 | `auth.invoices.schedule_export()`, `get_export_status()`, `wait_for_export_package()`, `fetch_package()`, `fetch_package_bytes()` i `export_and_download()` | `auth.invoices.export(...)`, potem `ExportJob.wait()` | 2.0.0 lub później |
 | `auth.tokens.wait_for_activation(reference_number=...)` | `auth.tokens.generate(...).wait()` | 2.0.0 lub później |

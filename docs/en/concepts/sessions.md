@@ -73,6 +73,7 @@ same method. Pass exactly one form: `form_code=` (or `prepared_batch=` /
 `batch_file=`) to open, or `state=` to resume. `state=` takes the resume-state
 object or its JSON string, and everything (form code, keys, expiry, upload
 requests) comes from the state.
+To resume a batch upload, also pass the exact original `prepared_batch`.
 
 ```python
 with auth.online_session(form_code=FormSchema.FA3) as session:
@@ -129,6 +130,31 @@ For batch workflows, keep the mapping between local source files and the
 prepared invoice metadata. KSeF reports per-invoice batch results through
 session invoice fields such as `invoice_hash`, `invoice_file_name`,
 `reference_number`, and eventually `ksef_number`.
+
+After an upload failure, recover the original session with its original prepared
+payload. The error retains that payload even when `submit(invoices)` prepares it
+internally. You can also pass your retained `prepared` as `prepared_batch`.
+Recovery rejects changes to the payload, encryption material or package metadata
+before uploading. Do not prepare the invoices again for the same session.
+
+```python
+from ksef2 import KSeFBatchUploadError
+
+try:
+    session = auth.batch.submit([xml_bytes])
+except KSeFBatchUploadError as error:
+    with auth.batch_session(
+        state=error.recovery_state(),
+        prepared_batch=error.recovery_prepared_batch(),
+    ) as session:
+        session.upload_parts()
+```
+
+Both recovery objects contain sensitive material. Keep them in memory or in
+caller-provided protected storage. Generic repr and model dumps exclude payload
+bytes and keys. State JSON deliberately includes secrets and upload URLs, but
+not the prepared bytes. Older states without a payload digest still support
+status and UPO access; they cannot reattach an upload payload.
 
 ## State, status, and history
 

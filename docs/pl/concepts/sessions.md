@@ -74,6 +74,7 @@ metodą. Podaj dokładnie jedną formę: `form_code=` (albo `prepared_batch=` /
 `batch_file=`), by otworzyć, lub `state=`, by wznowić. `state=` przyjmuje obiekt
 stanu albo jego JSON, a wszystko (kod formularza, klucze, ważność, żądania
 uploadu) pochodzi ze stanu.
+Aby wznowić upload paczki, przekaż też oryginalne `prepared_batch`.
 
 ```python
 with auth.online_session(form_code=FormSchema.FA3) as session:
@@ -130,6 +131,31 @@ Dla przepływów batch zachowaj mapowanie między lokalnymi plikami źródłowym
 metadanymi przygotowanych faktur. KSeF raportuje wyniki poszczególnych faktur
 przez pola statusu faktury w sesji, takie jak `invoice_hash`,
 `invoice_file_name`, `reference_number` i późniejszy `ksef_number`.
+
+Po błędzie uploadu wznów pierwotną sesję z jej oryginalną przygotowaną paczką.
+Wyjątek zachowuje paczkę również wtedy, gdy `submit(invoices)` przygotowuje ją
+wewnętrznie. Możesz też przekazać zachowane `prepared` jako `prepared_batch`.
+Wznowienie odrzuca zmiany danych, materiału szyfrowania i metadanych paczki
+przed uploadem. Nie przygotowuj ponownie faktur dla tej samej sesji.
+
+```python
+from ksef2 import KSeFBatchUploadError
+
+try:
+    session = auth.batch.submit([xml_bytes])
+except KSeFBatchUploadError as error:
+    with auth.batch_session(
+        state=error.recovery_state(),
+        prepared_batch=error.recovery_prepared_batch(),
+    ) as session:
+        session.upload_parts()
+```
+
+Oba obiekty odzyskiwania zawierają dane wrażliwe. Zachowuj je w pamięci lub
+w chronionym magazynie zapewnionym przez aplikację. Ogólne repr i model_dump
+pomijają bajty paczki i klucze. JSON stanu celowo zawiera sekrety i URL-e uploadu,
+ale nie bajty przygotowanej paczki. Starsze stany bez skrótu paczki nadal
+umożliwiają pobieranie statusu i UPO, lecz nie dołączenie paczki do uploadu.
 
 ## Stan, status i historia
 

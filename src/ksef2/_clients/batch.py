@@ -344,7 +344,7 @@ class BatchSessionClient:
             KSeFValidationError: If the session has no prepared batch payload attached.
             KSeFBatchUploadError: If external storage rejects an upload or its
                 outcome cannot be determined. Call ``recovery_state()`` on the error
-                to deliberately recover the sensitive batch state.
+                and ``recovery_prepared_batch()`` to resume with the original sensitive payload.
         """
         self._ensure_open()
 
@@ -391,6 +391,7 @@ class BatchSessionClient:
                 raise exceptions.KSeFBatchUploadError(
                     transfer_error=exc,
                     recovery_state=self._state,
+                    prepared_batch=self._prepared_batch,
                 ) from exc
 
     def close(self) -> None:

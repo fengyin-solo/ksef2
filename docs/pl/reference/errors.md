@@ -27,7 +27,7 @@ aktualne sformułowania KSeF i mogą zmienić się między wydaniami. To samo do
 | `KSeFAuthenticationExpiredError` | `KSeFAuthError` | `AUTHENTICATION_EXPIRED` | Atrybuty błędu API |
 | `KSeFRateLimitError` | `KSeFApiError` | `RATE_LIMIT_ERROR` | `retry_after` oraz atrybuty błędu API |
 | `KSeFExternalTransferError` | `KSeFException` | `EXTERNAL_TRANSFER_ERROR` | `operation`, `host`, `reference_number`, `part_ordinal`, `status_code`, `outcome_ambiguous` |
-| `KSeFBatchUploadError` | `KSeFExternalTransferError` | `BATCH_UPLOAD_ERROR` | Atrybuty transferu zewnętrznego oraz `recovery_state()` |
+| `KSeFBatchUploadError` | `KSeFExternalTransferError` | `BATCH_UPLOAD_ERROR` | Atrybuty transferu zewnętrznego oraz `recovery_state()` i `recovery_prepared_batch()` |
 | `KSeFInvoiceRejectedError` | `KSeFSessionError` | `INVOICE_REJECTED` | `invoice_reference_number`, `invoice_status_code`, `description`, `details`, `extensions`, `status` |
 
 Łap węższe podklasy przed `KSeFException`, gdy workflow ma konkretną akcję
@@ -93,10 +93,14 @@ podpisanego URL-a.
 | `outcome_ambiguous` | `bool` | `True`, gdy upload mógł dotrzeć do storage mimo utraty odpowiedzi. |
 
 `KSeFBatchUploadError.recovery_state()` celowo ujawnia wrażliwy
-`BatchSessionResumeState` potrzebny do odzyskania workflow. Stan nie trafia do
-komunikatu ani `context`, ponieważ zawiera materiał szyfrujący i presigned URL-e.
-Zapisuj go wyłącznie w chronionym magazynie danych uwierzytelniających i nie
-ponawiaj automatycznie uploadu, gdy `outcome_ambiguous` ma wartość `True`.
+`BatchSessionResumeState` potrzebny do odzyskania workflow, a
+`recovery_prepared_batch()` ujawnia dokładną paczkę `PreparedBatch`, której użył
+nieudany upload, również tę przygotowaną wewnątrz `submit()`. Oba przekazujesz do
+`auth.batch_session(state=..., prepared_batch=...)`. Żaden z nich nie trafia do
+komunikatu ani `context`, ponieważ zawierają materiał szyfrujący, a stan także
+presigned URL-e. Zapisuj je wyłącznie w chronionym magazynie danych
+uwierzytelniających i nie ponawiaj automatycznie uploadu, gdy
+`outcome_ambiguous` ma wartość `True`.
 
 Oryginalny błąd `httpx` pozostaje dostępny przez `__cause__`. Nie loguj go bez
 kontroli, ponieważ surowa diagnostyka HTTP może zawierać podpisany URL.

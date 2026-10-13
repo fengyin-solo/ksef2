@@ -45,3 +45,50 @@ reason = "Deleted by #167 (24a77b3, one KSeF error pipeline) before 1.0; its fro
 path = "ksef2.core.response_errors.mapper"
 kind = "exact"
 reason = "Module alias for ksef2.infra.mappers.exceptions inside ksef2.core.response_errors, removed together with that module by #167 (24a77b3); see the entry above."
+
+# PersonPermissionDetail subject-entity names (#254, fixes #205): KSeF describes
+# the subject entity as fullName plus address only, so the published split-name
+# pair could never hold the first and last names its docstrings promised, and it
+# dropped the address. Both fields are replaced by entity_full_name and
+# entity_address before 1.0. Each entry covers one attribute on one access path
+# for the same class, so any other attribute on these paths stays protected.
+
+[[entry]]
+path = "ksef2.models.PersonPermissionDetail.entity_first_name"
+kind = "exact"
+reason = "Removed by #254 (#205) before 1.0: the person-permission payload carries the subject entity as fullName plus address, so this field could never hold a first name. Read PersonPermissionDetail.entity_full_name instead, and entity_address for the address the old pair dropped."
+
+[[entry]]
+path = "ksef2.models.PersonPermissionDetail.entity_last_name"
+kind = "exact"
+reason = "Removed by #254 (#205) before 1.0 for the reason recorded on the entity_first_name entry above: the payload has no last name to map and the mapper copied the full name into both fields. Read PersonPermissionDetail.entity_full_name instead."
+
+[[entry]]
+path = "ksef2.domain.models.PersonPermissionDetail.entity_first_name"
+kind = "exact"
+reason = "Same attribute of the same class reached through the deprecated ksef2.domain alias; removal is justified by the ksef2.models entry above (#254, #205)."
+
+[[entry]]
+path = "ksef2.domain.models.PersonPermissionDetail.entity_last_name"
+kind = "exact"
+reason = "Same attribute of the same class reached through the deprecated ksef2.domain alias; removal is justified by the ksef2.models entries above (#254, #205)."
+
+[[entry]]
+path = "ksef2.domain.models.permissions.PersonPermissionDetail.entity_first_name"
+kind = "exact"
+reason = "Same attribute of the same class reached through the deprecated ksef2.domain submodule alias; removal is justified by the ksef2.models entry above (#254, #205)."
+
+[[entry]]
+path = "ksef2.domain.models.permissions.PersonPermissionDetail.entity_last_name"
+kind = "exact"
+reason = "Same attribute of the same class reached through the deprecated ksef2.domain submodule alias; removal is justified by the ksef2.models entries above (#254, #205)."
+
+[[entry]]
+path = "ksef2.infra.mappers.permissions.responses.query_person.PersonPermissionDetail.entity_first_name"
+kind = "exact"
+reason = "Same attribute of the same class reached through the deprecated ksef2.infra mapper module that re-exports it; removal is justified by the ksef2.models entry above (#254, #205)."
+
+[[entry]]
+path = "ksef2.infra.mappers.permissions.responses.query_person.PersonPermissionDetail.entity_last_name"
+kind = "exact"
+reason = "Same attribute of the same class reached through the deprecated ksef2.infra mapper module that re-exports it; removal is justified by the ksef2.models entries above (#254, #205)."

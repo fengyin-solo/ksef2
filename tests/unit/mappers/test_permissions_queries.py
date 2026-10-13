@@ -319,8 +319,8 @@ class TestPermissionsQueryResponseMapper:
         assert output.context_type == "internal_id"
         assert output.target_type == "all_partners"
         assert output.person_first_name == "Jan"
-        assert output.entity_first_name == "Entity Name"
-        assert output.entity_last_name == "Entity Name"
+        assert output.entity_full_name == "Entity Name"
+        assert output.entity_address == "Main Street 1"
 
     def test_maps_person_permission_without_optional_values(
         self,

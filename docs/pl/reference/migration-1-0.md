@@ -120,10 +120,11 @@ archive = exported.archive
 ```
 
 `query_metadata()` zwraca `QueryInvoicesMetadataResponse`, a `first_page()` zwraca listę
-faktur z tej strony. Flagi paginacji pozostają w wycofywanej odpowiedzi strony,
-jeśli aplikacja nadal ich potrzebuje. Wyszukiwanie pobiera dane dopiero przy
-odczycie wyników. W kodzie async użyj `async for`, await dla `first_page()`
-i `download()`, a dla eksportu `job = await auth.invoices.export(filters=filters)`
+faktur z tej strony. Użyj `pager.first_response()` dla pełnej, typowanej odpowiedzi
+z flagami paginacji i `permanent_storage_hwm_date` albo `pager.responses()` dla
+wszystkich odpowiedzi. Wyszukiwanie pobiera dane dopiero przy
+odczycie wyników. W kodzie async użyj `async for`, await dla `first_page()`,
+`first_response()` i `download()`, a dla eksportu `job = await auth.invoices.export(filters=filters)`
 i następnie `exported = await job.wait()`.
 
 ## Wykrywanie wycofywanego API

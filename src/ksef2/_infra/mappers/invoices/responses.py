@@ -6,6 +6,7 @@ from typing import assert_never, overload
 from pydantic import BaseModel
 
 from ksef2._domain.models import invoices
+from ksef2._domain.models.compression import normalize_compression_type
 from ksef2._infra.schema.api import spec
 
 
@@ -308,6 +309,7 @@ def _(response: spec.InvoicePackagePart) -> invoices.PackagePart:
 @_from_spec.register
 def _(response: spec.InvoicePackage) -> invoices.InvoicePackage:
     return invoices.InvoicePackage(
+        compression_type=normalize_compression_type(response.compressionType.value),
         invoice_count=response.invoiceCount,
         size=response.size,
         parts=[from_spec(part) for part in response.parts],

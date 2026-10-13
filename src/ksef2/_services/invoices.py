@@ -136,7 +136,7 @@ class ExportJob(OperationHandle[InvoiceExportStatusResponse, ExportedInvoices]):
             poll_interval: Delay in seconds between export status checks.
 
         Returns:
-            The decrypted package: iterate ``invoices()``, read ``metadata`` or ``save()`` it to disk.
+            The decrypted ZIP or TarGz package, using the compression reported by KSeF: iterate ``invoices()``, read ``metadata`` or ``save()`` it to disk.
 
         Raises:
             KSeFExportFailedError: If KSeF reports that the export failed, was cancelled or expired.
@@ -884,7 +884,7 @@ class InvoicesService:
         """Deprecated: schedule an export, wait for it, and download the decrypted package.
 
         Deprecated:
-            May be removed no earlier than ksef2 2.0.0. Use ``export().wait()`` instead; ``ExportedInvoices.archive`` is the joined ZIP.
+            May be removed no earlier than ksef2 2.0.0. Use ``export().wait()`` instead; ``ExportedInvoices.archive`` is the joined ZIP or TarGz archive.
 
         Args:
             filters: Criteria selecting the invoices to export.

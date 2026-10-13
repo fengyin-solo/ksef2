@@ -146,19 +146,21 @@ class TestBatchSessionForms:
         file_info = domain_batch_file_info.build()
 
         with pytest.raises(TypeError, match="exactly one"):
-            auth.batch_session()
+            _ = auth.batch_session()
         with pytest.raises(TypeError, match="exactly one"):
-            auth.batch_session(batch_file=file_info, state=state)
+            _ = auth.batch_session(batch_file=file_info, state=state)
         with pytest.raises(TypeError, match="exactly one"):
-            auth.batch_session(
-                prepared_batch=MagicMock(spec=PreparedBatch), state=state
+            _ = auth.batch_session(
+                prepared_batch=MagicMock(spec=PreparedBatch),
+                batch_file=file_info,
+                state=state,
             )
         with pytest.raises(TypeError, match="exactly one"):
-            auth.batch_session(
+            _ = auth.batch_session(
                 prepared_batch=MagicMock(spec=PreparedBatch), batch_file=file_info
             )
         with pytest.raises(TypeError, match="only with batch_file"):
-            auth.batch_session(state=state, form_code=FormSchema.FA3)
+            _ = auth.batch_session(state=state, form_code=FormSchema.FA3)
 
     @pytest.mark.parametrize("as_json", [False, True])
     def test_state_resumes_from_object_or_json(

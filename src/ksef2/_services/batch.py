@@ -178,7 +178,7 @@ class BatchService:
                 fails.
             KSeFBatchUploadError: If external storage rejects an upload or its
                 outcome cannot be determined. Call ``recovery_state()`` on the error
-                to deliberately recover the sensitive batch state.
+                and ``recovery_prepared_batch()`` to resume with the original sensitive payload.
 
         Example:
             ```python
@@ -363,7 +363,7 @@ class BatchService:
                 instructions.
             KSeFBatchUploadError: If external storage rejects an upload or its
                 outcome cannot be determined. Call ``recovery_state()`` on the error
-                to deliberately recover the sensitive batch state.
+                and ``recovery_prepared_batch()`` to resume with the original sensitive payload.
         """
         upload_requests = {
             request.ordinal_number: request for request in session.part_upload_requests
@@ -400,6 +400,7 @@ class BatchService:
                 raise exceptions.KSeFBatchUploadError(
                     transfer_error=exc,
                     recovery_state=session.resume_state(),
+                    prepared_batch=prepared_batch,
                 ) from exc
 
     @deprecated(
@@ -427,7 +428,7 @@ class BatchService:
             KSeFValidationError: If the prepared batch cannot be opened or uploaded.
             KSeFBatchUploadError: If external storage rejects an upload or its
                 outcome cannot be determined. Call ``recovery_state()`` on the error
-                to deliberately recover the sensitive batch state.
+                and ``recovery_prepared_batch()`` to resume with the original sensitive payload.
         """
         return self._submit_prepared_batch(prepared_batch=prepared_batch)
 
@@ -472,7 +473,7 @@ class BatchService:
                 fails.
             KSeFBatchUploadError: If external storage rejects an upload or its
                 outcome cannot be determined. Call ``recovery_state()`` on the error
-                to deliberately recover the sensitive batch state.
+                and ``recovery_prepared_batch()`` to resume with the original sensitive payload.
         """
         return self._submit_batch(
             invoices=invoices,

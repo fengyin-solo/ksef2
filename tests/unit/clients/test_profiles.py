@@ -168,7 +168,7 @@ def test_profile_store_round_trips_unicode_and_escaped_paths(
 ) -> None:
     store = ProfileStore(tmp_path / "config.toml")
     existing = Profile(
-        environment="test",
+        environment=Environment.TEST,
         nip="1111111111",
         auth=TokenProfileAuth(token_env="KSEF2_TOKEN"),
     )
@@ -177,7 +177,7 @@ def test_profile_store_round_trips_unicode_and_escaped_paths(
     key = Path("/tmp") / folder / "company.key"
     p12 = Path("/tmp") / folder / "company.p12"
     pem = Profile(
-        environment="test",
+        environment=Environment.TEST,
         nip="5261040828",
         auth=XadesPemProfileAuth(cert=cert, key=key),
     )
@@ -191,7 +191,7 @@ def test_profile_store_round_trips_unicode_and_escaped_paths(
     assert store.get("company").auth.key == key
 
     pkcs12 = Profile(
-        environment="test",
+        environment=Environment.TEST,
         nip="5261040828",
         auth=XadesP12ProfileAuth(p12=p12),
     )

@@ -2,14 +2,26 @@ from typing import final, override
 
 import httpx
 
+from ksef2._core import exceptions
 from ksef2._core.async_protocols import AsyncMiddleware
 from ksef2._core.middlewares.async_base import AsyncBaseMiddleware
 from ksef2._core.response_errors import raise_for_ksef_status
 from ksef2._core.types import Headers, JsonObject, QueryParamsInput
 
+_TRANSPORT_FAILED_MESSAGE = "The HTTP transport failed before KSeF returned a response."
+
+_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
 
 @final
 class AsyncKSeFExceptionMiddleware(AsyncBaseMiddleware):
+    """Classify transport failures and error responses as SDK exceptions.
+
+    It is the outermost middleware of the KSeF API path, so it sees a transport
+    failure only after the retry middleware used its attempts up. The retry
+    middleware keeps seeing the raw ``httpx`` error.
+    """
+
     def __init__(self, transport: AsyncMiddleware) -> None:
         self._next = transport
 
@@ -31,8 +43,8 @@ class AsyncKSeFExceptionMiddleware(AsyncBaseMiddleware):
         content: bytes | None = None,
         **kwargs: object,
     ) -> httpx.Response:
-        return self._handle(
-            await self._next.request(
+        try:
+            response = await self._next.request(
                 method,
                 path,
                 headers=headers,
@@ -40,7 +52,12 @@ class AsyncKSeFExceptionMiddleware(AsyncBaseMiddleware):
                 json=json,
                 content=content,
                 **kwargs,
-            ),
-            method,
-            path,
-        )
+            )
+        except httpx.TransportError as exc:
+            raise exceptions.KSeFTransportError(
+                _TRANSPORT_FAILED_MESSAGE,
+                method=method,
+                path=path,
+                outcome_ambiguous=method.upper() not in _SAFE_METHODS,
+            ) from exc
+        return self._handle(response, method, path)

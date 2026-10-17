@@ -1,4 +1,5 @@
 import asyncio
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -7,12 +8,14 @@ from cryptography.x509 import Certificate
 from polyfactory import BaseFactory
 
 from ksef2._clients.async_auth import AsyncAuthClient
+from ksef2._clients.async_base import AsyncClient
 from ksef2._clients.async_authenticated import AsyncAuthenticatedClient
 from ksef2._config import Environment
 from ksef2._core.exceptions import (
     KSeFAuthError,
     KSeFAuthPollingTimeoutError,
     KSeFAuthTokenRedemptionError,
+    KSeFTransportError,
     KSeFUnsupportedEnvironmentError,
     KSeFValidationError,
     NoCertificateAvailableError,
@@ -408,3 +411,73 @@ class TestAsyncAuthClient:
 
         with pytest.raises(KSeFValidationError, match="profile 'prod-token' uses"):
             asyncio.run(client.with_profile("prod-token", config_path=config_path))
+
+
+@patch("ksef2._clients.async_auth.encrypt_token", return_value=VALID_BASE64)
+def test_redemption_transport_error_keeps_the_redemption_contract(
+    _mock_encrypt_token: MagicMock,
+    domain_public_key_cert: BaseFactory[PublicKeyCertificate],
+    auth_challenge_resp: BaseFactory[spec.AuthenticationChallengeResponse],
+    auth_init_resp: BaseFactory[spec.AuthenticationInitResponse],
+    auth_status_resp: BaseFactory[spec.AuthenticationOperationStatusResponse],
+) -> None:
+    """The wrapped transport failure still ends as the one-shot redemption error."""
+    requests: list[httpx.Request] = []
+    challenge = auth_challenge_resp.build(timestampMs=1735689600000).model_dump(
+        mode="json"
+    )
+    init = auth_init_resp.build().model_dump(mode="json")
+    status = auth_status_resp.build(
+        status=spec.StatusInfo(code=200, description="Authenticated")
+    ).model_dump(mode="json")
+
+    def _handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        path = request.url.path
+        if path.endswith(AuthRoutes.REDEEM_TOKEN.path):
+            raise httpx.ReadError("redemption response lost", request=request)
+        if path.endswith(AuthRoutes.CHALLENGE.path):
+            return httpx.Response(200, json=challenge, request=request)
+        if path.endswith(AuthRoutes.TOKEN_AUTH.path):
+            return httpx.Response(200, json=init, request=request)
+        if request.method == "GET":
+            return httpx.Response(200, json=status, request=request)
+        raise AssertionError(f"unexpected request {request.method} {path}")
+
+    store = CertificateStore()
+    store.load([domain_public_key_cert.build(usage=["ksef_token_encryption"])])
+
+    caught: list[BaseException] = []
+
+    async def _run() -> None:
+        async with httpx.AsyncClient(
+            base_url=Environment.PRODUCTION.base_url,
+            transport=httpx.MockTransport(_handle),
+        ) as http_client:
+            client = AsyncClient(http_client=http_client, certificate_store=store)
+            try:
+                _ = await client.authentication.with_token(
+                    ksef_token="ksef-token", nip="1234567890"
+                )
+            except BaseException as exc:
+                caught.append(exc)
+            finally:
+                await client.aclose()
+
+    _ = asyncio.run(_run())
+
+    (error,) = caught
+    assert isinstance(error, KSeFAuthTokenRedemptionError)
+    assert isinstance(error, KSeFTransportError)
+    assert isinstance(error.__cause__, httpx.ReadError)
+    assert error.outcome_ambiguous is True
+    assert error.method == "POST"
+    assert error.path == AuthRoutes.REDEEM_TOKEN.path
+    redemption_requests = [
+        request
+        for request in requests
+        if request.url.path.endswith(AuthRoutes.REDEEM_TOKEN.path)
+    ]
+    assert len(redemption_requests) == 1
+    assert "ksef-token" not in str(error)
+    assert "ksef-token" not in json.dumps(error.context, default=str)

@@ -53,14 +53,14 @@ class AsyncAuthenticatedClient:
     """Authenticated async entry point for KSeF operations.
 
     Catch ``KSeFException`` for SDK-classified failures raised by authenticated
-    branches, and ``httpx.HTTPError`` for transport failures.
+    branches, including ``KSeFTransportError`` for transport failures.
 
     Raises:
         KSeFApiError: If KSeF returns an API error response. Catch
             ``KSeFAuthError`` for authentication or authorization failures and
             ``KSeFRateLimitError`` for throttling.
         KSeFValidationError: If a KSeF response cannot be parsed into SDK models.
-        httpx.HTTPError: If the HTTP transport fails before KSeF returns a response.
+        KSeFTransportError: If the HTTP transport fails before KSeF returns a response.
     """
 
     def __init__(

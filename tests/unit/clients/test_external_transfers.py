@@ -1,4 +1,5 @@
 import asyncio
+import json
 from datetime import datetime, timezone
 
 import httpx
@@ -7,6 +8,7 @@ from polyfactory import BaseFactory
 
 from ksef2._clients.async_base import AsyncClient
 from ksef2._clients.base import Client
+from ksef2._config import Environment
 from ksef2._core.crypto import sha256_b64
 from ksef2._core.exceptions import (
     KSeFAuthError,
@@ -24,6 +26,8 @@ from ksef2._domain.models.batch import (
     PreparedBatch,
 )
 from ksef2._domain.models.invoices import ExportHandle, InvoicePackage, PackagePart
+from ksef2._core.exceptions import KSeFTransportError
+from tests.unit.flavors import Flavor
 from tests.unit.helpers import legacy_api
 
 
@@ -259,5 +263,100 @@ def test_async_upload_marks_lost_response_ambiguous_and_exposes_recovery(
     assert error.recovery_state() is state
     assert isinstance(error.__cause__, KSeFExternalTransferError)
     assert isinstance(error.__cause__.__cause__, httpx.ReadTimeout)
+    assert len(requests) == 1
+    assert "Authorization" not in requests[0].headers
+
+
+@legacy_api
+@pytest.mark.parametrize("failure", ["transport", "status"])
+@pytest.mark.parametrize("operation", ["download", "upload"])
+def test_external_errors_are_transport_errors(
+    flavor: Flavor,
+    domain_auth_tokens: BaseFactory[AuthTokens],
+    domain_batch_session_state: BaseFactory[BatchSessionResumeState],
+    operation: str,
+    failure: str,
+) -> None:
+    """Presigned-storage failures keep their own class and code under the transport base."""
+    requests: list[httpx.Request] = []
+
+    def _handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if failure == "transport":
+            raise httpx.ConnectError("storage unreachable", request=request)
+        return httpx.Response(403, content=b"", request=request)
+
+    state = domain_batch_session_state.build(
+        reference_number="batch-ref",
+        part_upload_requests=[
+            PartUploadRequest(
+                ordinal_number=1,
+                method="PUT",
+                url=_SIGNED_UPLOAD_URL,
+                headers={"x-ms-blob-type": "BlockBlob"},
+            )
+        ],
+    )
+    http_client: httpx.Client | httpx.AsyncClient
+    if flavor.is_async:
+        http_client = httpx.AsyncClient(transport=httpx.MockTransport(_handle))
+    else:
+        http_client = httpx.Client(transport=httpx.MockTransport(_handle))
+
+    client = flavor.root_client(
+        environment=Environment.PRODUCTION, http_client=http_client
+    )
+    try:
+        authenticated = client.authentication.resume(
+            AuthenticationResumeState.from_tokens(domain_auth_tokens.build())
+        )
+        if operation == "download":
+            with pytest.raises(KSeFExternalTransferError) as exc_info:
+                _ = flavor.run(
+                    authenticated.invoices.fetch_package_bytes(
+                        package=_export_package(),
+                        export=_export_handle(),
+                    )
+                )
+            error: KSeFExternalTransferError = exc_info.value
+        else:
+            session = flavor.run(authenticated.batch_session(state=state))
+            with pytest.raises(KSeFBatchUploadError) as exc_info:
+                _ = flavor.run(
+                    authenticated.batch.upload_parts(
+                        session=session,
+                        prepared_batch=_prepared_batch(),
+                    )
+                )
+            error = exc_info.value
+    finally:
+        flavor.close(client)
+        if flavor.is_async:
+            _ = asyncio.run(http_client.aclose())
+        else:
+            http_client.close()
+
+    assert isinstance(error, KSeFTransportError)
+    if operation == "upload":
+        assert isinstance(error, KSeFBatchUploadError)
+        assert error.code == "BATCH_UPLOAD_ERROR"
+        assert error.recovery_state() is state
+        transfer_error = error.__cause__
+    else:
+        assert type(error) is KSeFExternalTransferError
+        assert error.code == "EXTERNAL_TRANSFER_ERROR"
+        transfer_error = error
+
+    assert isinstance(transfer_error, KSeFExternalTransferError)
+    assert transfer_error.outcome_ambiguous is (
+        operation == "upload" and failure == "transport"
+    )
+    expected_cause = (
+        httpx.ConnectError if failure == "transport" else httpx.HTTPStatusError
+    )
+    assert isinstance(transfer_error.__cause__, expected_cause)
+    assert not isinstance(error, KSeFAuthError)
+    assert "sig=secret" not in str(error)
+    assert "sig=secret" not in json.dumps(error.context, default=str)
     assert len(requests) == 1
     assert "Authorization" not in requests[0].headers

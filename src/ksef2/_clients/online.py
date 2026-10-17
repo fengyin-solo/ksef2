@@ -46,7 +46,7 @@ class InvoiceSubmission(
     Raises:
         KSeFApiError: If KSeF returns an API error response.
         KSeFValidationError: If a KSeF response cannot be parsed into SDK models.
-        httpx.HTTPError: If the HTTP transport fails before KSeF returns a response.
+        KSeFTransportError: If the HTTP transport fails before KSeF returns a response.
     """
 
     def __init__(
@@ -165,7 +165,7 @@ class OnlineSessionClient:
     ``download_upo()`` for the session UPO.
 
     Catch ``KSeFException`` for SDK-classified failures raised by this session
-    branch, and ``httpx.HTTPError`` for transport failures.
+    branch, including ``KSeFTransportError`` for transport failures.
 
     Raises:
         KSeFApiError: If KSeF returns an API error response. Catch
@@ -173,7 +173,7 @@ class OnlineSessionClient:
             ``KSeFRateLimitError`` for throttling.
         KSeFValidationError: If a KSeF response cannot be parsed into SDK models.
         KSeFClientClosedError: If an operation is attempted after closing the session.
-        httpx.HTTPError: If the HTTP transport fails before KSeF returns a response.
+        KSeFTransportError: If the HTTP transport fails before KSeF returns a response.
     """
 
     def __init__(
@@ -633,8 +633,8 @@ class OnlineSessionClient:
 
         Raises:
             KSeFApiError: If KSeF rejects the session termination request.
-            httpx.HTTPError: If the HTTP transport fails before KSeF returns a
-                response.
+            KSeFTransportError: If the HTTP transport fails before KSeF returns
+                a response.
         """
         if self._closed:
             return

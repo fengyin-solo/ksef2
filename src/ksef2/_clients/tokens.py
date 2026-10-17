@@ -39,7 +39,7 @@ class GeneratedToken(OperationHandle[TokenStatusResponse, TokenStatusResponse]):
     Raises:
         KSeFApiError: If KSeF returns an API error response.
         KSeFValidationError: If a KSeF response cannot be parsed into SDK models.
-        httpx.HTTPError: If the HTTP transport fails before KSeF returns a response.
+        KSeFTransportError: If the HTTP transport fails before KSeF returns a response.
     """
 
     def __init__(
@@ -150,14 +150,14 @@ class TokensClient:
     """High-level API for the KSeF token lifecycle.
 
     Catch ``KSeFException`` for SDK-classified failures raised by this branch,
-    and ``httpx.HTTPError`` for transport failures.
+    including ``KSeFTransportError`` for transport failures.
 
     Raises:
         KSeFApiError: If KSeF returns an API error response. Catch
             ``KSeFAuthError`` for authentication or authorization failures and
             ``KSeFRateLimitError`` for throttling.
         KSeFValidationError: If a KSeF response cannot be parsed into SDK models.
-        httpx.HTTPError: If the HTTP transport fails before KSeF returns a response.
+        KSeFTransportError: If the HTTP transport fails before KSeF returns a response.
     """
 
     def __init__(self, transport: Middleware) -> None:
@@ -204,7 +204,7 @@ class TokensClient:
         Raises:
             KSeFApiError: If activation ends in a terminal failure state.
             KSeFTokenStatusTimeoutError: If polling exceeds ``timeout``.
-            httpx.HTTPError: If a status request fails at the transport boundary.
+            KSeFTransportError: If a status request fails at the transport boundary.
         """
         return self._wait_for_activation(reference_number, timeout, poll_interval)
 

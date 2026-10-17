@@ -3,12 +3,14 @@ title: Referencja błędów
 description: Hierarchia wyjątków SDK, atrybuty, kody błędów KSeF, wskazówki i klasy timeoutów pollingu.
 ---
 
-ksef2 rzuca wyjątki SDK dla każdego błędu, który zgłasza, także dla błędów
-transportu: żadna metoda publiczna nie przepuszcza wyjątku `httpx` do
+ksef2 rzuca wyjątki SDK dla każdego błędu, który klasyfikuje, także dla błędów
+żądań HTTP: żadna metoda publiczna nie przepuszcza błędu żądania `httpx` do
 wywołującego. Łap `KSeFException`, żeby obsłużyć każdy błąd SDK, albo węższy
-`KSeFTransportError`, gdy żądanie nie doczekało się odpowiedzi KSeF. Transfery
-przez presigned URL-e do zewnętrznego storage używają opisanych niżej
-dedykowanych wyjątków zamiast klasyfikacji błędów API lub uwierzytelnienia KSeF.
+`KSeFTransportError`, gdy żądanie nie dało odpowiedzi, której SDK mógłby użyć.
+Błędy, których SDK nie zgłasza, np. `TypeError` z Twoich własnych argumentów,
+pozostają zwykłymi wyjątkami Pythona. Transfery przez presigned URL-e do
+zewnętrznego storage używają opisanych niżej dedykowanych wyjątków zamiast
+klasyfikacji błędów API lub uwierzytelnienia KSeF.
 
 ## Rozgałęziaj po klasie albo po `ksef_code`
 
@@ -80,10 +82,13 @@ odpowiedź nie dotarła do wywołującego.
 
 ## Atrybuty błędu transportu
 
-`KSeFTransportError` jest rzucany, gdy żądanie nie uzyskało żadnej odpowiedzi
-KSeF. Żądania nadające się do ponowienia są ponawiane najpierw, więc ten błąd
-oznacza wyczerpane próby albo żądanie, którego SDK nie ponawia; sama otoczka nie
-zmienia liczby prób.
+`KSeFTransportError` jest rzucany, gdy żądanie nie dało odpowiedzi, której SDK
+mógłby użyć: nie dotarło do KSeF, odpowiedź nie dała się zdekodować albo
+łańcuch przekierowań został porzucony. Żądania nadające się do ponowienia są
+ponawiane najpierw, więc ten błąd oznacza wyczerpane próby albo żądanie, którego
+SDK nie ponawia. Powtarzamy tylko błędy, których KSeF mógł nie zobaczyć, więc
+błąd dekodowania albo przekierowania jest zgłaszany po jednej próbie; sama
+otoczka nie zmienia liczby prób.
 
 | Atrybut | Typ | Znaczenie |
 | --- | --- | --- |
@@ -103,7 +108,7 @@ from ksef2 import KSeFException, KSeFTransportError
 try:
     providers = client.peppol.list().first_page()
 except KSeFTransportError as exc:
-    print(f"{exc.method} {exc.path} nie przeszło przez transport")
+    print(f"{exc.method} {exc.path} nie dało użytecznej odpowiedzi")
     if exc.outcome_ambiguous:
         ...  # sprawdź, co zapisał KSeF, zanim wyślesz coś ponownie
 except KSeFException as exc:

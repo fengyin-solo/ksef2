@@ -242,9 +242,9 @@ async with AsyncClient(Environment.PRODUCTION) as client:
 
 ## Errors
 
-Every failure the SDK reports is a `KSeFException` subclass, transport failures
-included. Catch `KSeFTransportError` first when a response that never arrived
-changes what you do next.
+Every failure the SDK reports is a `KSeFException` subclass, HTTP request
+failures included. Catch `KSeFTransportError` first when a request that produced
+no usable response changes what you do next.
 
 ```python
 from ksef2 import Client, Environment, KSeFException, KSeFTransportError
@@ -253,7 +253,7 @@ try:
     with Client(Environment.TEST) as client:
         auth = client.authentication.with_test_certificate(nip="5261040828")
 except KSeFTransportError as exc:
-    print(f"Transport failed: {exc.method} {exc.path}")
+    print(f"No usable response: {exc.method} {exc.path}")
 except KSeFException as exc:
     print(exc)
 ```

@@ -42,12 +42,14 @@ Dokładną granicę kompatybilności opisuje strona interfejsu publicznego.
 ## Przełomowe zmiany w 1.0
 
 Błędy transportu są błędami SDK. Metoda publiczna nie przepuszcza już wyjątku
-`httpx`: żądanie, które nie doczekało się odpowiedzi KSeF, rzuca
+`httpx`: żądanie, które nie dało użytecznej odpowiedzi, rzuca
 `KSeFTransportError` (`code = "TRANSPORT_ERROR"`) z `method`, `path` i
-`outcome_ambiguous`, a oryginalny wyjątek `httpx` pozostaje jako `__cause__`. Nie
-dziedziczy on po `httpx.HTTPError`, więc obsługujące je wcześniej bloki muszą
-wskazać klasę SDK; `KSeFException` obejmuje już każdy błąd SDK. Ponowienia, klasy
-błędów API oraz `KSeFAuthError` dla 401 albo 403 pozostają bez zmian.
+`outcome_ambiguous`, a oryginalny wyjątek `httpx` pozostaje jako `__cause__`.
+Obejmuje każdy `httpx.RequestError`: błędy połączenia i timeouty, odpowiedź, której
+klient HTTP nie odkodował, oraz porzucony łańcuch przekierowań. Nie dziedziczy on
+po `httpx.HTTPError`, więc obsługujące je wcześniej bloki muszą wskazać klasę SDK;
+`KSeFException` obejmuje już każdy błąd SDK. Ponowienia, klasy błędów API oraz
+`KSeFAuthError` dla 401 albo 403 pozostają bez zmian.
 `KSeFExternalTransferError`, `KSeFBatchUploadError` i
 `KSeFAuthTokenRedemptionError` dziedziczą teraz po `KSeFTransportError` i zachowują
 własne kody oraz zachowanie odzyskiwania.

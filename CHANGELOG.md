@@ -29,11 +29,13 @@
 
 ### Breaking
 
-- Wrap transport failures in `KSeFTransportError` (`code = "TRANSPORT_ERROR"`), so
-  no public method lets an `httpx` exception escape and every SDK failure is a
-  `KSeFException`. The error carries the request `method`, the URL pathname as
-  `path` (userinfo, host, query and fragment are dropped) and `outcome_ambiguous`
-  for requests that may have reached KSeF; the original `httpx` exception stays
+- Wrap failed HTTP requests in `KSeFTransportError` (`code = "TRANSPORT_ERROR"`),
+  so no public method lets an `httpx` exception escape and every SDK failure is a
+  `KSeFException`. It covers every `httpx.RequestError`: connection and timeout
+  failures, a response the HTTP client could not decode, and an abandoned redirect
+  chain. The error carries the request `method`, the URL pathname as `path`
+  (userinfo, host, query and fragment are dropped) and `outcome_ambiguous` for
+  requests that may have reached KSeF; the original `httpx` exception stays
   available as `__cause__`. It does not subclass `httpx.HTTPError`, so handlers
   that caught `httpx.HTTPError` must name `KSeFTransportError` instead. Retries,
   retryable statuses and API error classification are unchanged, and

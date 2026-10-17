@@ -204,20 +204,24 @@ def _pathname(request_target: str) -> str:
 
 
 class KSeFTransportError(KSeFException):
-    """Raised when the HTTP transport fails before KSeF returns a response.
+    """Raised when an HTTP request produces no response the SDK can use.
 
-    Retryable requests are retried first, so this error means the retries were
-    used up or the request was not safe to retry. The original ``httpx`` exception
-    is the ``__cause__`` and may repeat request details that are not in ``message``,
+    The request may have failed on the way to KSeF, returned a response the HTTP
+    client could not decode, or followed a redirect chain it gave up on. Retryable
+    requests are retried first, so this error means the retries were used up or the
+    request was not safe to retry. The original ``httpx`` exception is the
+    ``__cause__`` and may repeat request details that are not in ``message``,
     ``str(exc)`` or ``context``: read it only in a protected log, never put it in a
     message shown to a user or in a generic error dump.
 
     Args:
         message: Human-readable error message.
+        hint: Next step for this occurrence; overrides the class default.
         method: HTTP method of the failed request, ``None`` when the SDK does not know it.
         path: Request target, kept as its URL pathname; userinfo, host, query and fragment are dropped.
         outcome_ambiguous: Whether the request may have reached KSeF despite the failure.
-        **context: Additional structured details, stored in ``context``.
+        **context: Additional structured details, stored in ``context``. ``code`` is
+            reserved: it always reports the code of the exception class.
 
     Attributes:
         method: HTTP method of the failed request, or ``None``.
@@ -231,6 +235,7 @@ class KSeFTransportError(KSeFException):
         self,
         message: str,
         *,
+        hint: str | None = None,
         method: str | None = None,
         path: str | None = None,
         outcome_ambiguous: bool = False,
@@ -239,7 +244,9 @@ class KSeFTransportError(KSeFException):
         self.method = method
         self.path = None if path is None else _pathname(path)
         self.outcome_ambiguous = outcome_ambiguous
-        super().__init__(message)
+        super().__init__(message, hint=hint)
+        # ``code`` belongs to the class, so extra context must not replace it.
+        _ = context.pop("code", None)
         self.context.update(context)
         if method is not None:
             self.context["method"] = method
@@ -522,7 +529,7 @@ class KSeFExternalTransferError(KSeFTransportError):
         host: Host of the presigned URL.
         reference_number: KSeF reference number the transfer belongs to.
         part_ordinal: One-based number of the part being transferred.
-        status_code: HTTP status code returned by external storage; ``None`` if no response was received.
+        status_code: HTTP status code returned by external storage; ``None`` when the transfer produced no usable response.
         outcome_ambiguous: Whether the transfer may have succeeded despite the failure.
 
     Attributes:
@@ -556,9 +563,7 @@ class KSeFExternalTransferError(KSeFTransportError):
         self.outcome_ambiguous = outcome_ambiguous
 
         status = (
-            f"status {status_code}"
-            if status_code is not None
-            else "no response received"
+            f"status {status_code}" if status_code is not None else "no usable response"
         )
         super().__init__(
             f"External storage {operation} failed for host {host} "

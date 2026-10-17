@@ -44,7 +44,7 @@ class AsyncInvoiceSubmission(
     Raises:
         KSeFApiError: If KSeF returns an API error response.
         KSeFValidationError: If a KSeF response cannot be parsed into SDK models.
-        KSeFTransportError: If the HTTP transport fails before KSeF returns a response.
+        KSeFTransportError: If the HTTP request fails to produce a usable response.
     """
 
     def __init__(
@@ -171,7 +171,7 @@ class AsyncOnlineSessionClient:
             ``KSeFRateLimitError`` for throttling.
         KSeFValidationError: If a KSeF response cannot be parsed into SDK models.
         KSeFClientClosedError: If an operation is attempted after closing the session.
-        KSeFTransportError: If the HTTP transport fails before KSeF returns a response.
+        KSeFTransportError: If the HTTP request fails to produce a usable response.
     """
 
     def __init__(
@@ -635,8 +635,8 @@ class AsyncOnlineSessionClient:
 
         Raises:
             KSeFApiError: If KSeF rejects the session termination request.
-            KSeFTransportError: If the HTTP transport fails before KSeF returns
-                a response.
+            KSeFTransportError: If the HTTP request fails to produce a usable
+                response.
         """
         if self._closed:
             return

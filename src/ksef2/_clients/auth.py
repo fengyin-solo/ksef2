@@ -63,7 +63,7 @@ class AuthClient:
             ``KSeFAuthError`` for authentication or authorization failures and
             ``KSeFRateLimitError`` for throttling.
         KSeFValidationError: If a KSeF response cannot be parsed into SDK models.
-        KSeFTransportError: If the HTTP transport fails before KSeF returns a response.
+        KSeFTransportError: If the HTTP request fails to produce a usable response.
     """
 
     def __init__(
@@ -417,7 +417,7 @@ class AuthClient:
         except exceptions.KSeFTransportError as exc:
             cause: BaseException = exc.__cause__ or exc
             raise exceptions.KSeFAuthTokenRedemptionError() from cause
-        except httpx.TransportError as exc:
+        except httpx.RequestError as exc:
             raise exceptions.KSeFAuthTokenRedemptionError() from exc
         return from_spec(response)
 

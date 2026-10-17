@@ -129,8 +129,8 @@ i następnie `exported = await job.wait()`.
 
 ## Błędy transportu
 
-Wcześniej błąd sieci docierał do wywołującego jako wyjątek `httpx`, więc obsługa
-błędów musiała znać klienta HTTP użytego przez SDK:
+Wcześniej każde nieudane żądanie HTTP docierało do wywołującego jako wyjątek
+`httpx`, więc obsługa błędów musiała znać klienta HTTP użytego przez SDK:
 
 ```python
 import httpx
@@ -158,13 +158,15 @@ except KSeFException as exc:
 ```
 
 `KSeFTransportError` nie dziedziczy po `httpx.HTTPError`, więc istniejący blok
-`except httpx.HTTPError` już się nie uruchomi i musi wskazać klasę SDK. Oryginalny
-wyjątek `httpx` pozostaje dostępny jako `__cause__`; liczba prób, powtarzalne
-statusy i lista żądań bezpiecznych do ponowienia pozostają bez zmian.
+`except httpx.HTTPError` już się nie uruchomi i musi wskazać klasę SDK. Obejmuje
+każdy `httpx.RequestError`: błędy połączenia i timeouty, odpowiedź, której klient
+HTTP nie odkodował, oraz porzucony łańcuch przekierowań. Oryginalny wyjątek
+`httpx` pozostaje dostępny jako `__cause__`; liczba prób, powtarzalne statusy i
+lista żądań bezpiecznych do ponowienia pozostają bez zmian.
 `KSeFExternalTransferError`, `KSeFBatchUploadError` i
 `KSeFAuthTokenRedemptionError` są teraz podklasami `KSeFTransportError` i zachowują
-własne kody, więc jedno `except KSeFTransportError` obejmuje każdy błąd utraconej
-odpowiedzi.
+własne kody, więc jedno `except KSeFTransportError` obejmuje każdy błąd, po którym
+wywołujący nie dostał użytecznej odpowiedzi.
 
 ## Wykrywanie wycofywanego API
 

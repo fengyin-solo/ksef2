@@ -20,7 +20,7 @@ class AsyncPager(Generic[_T]):
         KSeFApiError: If KSeF returns an API error response while a page is
             fetched.
         KSeFValidationError: If a KSeF response cannot be parsed into SDK models.
-        KSeFTransportError: If the HTTP transport fails before KSeF returns a response.
+        KSeFTransportError: If the HTTP request fails to produce a usable response.
     """
 
     def __init__(

@@ -3,12 +3,14 @@ title: Error Reference
 description: SDK exception hierarchy, attributes, KSeF error codes, hints, and polling timeout classes.
 ---
 
-ksef2 raises SDK exceptions for every failure it reports, including transport
-failures: no public method lets an `httpx` exception reach the caller. Catch
-`KSeFException` to handle any SDK failure, or the narrower
-`KSeFTransportError` for failures that happen before KSeF returns a response.
-Presigned external-storage transfers use the dedicated exceptions described
-below instead of KSeF API/authentication classification.
+ksef2 raises SDK exceptions for every failure it classifies, HTTP request
+failures included: no public method lets an `httpx` request failure reach the
+caller. Catch `KSeFException` to handle any SDK failure, or the narrower
+`KSeFTransportError` for requests that produced no response the SDK could use.
+Failures the SDK does not report, such as a `TypeError` from your own arguments,
+stay ordinary Python exceptions. Presigned external-storage transfers use the
+dedicated exceptions described below instead of KSeF API/authentication
+classification.
 
 ## Branch on the class or on `ksef_code`
 
@@ -80,10 +82,12 @@ token even though the response did not reach the caller.
 
 ## Transport failure attributes
 
-`KSeFTransportError` is raised when the request never produced a KSeF response.
-Retryable requests are retried first, so the error means the retries ran out or
-the request was not safe to retry; the number of attempts is unchanged by the
-wrapping.
+`KSeFTransportError` is raised when a request produced no response the SDK could
+use: it never reached KSeF, the answer could not be decoded, or the redirect
+chain was abandoned. Retryable requests are retried first, so the error means the
+retries ran out or the request was not safe to retry. Only the failures KSeF may
+not have seen are retried, so a decode or redirect failure is reported after a
+single attempt; the wrapping changes no attempt count.
 
 | Attribute | Type | Meaning |
 | --- | --- | --- |
@@ -102,7 +106,7 @@ from ksef2 import KSeFException, KSeFTransportError
 try:
     providers = client.peppol.list().first_page()
 except KSeFTransportError as exc:
-    print(f"{exc.method} {exc.path} failed at the transport")
+    print(f"{exc.method} {exc.path} produced no usable response")
     if exc.outcome_ambiguous:
         ...  # check what KSeF recorded before sending anything again
 except KSeFException as exc:

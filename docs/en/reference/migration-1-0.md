@@ -128,8 +128,8 @@ In async code, use `async for`, await `first_page()`, `first_response()` and `do
 
 ## Transport failures
 
-Before, a network failure reached the caller as an `httpx` exception, so error
-handling had to know which HTTP client the SDK used:
+Before, any HTTP request failure reached the caller as an `httpx` exception, so
+error handling had to know which HTTP client the SDK used:
 
 ```python
 import httpx
@@ -158,13 +158,15 @@ except KSeFException as exc:
 ```
 
 `KSeFTransportError` does not subclass `httpx.HTTPError`, so an existing
-`except httpx.HTTPError` block no longer runs and has to name the SDK class.
-The original `httpx` exception stays available as `__cause__`; retry counts,
-retryable statuses and the list of requests safe to retry are unchanged.
+`except httpx.HTTPError` block no longer runs and has to name the SDK class. It
+covers every `httpx.RequestError`: connection and timeout failures, a response
+the HTTP client could not decode, and an abandoned redirect chain. The original
+`httpx` exception stays available as `__cause__`; retry counts, retryable
+statuses and the list of requests safe to retry are unchanged.
 `KSeFExternalTransferError`, `KSeFBatchUploadError` and
 `KSeFAuthTokenRedemptionError` are now subclasses of `KSeFTransportError` and keep
-their own codes, so one `except KSeFTransportError` covers every lost-response
-failure.
+their own codes, so one `except KSeFTransportError` covers every failure that
+left the caller without a usable response.
 
 ## Find deprecated uses
 

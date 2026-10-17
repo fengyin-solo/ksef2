@@ -42,12 +42,14 @@ For the exact compatibility boundary, use the public API contract page.
 ## Breaking in 1.0
 
 Transport failures are SDK errors. A public method no longer lets an `httpx`
-exception escape: a request that fails before KSeF answers raises
+exception escape: a request that produces no usable response raises
 `KSeFTransportError` (`code = "TRANSPORT_ERROR"`) with `method`, `path` and
-`outcome_ambiguous`, and the original `httpx` exception as `__cause__`. It does
-not subclass `httpx.HTTPError`, so handlers that caught `httpx.HTTPError` must
-name the SDK class; `KSeFException` already covers every SDK failure. Retries,
-API error classes and `KSeFAuthError` on a 401 or 403 are unchanged.
+`outcome_ambiguous`, and the original `httpx` exception as `__cause__`. It covers
+every `httpx.RequestError`: connection and timeout failures, a response the HTTP
+client could not decode, and an abandoned redirect chain. It does not subclass
+`httpx.HTTPError`, so handlers that caught `httpx.HTTPError` must name the SDK
+class; `KSeFException` already covers every SDK failure. Retries, API error
+classes and `KSeFAuthError` on a 401 or 403 are unchanged.
 `KSeFExternalTransferError`, `KSeFBatchUploadError` and
 `KSeFAuthTokenRedemptionError` now derive from `KSeFTransportError` and keep their
 own codes and recovery behaviour.

@@ -63,12 +63,19 @@ class Flavor:
         environment: Environment,
         http_client: httpx.Client | httpx.AsyncClient,
         transport_config: TransportConfig | None = None,
-    ) -> Any:
+    ) -> Client | AsyncClient:
         """Build the public root client of this flavour over a caller-owned HTTP client."""
-        cls = AsyncClient if self.is_async else Client
-        return cls(
+        if self.is_async:
+            assert isinstance(http_client, httpx.AsyncClient)
+            return AsyncClient(
+                environment,
+                http_client=http_client,
+                transport_config=transport_config,
+            )
+        assert isinstance(http_client, httpx.Client)
+        return Client(
             environment,
-            http_client=http_client,  # pyright: ignore[reportArgumentType]
+            http_client=http_client,
             transport_config=transport_config,
         )
 

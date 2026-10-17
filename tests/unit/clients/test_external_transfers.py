@@ -268,7 +268,16 @@ def test_async_upload_marks_lost_response_ambiguous_and_exposes_recovery(
 
 
 @legacy_api
-@pytest.mark.parametrize("failure", ["transport", "status"])
+@pytest.mark.parametrize(
+    ("failure", "expected_cause", "expected_requests"),
+    [
+        ("transport", httpx.ConnectError, 1),
+        ("decoding", httpx.DecodingError, 1),
+        ("redirect", httpx.TooManyRedirects, 2),
+        ("status", httpx.HTTPStatusError, 1),
+    ],
+    ids=["transport", "decoding", "redirect", "status"],
+)
 @pytest.mark.parametrize("operation", ["download", "upload"])
 def test_external_errors_are_transport_errors(
     flavor: Flavor,
@@ -276,6 +285,8 @@ def test_external_errors_are_transport_errors(
     domain_batch_session_state: BaseFactory[BatchSessionResumeState],
     operation: str,
     failure: str,
+    expected_cause: type[httpx.RequestError],
+    expected_requests: int,
 ) -> None:
     """Presigned-storage failures keep their own class and code under the transport base."""
     requests: list[httpx.Request] = []
@@ -284,6 +295,19 @@ def test_external_errors_are_transport_errors(
         requests.append(request)
         if failure == "transport":
             raise httpx.ConnectError("storage unreachable", request=request)
+        if failure == "decoding":
+            return httpx.Response(
+                200,
+                headers={"Content-Encoding": "gzip"},
+                content=b"not-gzip",
+                request=request,
+            )
+        if failure == "redirect":
+            return httpx.Response(
+                302,
+                headers={"Location": request.url.path},
+                request=request,
+            )
         return httpx.Response(403, content=b"", request=request)
 
     state = domain_batch_session_state.build(
@@ -299,9 +323,17 @@ def test_external_errors_are_transport_errors(
     )
     http_client: httpx.Client | httpx.AsyncClient
     if flavor.is_async:
-        http_client = httpx.AsyncClient(transport=httpx.MockTransport(_handle))
+        http_client = httpx.AsyncClient(
+            transport=httpx.MockTransport(_handle),
+            follow_redirects=failure == "redirect",
+            max_redirects=1,
+        )
     else:
-        http_client = httpx.Client(transport=httpx.MockTransport(_handle))
+        http_client = httpx.Client(
+            transport=httpx.MockTransport(_handle),
+            follow_redirects=failure == "redirect",
+            max_redirects=1,
+        )
 
     client = flavor.root_client(
         environment=Environment.PRODUCTION, http_client=http_client
@@ -348,15 +380,15 @@ def test_external_errors_are_transport_errors(
         transfer_error = error
 
     assert isinstance(transfer_error, KSeFExternalTransferError)
+    # Only a real storage answer carries a status; a lost or undecodable response
+    # and an abandoned redirect chain leave the SDK without one.
+    assert transfer_error.status_code == (403 if failure == "status" else None)
     assert transfer_error.outcome_ambiguous is (
-        operation == "upload" and failure == "transport"
-    )
-    expected_cause = (
-        httpx.ConnectError if failure == "transport" else httpx.HTTPStatusError
+        operation == "upload" and failure != "status"
     )
     assert isinstance(transfer_error.__cause__, expected_cause)
     assert not isinstance(error, KSeFAuthError)
     assert "sig=secret" not in str(error)
     assert "sig=secret" not in json.dumps(error.context, default=str)
-    assert len(requests) == 1
+    assert len(requests) == expected_requests
     assert "Authorization" not in requests[0].headers

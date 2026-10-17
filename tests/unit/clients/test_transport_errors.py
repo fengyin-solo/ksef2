@@ -41,6 +41,8 @@ _Handler = Callable[[httpx.Request], httpx.Response]
 
 # Three attempts, so the retry middleware is really exercised, and no waiting.
 _RETRY = RetryConfig(max_attempts=3, initial_delay=0.0)
+# httpx's own default, kept explicit so the redirect test can lower it.
+_HTTPX_MAX_REDIRECTS = 20
 
 _REVOKED_SERIAL_NUMBER = "ABCDEF0123456789"
 
@@ -80,6 +82,8 @@ def _drive(
     *,
     retry: RetryConfig = _RETRY,
     authenticated: bool = True,
+    follow_redirects: bool = False,
+    max_redirects: int = _HTTPX_MAX_REDIRECTS,
 ) -> _Outcome:
     """Run ``operation`` on the flavour's public client over a scripted HTTP transport.
 
@@ -98,11 +102,15 @@ def _drive(
         http_client = httpx.AsyncClient(
             base_url=Environment.TEST.base_url,
             transport=httpx.MockTransport(_record),
+            follow_redirects=follow_redirects,
+            max_redirects=max_redirects,
         )
     else:
         http_client = httpx.Client(
             base_url=Environment.TEST.base_url,
             transport=httpx.MockTransport(_record),
+            follow_redirects=follow_redirects,
+            max_redirects=max_redirects,
         )
 
     client = flavor.root_client(
@@ -162,6 +170,74 @@ def test_transport_failure_surfaces_as_sdk_error(
     assert error.path == LimitRoutes.GET_API_RATE_LIMITS.path
     assert error.outcome_ambiguous is False
     assert len(outcome.requests) == _RETRY.max_attempts
+
+
+def test_malformed_encoded_response_surfaces_as_sdk_error(
+    flavor: Flavor,
+    domain_auth_tokens: BaseFactory[AuthTokens],
+) -> None:
+    """A response the HTTP client cannot decode is an SDK error and is not retried."""
+
+    def _bad_gzip(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"Content-Encoding": "gzip"},
+            content=b"not-gzip",
+            request=request,
+        )
+
+    outcome = _drive(
+        flavor,
+        domain_auth_tokens.build(),
+        _first_peppol_page,
+        _bad_gzip,
+        authenticated=False,
+    )
+
+    error = outcome.error
+    assert isinstance(error, KSeFTransportError)
+    assert type(error) is KSeFTransportError
+    assert error.code == "TRANSPORT_ERROR"
+    assert isinstance(error.__cause__, httpx.DecodingError)
+    assert not isinstance(error, httpx.HTTPError)
+    assert error.method == "GET"
+    assert error.path == PeppolRoutes.QUERY_PROVIDERS.path
+    assert error.outcome_ambiguous is False
+    assert len(outcome.requests) == 1
+
+
+def test_redirect_chain_exhaustion_surfaces_as_sdk_error(
+    flavor: Flavor,
+    domain_auth_tokens: BaseFactory[AuthTokens],
+) -> None:
+    """A redirect chain the HTTP client gives up on is an SDK error, without retries."""
+
+    def _redirect(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            302,
+            headers={"Location": PeppolRoutes.QUERY_PROVIDERS.path},
+            request=request,
+        )
+
+    outcome = _drive(
+        flavor,
+        domain_auth_tokens.build(),
+        _first_peppol_page,
+        _redirect,
+        authenticated=False,
+        follow_redirects=True,
+        max_redirects=1,
+    )
+
+    error = outcome.error
+    assert isinstance(error, KSeFTransportError)
+    assert error.code == "TRANSPORT_ERROR"
+    assert isinstance(error.__cause__, httpx.TooManyRedirects)
+    assert error.method == "GET"
+    assert error.path == PeppolRoutes.QUERY_PROVIDERS.path
+    assert error.outcome_ambiguous is False
+    assert not isinstance(error, httpx.HTTPError)
+    assert len(outcome.requests) == 2
 
 
 def test_retry_exhaustion_wraps_after_last_attempt(
@@ -354,14 +430,12 @@ def _close_failing_session(
 ) -> OnlineSessionClient | AsyncOnlineSessionClient:
     """Build an online session whose requests run through the SDK exception chain."""
     if flavor.is_async:
+        assert isinstance(flavor.transport, AsyncFakeTransport)
         return AsyncOnlineSessionClient(
-            AsyncKSeFExceptionMiddleware(flavor.transport),  # pyright: ignore[reportArgumentType]
-            state,
+            AsyncKSeFExceptionMiddleware(flavor.transport), state
         )
-    return OnlineSessionClient(
-        KSeFExceptionMiddleware(flavor.transport),  # pyright: ignore[reportArgumentType]
-        state,
-    )
+    assert isinstance(flavor.transport, FakeTransport)
+    return OnlineSessionClient(KSeFExceptionMiddleware(flavor.transport), state)
 
 
 def _exit_session(
@@ -380,15 +454,12 @@ def _exit_session(
                     raise RuntimeError("invoice submission failed")
 
         _ = flavor.run(_run_async())
-    else:
-        assert isinstance(session, OnlineSessionClient)
+        return
 
-        def _run_sync() -> None:
-            with session:
-                if body_failed:
-                    raise RuntimeError("invoice submission failed")
-
-        _run_sync()
+    assert isinstance(session, OnlineSessionClient)
+    with session:
+        if body_failed:
+            raise RuntimeError("invoice submission failed")
 
 
 def test_session_close_transport_failure_preserves_body_exception(
@@ -448,6 +519,35 @@ assert error.code == 'TRANSPORT_ERROR'
     )
 
     assert result.returncode == 0, result.stderr
+
+
+def test_transport_context_preserves_code_and_hint() -> None:
+    """Extra context cannot rewrite the class code, and an explicit hint is honoured."""
+    error = KSeFTransportError(
+        "The request failed",
+        code="OVERRIDDEN",
+        hint="Try later",
+        reference_number="ref-1",
+    )
+
+    assert error.code == "TRANSPORT_ERROR"
+    assert error.context["code"] == "TRANSPORT_ERROR"
+    assert error.hint == "Try later"
+    assert error.context["hint"] == "Try later"
+    assert error.context["reference_number"] == "ref-1"
+    assert str(error) == "The request failed\nHint: Try later"
+
+    subclass = exceptions.KSeFExternalTransferError(
+        operation="download",
+        host="storage.example",
+        reference_number="ref-1",
+        part_ordinal=1,
+    )
+
+    assert subclass.code == "EXTERNAL_TRANSFER_ERROR"
+    assert subclass.context["code"] == "EXTERNAL_TRANSFER_ERROR"
+    assert subclass.hint is None
+    assert "hint" not in subclass.context
 
 
 def test_transport_error_codes_are_stable_and_distinct() -> None:

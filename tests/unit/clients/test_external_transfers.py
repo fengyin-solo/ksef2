@@ -331,7 +331,7 @@ def test_external_errors_are_transport_errors(
             error = exc_info.value
     finally:
         flavor.close(client)
-        if flavor.is_async:
+        if isinstance(http_client, httpx.AsyncClient):
             _ = asyncio.run(http_client.aclose())
         else:
             http_client.close()

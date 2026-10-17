@@ -520,9 +520,10 @@ class KSeFRateLimitError(KSeFApiError):
 class KSeFExternalTransferError(KSeFTransportError):
     """Raised when a presigned external-storage transfer fails.
 
-    It subclasses ``KSeFTransportError``, so one handler covers lost responses and
-    transport failures alike. Storage answers are classified here and not as KSeF
-    API errors: a storage ``403`` does not raise ``KSeFAuthError``.
+    It subclasses ``KSeFTransportError``, so one handler covers rejected answers
+    and requests that produced no usable response. Storage answers are classified
+    here and not as KSeF API errors: a storage ``403`` does not raise
+    ``KSeFAuthError``.
 
     Args:
         operation: Direction of the failed transfer, ``upload`` or ``download``.
@@ -1037,11 +1038,11 @@ class KSeFAuthPollingTimeoutError(KSeFException):
 
 
 class KSeFAuthTokenRedemptionError(KSeFTransportError):
-    """Raised when a one-shot authentication token redemption loses its response.
+    """Raised when a one-shot authentication token redemption gets no usable response.
 
-    It subclasses ``KSeFTransportError``, so handlers of transport failures catch
-    it too. Only the redemption request is recorded: the one-shot token is never
-    part of the message, ``str(exc)`` or ``context``.
+    It subclasses ``KSeFTransportError``, so handlers of request failures catch it
+    too. Only the redemption request is recorded: the one-shot token is never part
+    of the message, ``str(exc)`` or ``context``.
 
     Attributes:
         method: Always ``POST``; the HTTP method of the redemption request.
@@ -1053,8 +1054,9 @@ class KSeFAuthTokenRedemptionError(KSeFTransportError):
 
     def __init__(self) -> None:
         super().__init__(
-            "Authentication token redemption may have succeeded, but its response "
-            "was lost. Do not retry the one-shot redemption automatically.",
+            "Authentication token redemption may have succeeded, but it produced "
+            "no usable response. Do not retry the one-shot redemption "
+            "automatically.",
             method=routes.AuthRoutes.REDEEM_TOKEN.method,
             path=routes.AuthRoutes.REDEEM_TOKEN.path,
             outcome_ambiguous=True,

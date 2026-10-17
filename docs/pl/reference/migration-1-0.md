@@ -127,6 +127,45 @@ odczycie wyników. W kodzie async użyj `async for`, await dla `first_page()`,
 `first_response()` i `download()`, a dla eksportu `job = await auth.invoices.export(filters=filters)`
 i następnie `exported = await job.wait()`.
 
+## Błędy transportu
+
+Wcześniej błąd sieci docierał do wywołującego jako wyjątek `httpx`, więc obsługa
+błędów musiała znać klienta HTTP użytego przez SDK:
+
+```python
+import httpx
+
+try:
+    page = auth.invoices.search(filters).first_page()
+except httpx.HTTPError as exc:
+    retry_later()
+```
+
+Teraz ten sam błąd to `KSeFTransportError`, a `KSeFException` już go obejmuje:
+
+```python
+from ksef2 import KSeFException, KSeFTransportError
+
+try:
+    page = auth.invoices.search(filters).first_page()
+except KSeFTransportError as exc:
+    if exc.outcome_ambiguous:
+        check_what_ksef_recorded()
+    else:
+        retry_later()
+except KSeFException as exc:
+    report(exc)
+```
+
+`KSeFTransportError` nie dziedziczy po `httpx.HTTPError`, więc istniejący blok
+`except httpx.HTTPError` już się nie uruchomi i musi wskazać klasę SDK. Oryginalny
+wyjątek `httpx` pozostaje dostępny jako `__cause__`; liczba prób, powtarzalne
+statusy i lista żądań bezpiecznych do ponowienia pozostają bez zmian.
+`KSeFExternalTransferError`, `KSeFBatchUploadError` i
+`KSeFAuthTokenRedemptionError` są teraz podklasami `KSeFTransportError` i zachowują
+własne kody, więc jedno `except KSeFTransportError` obejmuje każdy błąd utraconej
+odpowiedzi.
+
 ## Wykrywanie wycofywanego API
 
 Python zwykle ukrywa `DeprecationWarning` w importowanych modułach aplikacji.

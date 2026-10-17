@@ -39,6 +39,21 @@ module in the repository.
 
 For the exact compatibility boundary, use the public API contract page.
 
+## Breaking in 1.0
+
+Transport failures are SDK errors. A public method no longer lets an `httpx`
+exception escape: a request that fails before KSeF answers raises
+`KSeFTransportError` (`code = "TRANSPORT_ERROR"`) with `method`, `path` and
+`outcome_ambiguous`, and the original `httpx` exception as `__cause__`. It does
+not subclass `httpx.HTTPError`, so handlers that caught `httpx.HTTPError` must
+name the SDK class; `KSeFException` already covers every SDK failure. Retries,
+API error classes and `KSeFAuthError` on a 401 or 403 are unchanged.
+`KSeFExternalTransferError`, `KSeFBatchUploadError` and
+`KSeFAuthTokenRedemptionError` now derive from `KSeFTransportError` and keep their
+own codes and recovery behaviour.
+See the [migration guide](migration-1-0.md#transport-failures) and the
+[error reference](errors.md#transport-failure-attributes).
+
 ## Public but lower level
 
 `ksef2.raw` and `ksef2.raw.mappers` are public advanced APIs. Their import paths

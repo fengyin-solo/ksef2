@@ -241,21 +241,20 @@ async with AsyncClient(Environment.PRODUCTION) as client:
 
 ## Błędy
 
-Błędy sklasyfikowane przez SDK łap przez `KSeFException`. Błędy transportu HTTP
-łap osobno.
+Każdy błąd zgłaszany przez SDK jest podklasą `KSeFException`, błędy transportu
+też. Łap najpierw `KSeFTransportError`, gdy brak odpowiedzi zmienia to, co robisz
+daalej.
 
 ```python
-import httpx
-
-from ksef2 import Client, Environment, KSeFException
+from ksef2 import Client, Environment, KSeFException, KSeFTransportError
 
 try:
     with Client(Environment.TEST) as client:
         auth = client.authentication.with_test_certificate(nip="5261040828")
+except KSeFTransportError as exc:
+    print(f"Transport failed: {exc.method} {exc.path}")
 except KSeFException as exc:
     print(exc)
-except httpx.HTTPError as exc:
-    print(f"Transport failed: {exc}")
 ```
 
 ## Następne przepływy

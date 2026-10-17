@@ -3,11 +3,12 @@ title: Referencja błędów
 description: Hierarchia wyjątków SDK, atrybuty, kody błędów KSeF, wskazówki i klasy timeoutów pollingu.
 ---
 
-ksef2 rzuca wyjątki SDK dla błędów, które potrafi sklasyfikować. Błędy
-transportu, które wystąpią zanim KSeF zwróci sparsowaną odpowiedź API, pozostają
-wyjątkami `httpx.HTTPError`. Transfery przez presigned URL-e do zewnętrznego
-storage używają opisanych niżej dedykowanych wyjątków zamiast klasyfikacji
-błędów API lub uwierzytelnienia KSeF.
+ksef2 rzuca wyjątki SDK dla każdego błędu, który zgłasza, także dla błędów
+transportu: żadna metoda publiczna nie przepuszcza wyjątku `httpx` do
+wywołującego. Łap `KSeFException`, żeby obsłużyć każdy błąd SDK, albo węższy
+`KSeFTransportError`, gdy żądanie nie doczekało się odpowiedzi KSeF. Transfery
+przez presigned URL-e do zewnętrznego storage używają opisanych niżej
+dedykowanych wyjątków zamiast klasyfikacji błędów API lub uwierzytelnienia KSeF.
 
 ## Rozgałęziaj po klasie albo po `ksef_code`
 
@@ -21,12 +22,13 @@ aktualne sformułowania KSeF i mogą zmienić się między wydaniami. To samo do
 | Klasa | Baza | `code` | Główne atrybuty |
 | --- | --- | --- | --- |
 | `KSeFException` | `Exception` | `SDK_ERROR` | `context`, `hint` |
+| `KSeFTransportError` | `KSeFException` | `TRANSPORT_ERROR` | `method`, `path`, `outcome_ambiguous` |
 | `KSeFApiError` | `KSeFException` | `API_ERROR` | `status_code`, `ksef_code`, `exception_code`, `trace_id`, `details`, `response` |
 | `KSeFNotReadyError` | `KSeFApiError` | `NOT_READY` | Atrybuty błędu API |
 | `KSeFAuthError` | `KSeFApiError` | `AUTH_ERROR` | Atrybuty błędu API |
 | `KSeFAuthenticationExpiredError` | `KSeFAuthError` | `AUTHENTICATION_EXPIRED` | Atrybuty błędu API |
 | `KSeFRateLimitError` | `KSeFApiError` | `RATE_LIMIT_ERROR` | `retry_after` oraz atrybuty błędu API |
-| `KSeFExternalTransferError` | `KSeFException` | `EXTERNAL_TRANSFER_ERROR` | `operation`, `host`, `reference_number`, `part_ordinal`, `status_code`, `outcome_ambiguous` |
+| `KSeFExternalTransferError` | `KSeFTransportError` | `EXTERNAL_TRANSFER_ERROR` | `operation`, `host`, `reference_number`, `part_ordinal`, `status_code`, `outcome_ambiguous` |
 | `KSeFBatchUploadError` | `KSeFExternalTransferError` | `BATCH_UPLOAD_ERROR` | Atrybuty transferu zewnętrznego oraz `recovery_state()` i `recovery_prepared_batch()` |
 | `KSeFInvoiceRejectedError` | `KSeFSessionError` | `INVOICE_REJECTED` | `invoice_reference_number`, `invoice_status_code`, `description`, `details`, `extensions`, `status` |
 
@@ -44,10 +46,11 @@ except KSeFApiError as exc:
     if exc.ksef_code == 21405:
         details = exc.details
     trace_id = exc.trace_id  # podaj go, kontaktując się z pomocą KSeF
+except KSeFTransportError as exc:
+    if exc.outcome_ambiguous:
+        ...  # KSeF mógł przyjąć żądanie; sprawdź rezultat przed ponowną wysyłką
 except KSeFException as exc:
     context = exc.context
-except httpx.HTTPError as exc:
-    transport_error = exc
 ```
 
 ## Klasy wyjątków SDK
@@ -65,7 +68,7 @@ except httpx.HTTPError as exc:
 | `KSeFExportFailedError` | `EXPORT_FAILED` | KSeF zakończył eksport faktur bez paczki: eksport się nie powiódł, został anulowany przez system albo wygasł (`ExportJob.wait()`). |
 | `KSeFPermissionOperationFailedError` | `PERMISSION_OPERATION_FAILED` | KSeF zakończył nadanie albo cofnięcie uprawnienia bez jego zastosowania (`PermissionOperation.wait()`). |
 | `KSeFCertificateEnrollmentFailedError` | `CERTIFICATE_ENROLLMENT_FAILED` | KSeF odrzucił, anulował albo nie zrealizował rejestracji certyfikatu (`CertificateEnrollment.wait()`). |
-| `KSeFAuthTokenRedemptionError` | `AUTH_TOKEN_REDEMPTION_ERROR` | Jednorazowy redeem uwierzytelnienia utracił odpowiedź i mógł się powieść. |
+| `KSeFAuthTokenRedemptionError` | `AUTH_TOKEN_REDEMPTION_ERROR` | Jednorazowy redeem uwierzytelnienia utracił odpowiedź i mógł się powieść. Podklasa `KSeFTransportError`. |
 | `KSeFExternalTransferError` | `EXTERNAL_TRANSFER_ERROR` | Upload lub download przez presigned URL został odrzucony albo utracił odpowiedź. |
 | `KSeFBatchUploadError` | `BATCH_UPLOAD_ERROR` | Upload części batch nie powiódł się, ale chroniony stan odzyskiwania pozostaje dostępny. |
 | `NoCertificateAvailableError` | `NO_CERTIFICATE_AVAILABLE` | Brak poprawnego certyfikatu dla podpisu albo szyfrowania. |
@@ -74,6 +77,38 @@ except httpx.HTTPError as exc:
 `KSeFAuthTokenRedemptionError.outcome_ambiguous` ma zawsze wartość `True`. Nie
 ponawiaj redeem: KSeF mógł już zużyć tymczasowy token uwierzytelnienia, mimo że
 odpowiedź nie dotarła do wywołującego.
+
+## Atrybuty błędu transportu
+
+`KSeFTransportError` jest rzucany, gdy żądanie nie uzyskało żadnej odpowiedzi
+KSeF. Żądania nadające się do ponowienia są ponawiane najpierw, więc ten błąd
+oznacza wyczerpane próby albo żądanie, którego SDK nie ponawia; sama otoczka nie
+zmienia liczby prób.
+
+| Atrybut | Typ | Znaczenie |
+| --- | --- | --- |
+| `method` | `str \| None` | Metoda HTTP błędnego żądania albo `None`, gdy SDK jej nie zna. |
+| `path` | `str \| None` | Ścieżka URL żądania bez userinfo, hosta, query i fragmentu. Presigned URL-e storage nigdy nie trafiają do tego pola. |
+| `outcome_ambiguous` | `bool` | `True`, gdy żądanie mogło mimo wszystko dotrzeć do KSeF: wszystko poza `GET`, `HEAD` i `OPTIONS`, bo wcześniejsza próba mogła dotrzeć. |
+
+Oryginalny wyjątek `httpx` pozostaje dostępny jako `__cause__`. To surowa
+diagnostyka HTTP, która może powtórzyć szczegóły żądania nieuwzględnione w samym
+błędzie, więc czytaj ją wyłącznie w chronionym logu. Komunikat, `str(exc)`,
+`repr(exc)` i `context` nigdy nie zawierają tokenu bearer, podpisanego URL-a ani
+ciała żądania.
+
+```python
+from ksef2 import KSeFException, KSeFTransportError
+
+try:
+    providers = client.peppol.list().first_page()
+except KSeFTransportError as exc:
+    print(f"{exc.method} {exc.path} nie przeszło przez transport")
+    if exc.outcome_ambiguous:
+        ...  # sprawdź, co zapisał KSeF, zanim wyślesz coś ponownie
+except KSeFException as exc:
+    print(exc)  # każdy pozostały błąd SDK
+```
 
 ## Atrybuty transferu zewnętrznego i odzyskiwanie batch
 

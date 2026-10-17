@@ -126,6 +126,46 @@ In async code, use `async for`, await `first_page()`, `first_response()` and `do
 `job = await auth.invoices.export(filters=filters)` followed by
 `exported = await job.wait()`.
 
+## Transport failures
+
+Before, a network failure reached the caller as an `httpx` exception, so error
+handling had to know which HTTP client the SDK used:
+
+```python
+import httpx
+
+try:
+    page = auth.invoices.search(filters).first_page()
+except httpx.HTTPError as exc:
+    retry_later()
+```
+
+After, the same failure is a `KSeFTransportError`, and `KSeFException` already
+covers it:
+
+```python
+from ksef2 import KSeFException, KSeFTransportError
+
+try:
+    page = auth.invoices.search(filters).first_page()
+except KSeFTransportError as exc:
+    if exc.outcome_ambiguous:
+        check_what_ksef_recorded()
+    else:
+        retry_later()
+except KSeFException as exc:
+    report(exc)
+```
+
+`KSeFTransportError` does not subclass `httpx.HTTPError`, so an existing
+`except httpx.HTTPError` block no longer runs and has to name the SDK class.
+The original `httpx` exception stays available as `__cause__`; retry counts,
+retryable statuses and the list of requests safe to retry are unchanged.
+`KSeFExternalTransferError`, `KSeFBatchUploadError` and
+`KSeFAuthTokenRedemptionError` are now subclasses of `KSeFTransportError` and keep
+their own codes, so one `except KSeFTransportError` covers every lost-response
+failure.
+
 ## Find deprecated uses
 
 Python usually hides `DeprecationWarning` in imported application modules.

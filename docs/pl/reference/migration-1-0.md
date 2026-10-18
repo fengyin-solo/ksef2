@@ -127,6 +127,12 @@ odczycie wyników. W kodzie async użyj `async for`, await dla `first_page()`,
 `first_response()` i `download()`, a dla eksportu `job = await auth.invoices.export(filters=filters)`
 i następnie `exported = await job.wait()`.
 
+Pojedynczą stronę pobieraj przez `pager.page()`, który zwraca `Page` z `items`
+oraz `next_cursor`. Przekaż ten kursor do `.page()` później, w razie potrzeby z
+innego procesu, a wyszukiwanie wznowi się na stronie po niej: kursor
+wyszukiwania faktur zawiera filtry, parametry i granicę obcięcia żądania, które
+wznawia.
+
 ## Wykrywanie wycofywanego API
 
 Python zwykle ukrywa `DeprecationWarning` w importowanych modułach aplikacji.

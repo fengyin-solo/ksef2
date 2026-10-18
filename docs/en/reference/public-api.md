@@ -12,7 +12,7 @@ They are the paths intended to remain stable through the 1.x line.
 | --- | --- |
 | `ksef2` | Root clients, environment and transport config, `FormSchema`, `__version__`, and public exceptions. |
 | `ksef2.clients` | Concrete sync/async clients, the stable `InvoicesService` / `BatchService` workflow types, and the handle, paging and export result types (`InvoiceSubmission`, `ExportJob`, `GeneratedToken`, `PermissionOperation`, `CertificateEnrollment`, `ExportedInvoices`, `Pager`, `OperationHandle`), plus async twins, for type annotations. |
-| `ksef2.models` | SDK request, response, filter, pagination, token, permission, session, and batch models. |
+| `ksef2.models` | SDK request, response, filter, pagination (including `Page`), token, permission, session, and batch models. |
 | `ksef2.fa3` | FA(3) invoice builder, draft snapshots, and public FA(3) domain models used by builder workflows. |
 | `ksef2.xades` | Certificate loading, TEST certificate generation, local XAdES signing helpers, and `LocalSigner`. |
 | `ksef2.testdata` | TEST-only helpers that generate valid NIP and PESEL numbers (`generate_nip`, `generate_pesel`). |
@@ -151,7 +151,7 @@ outside `__main__` and test runners, so run your tests with
 | `auth.invoices.schedule_export()`, `get_export_status()`, `wait_for_export_package()`, `fetch_package()`, `fetch_package_bytes()` and `export_and_download()` | `auth.invoices.export(...)`, then `ExportJob.wait()` | 2.0.0 or later |
 | `auth.tokens.wait_for_activation(reference_number=...)` | `auth.tokens.generate(...).wait()` | 2.0.0 or later |
 | `auth.tokens.status()` | `auth.tokens.get_status()` | 2.0.0 or later |
-| `auth.tokens.list_page()` and `list_all()` | `auth.tokens.list(...)` with `.pages()` and `.first_page()` | 2.0.0 or later |
+| `auth.tokens.list_all()` | `auth.tokens.list(...)` with `.pages()` and `.first_page()` | 2.0.0 or later |
 | `auth.certificates.query()` and `all()` | `auth.certificates.list(...)` | 2.0.0 or later |
 | `client.peppol.query()` and `all()` | `client.peppol.list(...)` | 2.0.0 or later |
 | `auth.sessions.query()` and `all()` | `auth.sessions.list(...)` | 2.0.0 or later |
@@ -182,6 +182,12 @@ getters.
 `Pager` over the invoices instead of one page, so it is the one name in the table
 above whose return type changes. Iterate it, or call `.first_page()` for the old
 single request; `list_all_invoices()` still returns pages.
+
+`auth.tokens.list_page()` stays supported and is no longer described as
+deprecated: it is the single request that takes KSeF's own continuation token,
+and resumable paging does not replace it. Every `Pager`, including the one from
+`auth.invoices.search(...)`, answers `.page(cursor)` with a `Page` holding
+`items` and the `next_cursor` you store to continue that collection later.
 
 `FA3InvoiceBuilder.dump_state()` and `from_state()` are a separate builder
 draft API and are not deprecated.

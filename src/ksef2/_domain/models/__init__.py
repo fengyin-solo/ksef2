@@ -205,6 +205,7 @@ from ksef2._domain.models.peppol import (
 from ksef2._domain.models.pagination import (
     CollectiveIdentifierParams,
     InvoiceMetadataParams,
+    Page,
 )
 
 if TYPE_CHECKING:
@@ -247,6 +248,7 @@ __all__ = [
     # base
     "KSeFBaseModel",
     "KSeFBaseParams",
+    "Page",
     "CompressionType",
     "CompressionTypeEnum",
     # session

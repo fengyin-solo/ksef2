@@ -12,7 +12,7 @@ stabilne w linii 1.x.
 | --- | --- |
 | `ksef2` | Klienci root, konfiguracja środowiska i transportu, `FormSchema`, `__version__` oraz publiczne wyjątki. |
 | `ksef2.clients` | Konkretne klasy klientów sync/async, stabilne typy workflow `InvoicesService` / `BatchService` oraz typy uchwytów, stronicowania i wyniku eksportu (`InvoiceSubmission`, `ExportJob`, `GeneratedToken`, `PermissionOperation`, `CertificateEnrollment`, `ExportedInvoices`, `Pager`, `OperationHandle`) wraz z odpowiednikami async, do adnotacji typów. |
-| `ksef2.models` | Modele żądań, odpowiedzi, filtrów, paginacji, tokenów, uprawnień, sesji i batchy. |
+| `ksef2.models` | Modele żądań, odpowiedzi, filtrów, paginacji (w tym `Page`), tokenów, uprawnień, sesji i batchy. |
 | `ksef2.fa3` | Publiczny builder faktur FA(3), drafty buildera oraz typy modelu faktury używane przez aplikacje. |
 | `ksef2.xades` | Ładowanie certyfikatów, generowanie certyfikatów TEST, lokalne podpisy XAdES i `LocalSigner`. |
 | `ksef2.testdata` | Pomocniki tylko dla TEST, które generują poprawne numery NIP i PESEL (`generate_nip`, `generate_pesel`). |
@@ -152,7 +152,7 @@ wskazują miejsca użycia, i może zostać usunięte nie wcześniej niż w ksef2
 | `auth.invoices.schedule_export()`, `get_export_status()`, `wait_for_export_package()`, `fetch_package()`, `fetch_package_bytes()` i `export_and_download()` | `auth.invoices.export(...)`, potem `ExportJob.wait()` | 2.0.0 lub później |
 | `auth.tokens.wait_for_activation(reference_number=...)` | `auth.tokens.generate(...).wait()` | 2.0.0 lub później |
 | `auth.tokens.status()` | `auth.tokens.get_status()` | 2.0.0 lub później |
-| `auth.tokens.list_page()` i `list_all()` | `auth.tokens.list(...)` z `.pages()` i `.first_page()` | 2.0.0 lub później |
+| `auth.tokens.list_all()` | `auth.tokens.list(...)` z `.pages()` i `.first_page()` | 2.0.0 lub później |
 | `auth.certificates.query()` i `all()` | `auth.certificates.list(...)` | 2.0.0 lub później |
 | `client.peppol.query()` i `all()` | `client.peppol.list(...)` | 2.0.0 lub później |
 | `auth.sessions.query()` i `all()` | `auth.sessions.list(...)` | 2.0.0 lub później |
@@ -183,6 +183,12 @@ Każdy udostępnia wszystkie pola odpowiedzi, którą zastępuje, a
 tabeli, której typ zwracany się zmienia. Iteruj po nim albo wywołaj
 `.first_page()`, by wykonać dawne pojedyncze żądanie; `list_all_invoices()` nadal
 zwraca strony.
+
+`auth.tokens.list_page()` pozostaje wspierane i nie jest już opisane jako
+wycofane: to pojedyncze żądanie przyjmujące własny token kontynuacji KSeF, a
+stronicowanie z kursorem go nie zastępuje. Każdy `Pager`, także ten z
+`auth.invoices.search(...)`, odpowiada na `.page(cursor)` zwracając `Page` z
+`items` oraz `next_cursor`, który zapisujesz, by kontynuować tę kolekcję później.
 
 `FA3InvoiceBuilder.dump_state()` i `from_state()` to osobne API szkiców buildera
 i nie są wycofane.

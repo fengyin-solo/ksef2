@@ -17,8 +17,12 @@ wynik lokalnie i zasilać widoki operacyjne z własnego magazynu.
 ## Metadane znajdują faktury
 
 `auth.invoices.search()` zwraca `InvoiceSearchPager` po wierszach
-`InvoiceMetadata`. Iteruj go albo użyj `pages()`, `first_page()` i `wait()`.
-Te operacje zachowują kontrakty ogólnego `Pager`. Użyj `responses()` dla pełnych,
+`InvoiceMetadata`. Iteruj go albo użyj `pages()`, `first_page()`, `page(cursor)`
+i `wait()`. Te operacje zachowują kontrakty ogólnego `Pager`. `page(cursor)`
+pobiera jedną stronę i zwraca `next_cursor`, który pozwala wznowić to samo
+wyszukiwanie później, nawet w innym procesie. Tylko `next_cursor` równe `None`
+kończy wyszukiwanie: strona może być pusta i nadal wskazywać stronę następną.
+Użyj `responses()` dla pełnych,
 typowanych stron albo `first_response()` dla jednej `QueryInvoicesMetadataResponse`
 z flagami paginacji i `permanent_storage_hwm_date`.
 
@@ -119,8 +123,9 @@ if next_checkpoint is not None:
 
 Pusta, zakończona odpowiedź również może zawierać granicę synchronizacji.
 Jeśli KSeF nie zwróci HWM albo ostatnia odpowiedź jest ucięta, zachowaj poprzednią
-granicę. W kodzie async użyj `async for page in pager.responses()` oraz
-`page = await pager.first_response()`.
+granicę. W kodzie async użyj `async for page in pager.responses()`,
+`page = await pager.first_response()` oraz
+`page = await pager.page(cursor)`, aby odczytać jedną stronę wraz z kursorem.
 
 `responses()` automatycznie obsługuje granice stron i uciętych wyników metadanych.
 Dla uciętej paczki eksportu kontynuuj od jej `last_permanent_storage_date`,

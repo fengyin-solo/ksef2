@@ -9,6 +9,7 @@ from typing_extensions import deprecated
 
 from ksef2._clients._async_handles import AsyncOperationHandle
 from ksef2._clients._async_pager import AsyncPager
+from ksef2._clients._pagination_cursor import OffsetCursor
 from ksef2._core import exceptions
 from ksef2._core.async_protocols import AsyncMiddleware
 from ksef2._domain.models.certificates import (
@@ -29,7 +30,7 @@ from ksef2._domain.models.certificates import (
     RevokeCertificateRequest,
     validate_certificate_serial_number,
 )
-from ksef2._domain.models.pagination import OffsetPaginationParams
+from ksef2._domain.models.pagination import OffsetPaginationParams, Page
 from ksef2._endpoints.async_certificates import AsyncCertificatesEndpoints
 from ksef2._infra.mappers.certificates import from_spec, to_spec
 
@@ -437,8 +438,9 @@ class AsyncCertificatesClient:
         """List the certificates of the authenticated context.
 
         Nothing is requested until the result is consumed. Iterate it for every
-        matching certificate, call ``pages()`` for page-sized lists or
-        ``first_page()`` for one request only.
+        matching certificate, call ``pages()`` for page-sized lists,
+        ``first_page()`` for one request only, or ``page()`` to walk it with a
+        resumable cursor.
 
         Args:
             name: Match this certificate name.
@@ -457,16 +459,33 @@ class AsyncCertificatesClient:
                 print(certificate.certificate_serial_number)
             ```
         """
+        parameters = params or OffsetPaginationParams()
 
-        async def _certificate_pages() -> AsyncGenerator[list[CertificateInfo], None]:
-            async for page in self._pages(
+        async def _fetch_page(cursor: str | None) -> Page[CertificateInfo]:
+            page_params = (
+                parameters
+                if cursor is None
+                else parameters.with_page_offset(
+                    OffsetCursor.decode(
+                        cursor, operation="certificates.list"
+                    ).page_offset
+                )
+            )
+            response = await self._query(
                 name=name,
                 certificate_serial_number=certificate_serial_number,
                 certificate_type=certificate_type,
                 status=status,
                 expires_after=expires_after,
-                params=params,
-            ):
-                yield page.certificates
+                params=page_params,
+            )
+            return Page[CertificateInfo](
+                items=response.certificates,
+                next_cursor=OffsetCursor.encode_next(
+                    operation="certificates.list",
+                    page_offset=page_params.page_offset,
+                    has_more=response.has_more,
+                ),
+            )
 
-        return AsyncPager(_certificate_pages)
+        return AsyncPager(fetch_page=_fetch_page)

@@ -2,12 +2,10 @@
 
 from typing import Any
 
-from ksef2._domain.models.invoices import InvoiceMetadata
-from ksef2._domain.models.pagination import Page
-from ksef2._domain.models.tokens import TokenInfo
+from ksef2._infra.mappers.invoices import from_spec as invoices_from_spec
+from ksef2.models import InvoiceMetadata, Page, TokenInfo
 from tests.unit.factories.tokens import DomainTokenInfoFactory
 from tests.unit.payloads import InvoiceMetadataFactory
-from ksef2._infra.mappers.invoices import from_spec as invoices_from_spec
 
 
 def _metadata() -> InvoiceMetadata:

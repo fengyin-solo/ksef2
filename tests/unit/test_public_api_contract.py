@@ -103,7 +103,13 @@ def _annotation_types(annotation: object) -> set[type[object]]:
 def _annotated_types(cls: type[object]) -> set[type[object]]:
     types: set[type[object]] = set()
     for function in _public_functions(cls):
-        for annotation in get_type_hints(function, include_extras=True).values():
+        # get_type_hints reports nothing for a function that opts out of runtime
+        # annotation checks, so read such a signature as written rather than
+        # dropping it out of the contract.
+        hints = get_type_hints(function, include_extras=True) or dict(
+            getattr(function, "__annotations__", {})
+        )
+        for annotation in hints.values():
             types.update(_annotation_types(annotation))
     return types
 
@@ -203,6 +209,20 @@ def test_public_client_annotations_resolve_through_stable_facades() -> None:
         "Public domain annotation types missing from ksef2.models: "
         f"{', '.join(sorted(missing_models))}"
     )
+
+
+def test_pager_page_publishes_the_facade_page_model() -> None:
+    """``Pager.page()`` still names the facade ``Page`` in its own annotations.
+
+    ``page()`` turns runtime annotation checks off, which makes ``get_type_hints``
+    report nothing for it, so the contract test above cannot reach this signature
+    and the declared types are read as written instead.
+    """
+    for pager_class in (public_clients.Pager, public_clients.AsyncPager):
+        annotations = pager_class.page.__annotations__
+
+        assert annotations["cursor"] == str | None
+        assert _pydantic_generic_origin(annotations["return"]) is public_models.Page
 
 
 def test_testdata_facade_exports_identifier_generators() -> None:

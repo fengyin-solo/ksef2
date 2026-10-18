@@ -49,6 +49,24 @@ Generated files start with:
 `just release-check` also runs `check-gen-sync`, so stale generated sync files
 block releases.
 
+## Refresh the bridge manifest snapshot
+
+`src/ksef2/bridge/manifest.json` is the committed snapshot of the public sync
+API that `ksef2.bridge.manifest()` describes. When a public sync signature
+changes, regenerate it and commit the file:
+
+```bash
+just gen-manifest
+```
+
+```bash
+git add src/ksef2/bridge/manifest.json
+```
+
+`just check-manifest` fails with a unified diff when the committed file is
+stale, and `just release-check` runs it, so a signature change with no
+regenerated snapshot blocks releases.
+
 ## Check one pair
 
 Use `--only` with either the async source or sync target:
@@ -84,6 +102,7 @@ just lint
 just format-check
 just check-ksef-api-version
 just check-gen-sync
+just check-manifest
 just typecheck
 just test
 just test-runtime-checks

@@ -6,6 +6,11 @@
   resume-state stand-ins for handles, sessions, pages and exports, and lists every
   exported `KSeFException` subclass with its `code` and parent (#270).
 
+- The bridge manifest is committed at `src/ksef2/bridge/manifest.json`, so a binding
+  can read the public sync surface without running Python. `just gen-manifest`
+  regenerates it and `just check-manifest` fails with a diff when the file no longer
+  matches a fresh generation; `just release-check` runs that check (#272).
+
 - Run any operation the manifest reports through `ksef2.bridge.call(op, args_json,
   state_json)`, so a binding of any language drives the SDK over one JSON boundary.
   Arguments, the state of the session (`environment`, `authentication`,

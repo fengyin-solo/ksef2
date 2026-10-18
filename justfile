@@ -73,6 +73,7 @@ release-check:
     just validate-examples
     just check-generated-artifacts
     just check-gen-sync
+    just check-manifest
     just coverage
     just typecheck
     just test-coverage
@@ -106,6 +107,14 @@ gen-sync:
 
 check-gen-sync:
     uv run --group codegen python scripts/gen_sync.py --check
+
+# Regenerate the committed bridge manifest snapshot
+gen-manifest:
+    uv run python -m ksef2.bridge manifest --write
+
+# Fail when the committed bridge manifest snapshot is stale
+check-manifest:
+    uv run python -m ksef2.bridge manifest --check
 
 typecheck:
     GITHUB_ACTIONS= uv run --extra runtime-checks basedpyright src --level warning --warnings

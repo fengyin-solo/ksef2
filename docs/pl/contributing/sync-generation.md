@@ -49,6 +49,24 @@ Wygenerowane pliki zaczynają się od:
 `just release-check` też uruchamia `check-gen-sync`, więc nieaktualne pliki
 generated blokują release.
 
+## Odśwież snapshot manifestu bridge
+
+`src/ksef2/bridge/manifest.json` to zapisany w repo snapshot publicznego API
+sync, które opisuje `ksef2.bridge.manifest()`. Gdy zmienia się sygnatura
+publicznej metody sync, wygeneruj go ponownie i zacommituj plik:
+
+```bash
+just gen-manifest
+```
+
+```bash
+git add src/ksef2/bridge/manifest.json
+```
+
+`just check-manifest` kończy się błędem i wypisuje unified diff, gdy zapisany
+plik jest nieaktualny, a `just release-check` go uruchamia, więc zmiana
+sygnatury bez odświeżonego snapshotu blokuje release.
+
 ## Sprawdź jedną parę
 
 Użyj `--only` ze źródłem async albo targetem sync:
@@ -83,6 +101,7 @@ just lint
 just format-check
 just check-ksef-api-version
 just check-gen-sync
+just check-manifest
 just typecheck
 just test
 just test-runtime-checks

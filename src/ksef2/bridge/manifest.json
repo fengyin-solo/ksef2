@@ -2042,34 +2042,14 @@
     "FormSchema": {
       "description": "Supported form schemas for online sessions.",
       "enum": [
-        [
-          "FA (2)",
-          "1-0E",
-          "FA"
-        ],
-        [
-          "FA (3)",
-          "1-0E",
-          "FA"
-        ],
-        [
-          "FA_RR (1)",
-          "1-1E",
-          "FA_RR"
-        ],
-        [
-          "PEF (3)",
-          "2-1",
-          "PEF"
-        ],
-        [
-          "PEF_KOR (3)",
-          "2-1",
-          "PEF"
-        ]
+        "FA2",
+        "FA3",
+        "FA_RR1",
+        "PEF3",
+        "PEF_KOR3"
       ],
       "title": "FormSchema",
-      "type": "array"
+      "type": "string"
     },
     "GenerateCollectiveIdentifierResponse": {
       "description": "Identifier returned after grouping invoices.",
@@ -4110,11 +4090,7 @@
         },
         "form_code": {
           "$ref": "#/$defs/FormSchema",
-          "default": [
-            "FA (3)",
-            "1-0E",
-            "FA"
-          ]
+          "default": "FA3"
         },
         "invoices": {
           "items": {

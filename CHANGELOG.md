@@ -73,6 +73,12 @@
   paging does not replace. `auth.tokens.list_all()` remains deprecated in favour
   of `auth.tokens.list()` (#265).
 
+- `FormSchema` is written to JSON as its member name, such as `"FA3"`, in model
+  dumps, saved state and pagination cursors, and reads back from that name or from
+  the list form earlier versions wrote. A model holding a `FormSchema` now survives a
+  JSON round trip, so an invoice search filtered by `invoice_schema` resumes from its
+  cursor, and its JSON Schema is a string enum of the member names (#265).
+
 ### Deprecated
 
 - Keep the former `ksef2.core`, `domain`, `infra` and `services` imports,

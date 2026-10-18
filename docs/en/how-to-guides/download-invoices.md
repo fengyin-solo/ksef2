@@ -128,11 +128,17 @@ for ksef_number, xml in restored.invoices():
 written = restored.save(Path("downloads"))
 ```
 
-`to_sensitive_json()` is the only complete format. The archive is Base64 and the
-package and metadata keep every field. A presigned part URL is a capability, so
-`model_dump()`, `model_dump_json()` and `repr()` redact it: with parts present,
-that output is a view for logs, not a persistence format. `to_sensitive_dict()` is
-the same content as a dictionary, and it needs the same protection.
+`to_sensitive_json()` is the only complete format. `archive` is URL-safe Base64: the
+alphabet is `A-Za-z0-9` plus `-` and `_`, and the text ends with the standard `=`
+padding whenever the archive length is not a multiple of three. A binding in another
+language should decode padded URL-safe Base64, and it must not strip or reject that
+padding. Validation accepts more than it writes: it also reads unpadded URL-safe text
+and the standard `+` and `/` alphabet, and both decode to the same bytes. Only the
+padded URL-safe spelling ever comes out. The package and metadata keep every field. A
+presigned part URL is a capability, so `model_dump()`, `model_dump_json()` and `repr()`
+redact it: with parts present, that output is a view for logs, not a persistence format.
+`to_sensitive_dict()` is the same content as a dictionary, and it needs the same
+protection.
 
 `to_model()` reads the archive to fill `metadata`, so it raises what `metadata`
 raises. `from_model()` takes the snapshot as it stands: `metadata=None` means the

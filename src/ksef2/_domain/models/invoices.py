@@ -419,7 +419,8 @@ class ExportedInvoicesData(KSeFBaseModel):
     ``ExportedInvoices.to_model()`` returns it and ``ExportedInvoices.from_model()``
     turns it back into a result, so a finished export can be handed to another
     process or language binding. ``archive`` holds the joined ZIP or TarGz bytes and
-    is URL-safe Base64 without padding in JSON; ``package`` and ``metadata`` carry
+    is URL-safe Base64 in JSON, carrying the standard ``=`` padding whenever the
+    archive length is not a multiple of three; ``package`` and ``metadata`` carry
     the package metadata and the parsed ``_metadata.json`` records.
 
     ``model_dump()``, ``model_dump_json()`` and ``repr()`` keep ``PackagePart.url``
@@ -433,7 +434,7 @@ class ExportedInvoicesData(KSeFBaseModel):
     model_config = ConfigDict(ser_json_bytes="base64", val_json_bytes="base64")
 
     archive: bytes = PydanticField(repr=False)
-    """Decrypted ZIP or TarGz archive; Base64 in JSON and left out of ``repr()``."""
+    """Decrypted ZIP or TarGz archive; URL-safe padded Base64 in JSON, left out of ``repr()``."""
     package: InvoicePackage | None = None
     """Package metadata from the export status, if known."""
     metadata: list[InvoiceMetadata] | None = None
@@ -443,7 +444,7 @@ class ExportedInvoicesData(KSeFBaseModel):
         """Export the snapshot with every package part download URL included.
 
         Returns:
-            A JSON-safe dictionary whose ``archive`` is Base64 and whose package parts carry their plain presigned URLs.
+            A JSON-safe dictionary whose ``archive`` is URL-safe Base64 with ``=`` padding where required, and whose package parts carry their plain presigned URLs.
         """
         data: dict[str, object] = self.model_dump(mode="json")
         if self.package is not None:

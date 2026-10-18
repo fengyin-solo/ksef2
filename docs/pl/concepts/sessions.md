@@ -38,7 +38,8 @@ historia sesji faktur służą do inspekcji albo administracji.
 
 Sesja online jest interaktywną ścieżką wysyłki. Otwiera się ją dla schematu
 formularza, na przykład `FormSchema.FA3`, a potem wysyła faktury pojedynczo do
-tej sesji.
+tej sesji. W formacie JSON (zrzuty modeli, zapisany stan i kursory stronicowania)
+`FormSchema` jest zapisywany jako nazwa elementu, np. `"FA3"`.
 
 Otwarcie sesji jest lekką operacją. SDK ładuje publiczny certyfikat szyfrowania
 KSeF, tworzy materiał szyfrowania sesji, otwiera zdalną sesję i zwraca

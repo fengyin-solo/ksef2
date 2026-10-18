@@ -12,6 +12,7 @@ from typing_extensions import deprecated
 
 from ksef2._clients._handles import OperationHandle
 from ksef2._clients._pager import Pager
+from ksef2._clients._pagination_cursor import OffsetCursor
 from ksef2._core import exceptions
 from ksef2._core.protocols import Middleware
 from ksef2._domain.models.certificates import (
@@ -32,7 +33,7 @@ from ksef2._domain.models.certificates import (
     RevokeCertificateRequest,
     validate_certificate_serial_number,
 )
-from ksef2._domain.models.pagination import OffsetPaginationParams
+from ksef2._domain.models.pagination import OffsetPaginationParams, Page
 from ksef2._endpoints.certificates import CertificatesEndpoints
 from ksef2._infra.mappers.certificates import from_spec, to_spec
 
@@ -436,8 +437,9 @@ class CertificatesClient:
         """List the certificates of the authenticated context.
 
         Nothing is requested until the result is consumed. Iterate it for every
-        matching certificate, call ``pages()`` for page-sized lists or
-        ``first_page()`` for one request only.
+        matching certificate, call ``pages()`` for page-sized lists,
+        ``first_page()`` for one request only, or ``page()`` to walk it with a
+        resumable cursor.
 
         Args:
             name: Match this certificate name.
@@ -456,16 +458,33 @@ class CertificatesClient:
                 print(certificate.certificate_serial_number)
             ```
         """
+        parameters = params or OffsetPaginationParams()
 
-        def _certificate_pages() -> Generator[list[CertificateInfo], None]:
-            for page in self._pages(
+        def _fetch_page(cursor: str | None) -> Page[CertificateInfo]:
+            page_params = (
+                parameters
+                if cursor is None
+                else parameters.with_page_offset(
+                    OffsetCursor.decode(
+                        cursor, operation="certificates.list"
+                    ).page_offset
+                )
+            )
+            response = self._query(
                 name=name,
                 certificate_serial_number=certificate_serial_number,
                 certificate_type=certificate_type,
                 status=status,
                 expires_after=expires_after,
-                params=params,
-            ):
-                yield page.certificates
+                params=page_params,
+            )
+            return Page[CertificateInfo](
+                items=response.certificates,
+                next_cursor=OffsetCursor.encode_next(
+                    operation="certificates.list",
+                    page_offset=page_params.page_offset,
+                    has_more=response.has_more,
+                ),
+            )
 
-        return Pager(_certificate_pages)
+        return Pager(fetch_page=_fetch_page)

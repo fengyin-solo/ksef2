@@ -2,7 +2,6 @@
 
 import asyncio
 from collections.abc import (
-    AsyncGenerator,
     AsyncIterator,
     Awaitable,
     Callable,
@@ -15,6 +14,11 @@ from typing_extensions import deprecated
 
 from ksef2._clients._async_handles import AsyncOperationHandle
 from ksef2._clients._async_pager import AsyncPager
+from ksef2._clients._metadata_pagination import (
+    MetadataBoundary,
+    next_metadata_page_request,
+)
+from ksef2._clients._pagination_cursor import InvoiceSearchCursor
 from ksef2._clients.async_invoices import AsyncInvoicesClient
 from ksef2._clients.exported_invoices import ExportedInvoices
 from ksef2._core import exceptions
@@ -34,7 +38,7 @@ from ksef2._domain.models.invoices import (
     PackagePart,
     QueryInvoicesMetadataResponse,
 )
-from ksef2._domain.models.pagination import InvoiceMetadataParams
+from ksef2._domain.models.pagination import InvoiceMetadataParams, Page
 from ksef2._logging import get_logger
 from ksef2._services.export_parts import safe_part_filename
 
@@ -158,6 +162,11 @@ class AsyncInvoiceSearchPager(AsyncPager[InvoiceMetadata]):
     contracts. Use ``responses()`` or ``first_response()`` to read pagination
     flags and ``permanent_storage_hwm_date``, including on empty pages. Each
     consumption starts a fresh query; no responses are cached.
+
+    A search cursor holds the whole next request: its filters, its parameters and
+    the truncation boundary the previous page stopped at. Resuming from
+    ``page(cursor)`` therefore keeps working when KSeF shifts the date range, and
+    takes precedence over the values this pager was built with.
     """
 
     def __init__(
@@ -177,15 +186,56 @@ class AsyncInvoiceSearchPager(AsyncPager[InvoiceMetadata]):
         self._filters = filters
         self._params = params
         super().__init__(
-            self._invoice_pages,
+            fetch_page=self._fetch_metadata_page,
             timeout_error=lambda timeout: exceptions.KSeFInvoiceQueryTimeoutError(
                 timeout=timeout
             ),
         )
 
-    async def _invoice_pages(self) -> AsyncGenerator[list[InvoiceMetadata], None]:
-        async for response in self.responses():
-            yield list(response.invoices)
+    async def _fetch_metadata_page(self, cursor: str | None) -> Page[InvoiceMetadata]:
+        """Fetch one metadata page and describe the request that follows it.
+
+        Args:
+            cursor: Cursor from a previous page, or ``None`` to start from this search's own filters and parameters.
+
+        Returns:
+            The requested metadata page, with a cursor for the next page or ``None`` when the search ended.
+
+        Raises:
+            KSeFMetadataPaginationError: If KSeF reports a truncated page that cannot advance safely.
+        """
+        if cursor is None:
+            filters = self._filters
+            params = self._params or InvoiceMetadataParams()
+            previous_truncation_boundary: MetadataBoundary | None = None
+        else:
+            state = InvoiceSearchCursor.decode(cursor, operation="invoices.search")
+            filters = state.filters
+            params = state.params
+            previous_truncation_boundary = state.previous_truncation_boundary
+
+        response = await self._client.query_metadata(filters=filters, params=params)
+        next_request = next_metadata_page_request(
+            filters=filters,
+            params=params,
+            response=response,
+            previous_truncation_boundary=previous_truncation_boundary,
+        )
+        if next_request is None:
+            return Page[InvoiceMetadata](
+                items=list(response.invoices), next_cursor=None
+            )
+
+        next_filters, next_params, next_boundary = next_request
+        return Page[InvoiceMetadata](
+            items=list(response.invoices),
+            next_cursor=InvoiceSearchCursor(
+                operation="invoices.search",
+                filters=next_filters,
+                params=next_params,
+                previous_truncation_boundary=next_boundary,
+            ).encode(),
+        )
 
     def responses(self) -> AsyncIterator[QueryInvoicesMetadataResponse]:
         """Fetch complete responses, following page and truncation boundaries.

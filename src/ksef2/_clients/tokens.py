@@ -11,9 +11,10 @@ from typing_extensions import deprecated
 
 from ksef2._clients._handles import OperationHandle
 from ksef2._clients._pager import Pager
+from ksef2._clients._pagination_cursor import ContinuationCursor
 from ksef2._core import exceptions
 from ksef2._core.protocols import Middleware
-from ksef2._domain.models.pagination import TokenListParams
+from ksef2._domain.models.pagination import Page, TokenListParams
 from ksef2._domain.models.tokens import (
     GenerateTokenRequest,
     GenerateTokenResponse,
@@ -264,20 +265,17 @@ class TokensClient:
             response = self._list_page(params=parameters, continuation_token=ct)
             yield response
 
-    @deprecated(
-        "`list_page()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
-        "use `list()` instead."
-    )
     def list_page(
         self,
         *,
         continuation_token: str | None = None,
         params: TokenListParams | None = None,
     ) -> QueryTokensResponse:
-        """Deprecated: fetch one page of tokens using optional filters and continuation state.
+        """Fetch one page of tokens using optional filters and continuation state.
 
-        Deprecated:
-            May be removed no earlier than ksef2 2.0.0. Use ``list()`` instead; ``first_page()`` fetches one page.
+        This is the low-level single-request form. ``list().page()`` wraps it with
+        cursors and needs no continuation token of your own; ``list_all()`` remains
+        the deprecated iterator.
 
         Args:
             continuation_token: Token identifying the next page to fetch.
@@ -363,8 +361,8 @@ class TokensClient:
         """List the tokens of the authenticated context.
 
         Nothing is requested until the result is consumed. Iterate it for every
-        token, call ``pages()`` for page-sized lists or ``first_page()`` for one
-        request only.
+        token, call ``pages()`` for page-sized lists, ``first_page()`` for one
+        request only, or ``page()`` to walk it with a resumable cursor.
 
         Args:
             params: Optional filters and page size applied to every request.
@@ -379,8 +377,23 @@ class TokensClient:
             ```
         """
 
-        def _pages() -> Generator[list[TokenInfo], None]:
-            for page in self._list_pages(params):
-                yield page.tokens
+        def _fetch_page(cursor: str | None) -> Page[TokenInfo]:
+            continuation_token = (
+                None
+                if cursor is None
+                else ContinuationCursor.decode(
+                    cursor, operation="tokens.list"
+                ).continuation_token
+            )
+            response = self._list_page(
+                params=params, continuation_token=continuation_token
+            )
+            return Page[TokenInfo](
+                items=response.tokens,
+                next_cursor=ContinuationCursor.encode_next(
+                    operation="tokens.list",
+                    continuation_token=response.continuation_token,
+                ),
+            )
 
-        return Pager(_pages)
+        return Pager(fetch_page=_fetch_page)

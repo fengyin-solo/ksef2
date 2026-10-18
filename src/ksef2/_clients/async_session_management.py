@@ -6,11 +6,13 @@ from typing import final
 from typing_extensions import deprecated
 
 from ksef2._clients._async_pager import AsyncPager
+from ksef2._clients._pagination_cursor import ContinuationCursor
 from ksef2._core.async_protocols import AsyncMiddleware
 from ksef2._domain.models.auth import (
     AuthenticationSession,
     AuthenticationSessionsResponse,
 )
+from ksef2._domain.models.pagination import Page
 from ksef2._endpoints.async_auth import AsyncAuthEndpoints
 from ksef2._infra.mappers.auth import from_spec
 
@@ -145,8 +147,8 @@ class AsyncSessionManagementClient:
         """List the authentication sessions of the current subject.
 
         Nothing is requested until the result is consumed. Iterate it for every
-        session, call ``pages()`` for page-sized lists or ``first_page()`` for one
-        request only.
+        session, call ``pages()`` for page-sized lists, ``first_page()`` for one
+        request only, or ``page()`` to walk it with a resumable cursor.
 
         Args:
             page_size: Maximum number of sessions to request per page; the KSeF default when ``None``.
@@ -161,8 +163,23 @@ class AsyncSessionManagementClient:
             ```
         """
 
-        async def _session_pages() -> AsyncGenerator[list[AuthenticationSession], None]:
-            async for page in self._pages(page_size):
-                yield page.items
+        async def _fetch_page(cursor: str | None) -> Page[AuthenticationSession]:
+            continuation_token = (
+                None
+                if cursor is None
+                else ContinuationCursor.decode(
+                    cursor, operation="sessions.list"
+                ).continuation_token
+            )
+            response = await self._query(
+                page_size=page_size, continuation_token=continuation_token
+            )
+            return Page[AuthenticationSession](
+                items=response.items,
+                next_cursor=ContinuationCursor.encode_next(
+                    operation="sessions.list",
+                    continuation_token=response.continuation_token,
+                ),
+            )
 
-        return AsyncPager(_session_pages)
+        return AsyncPager(fetch_page=_fetch_page)

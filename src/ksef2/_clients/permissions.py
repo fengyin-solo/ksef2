@@ -3,16 +3,17 @@
 
 """Async permissions branch client."""
 
-from collections.abc import Callable, Generator, Sequence
+from collections.abc import Callable, Sequence
 from typing import cast, final, override
 
 from typing_extensions import deprecated
 
 from ksef2._clients._handles import OperationHandle
 from ksef2._clients._pager import Pager
+from ksef2._clients._pagination_cursor import OffsetCursor
 from ksef2._core import exceptions
 from ksef2._core.protocols import Middleware
-from ksef2._domain.models.pagination import OffsetPaginationParams
+from ksef2._domain.models.pagination import OffsetPaginationParams, Page
 from ksef2._domain.models.permissions import (
     AttachmentPermissionStatus,
     AuthorizationGrantDetail,
@@ -78,23 +79,45 @@ from ksef2._infra.mappers.permissions import (
 
 
 def _offset_pager[PageT, ItemT](
+    operation: str,
     fetch: Callable[[OffsetPaginationParams], PageT],
     items: Callable[[PageT], Sequence[ItemT]],
     has_more: Callable[[PageT], bool],
     params: OffsetPaginationParams | None,
 ) -> Pager[ItemT]:
-    """Build a pager over an offset-paged permissions query."""
+    """Build a pager over an offset-paged permissions query.
 
-    def _pages() -> Generator[list[ItemT], None]:
-        current_params = params or OffsetPaginationParams()
-        while True:
-            page = fetch(current_params)
-            yield list(items(page))
-            if not has_more(page):
-                break
-            current_params = current_params.next_page()
+    Args:
+        operation: Distinct SDK operation name, so a cursor from one permissions query is not accepted by another.
+        fetch: Fetches exactly one page for the supplied parameters.
+        items: Reads the items out of one response page.
+        has_more: Reports whether KSeF has further pages.
+        params: Page size and offset of the first page; defaults are used when ``None``.
 
-    return Pager(_pages)
+    Returns:
+        A pager whose pages carry cursors for this operation.
+    """
+    parameters = params or OffsetPaginationParams()
+
+    def _fetch_page(cursor: str | None) -> Page[ItemT]:
+        page_params = (
+            parameters
+            if cursor is None
+            else parameters.with_page_offset(
+                OffsetCursor.decode(cursor, operation=operation).page_offset
+            )
+        )
+        page = fetch(page_params)
+        return Page[ItemT](
+            items=list(items(page)),
+            next_cursor=OffsetCursor.encode_next(
+                operation=operation,
+                page_offset=page_params.page_offset,
+                has_more=has_more(page),
+            ),
+        )
+
+    return Pager(fetch_page=_fetch_page)
 
 
 @final
@@ -864,6 +887,7 @@ class PermissionsClient:
             ```
         """
         return _offset_pager(
+            "permissions.list_entity_roles",
             self._entity_roles,
             lambda page: page.roles,
             lambda page: page.has_more,
@@ -896,6 +920,7 @@ class PermissionsClient:
             ```
         """
         return _offset_pager(
+            "permissions.list_authorizations",
             lambda page_params: self._authorizations(query, page_params),
             lambda page: page.authorization_grants,
             lambda page: page.has_more,
@@ -928,6 +953,7 @@ class PermissionsClient:
             ```
         """
         return _offset_pager(
+            "permissions.list_entities",
             lambda page_params: self._entities(query, page_params),
             lambda page: page.permissions,
             lambda page: page.has_more,
@@ -960,6 +986,7 @@ class PermissionsClient:
             ```
         """
         return _offset_pager(
+            "permissions.list_eu_entities",
             lambda page_params: self._eu_entities(query, page_params),
             lambda page: page.permissions,
             lambda page: page.has_more,
@@ -992,6 +1019,7 @@ class PermissionsClient:
             ```
         """
         return _offset_pager(
+            "permissions.list_personal",
             lambda page_params: self._personal(query, page_params),
             lambda page: page.permissions,
             lambda page: page.has_more,
@@ -1024,6 +1052,7 @@ class PermissionsClient:
             ```
         """
         return _offset_pager(
+            "permissions.list_persons",
             lambda page_params: self._persons(query, page_params),
             lambda page: page.permissions,
             lambda page: page.has_more,
@@ -1056,6 +1085,7 @@ class PermissionsClient:
             ```
         """
         return _offset_pager(
+            "permissions.list_subordinate_entities",
             lambda page_params: self._subordinate_entities(query, page_params),
             lambda page: page.roles,
             lambda page: page.has_more,
@@ -1088,6 +1118,7 @@ class PermissionsClient:
             ```
         """
         return _offset_pager(
+            "permissions.list_subunits",
             lambda page_params: self._subunits(query, page_params),
             lambda page: page.permissions,
             lambda page: page.has_more,

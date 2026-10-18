@@ -10,6 +10,7 @@ request is sent.
 import base64
 import binascii
 import json
+import re
 from datetime import date, datetime
 from typing import Literal, Self, cast
 
@@ -20,17 +21,25 @@ from ksef2._domain.models.base import KSeFPersistedModel
 from ksef2._domain.models.invoices import InvoicesFilter
 from ksef2._domain.models.pagination import InvoiceMetadataParams
 
+CURSOR_VERSION: Literal[1] = 1
+"""Wire format version this SDK writes, and the only one it reads."""
+
 _CURSOR_HINT = (
     "Pass a next_cursor value returned by the same collection operation, or None to "
     "start from the first page."
 )
 
+# The characters URL-safe Base64 may use for the payload; padding is checked separately.
+_BASE64_BODY = re.compile(r"[A-Za-z0-9_-]+")
+
 
 class _PaginationCursor(KSeFPersistedModel):
     """Base of the versioned state carried by a pagination cursor."""
 
-    v: Literal[1] = 1
-    """Wire format version of the cursor."""
+    v: Literal[1]
+    """Wire format version of the cursor. Required on the wire, so a cursor that names
+    no version is refused instead of being read with whatever the SDK happens to write
+    today; encoders pass ``CURSOR_VERSION``."""
     operation: str = Field(min_length=1, max_length=64, pattern=r"^[\w.-]+$")
     """SDK operation that issued the cursor."""
 
@@ -100,7 +109,11 @@ class ContinuationCursor(_PaginationCursor):
         """
         if not continuation_token:
             return None
-        return cls(operation=operation, continuation_token=continuation_token).encode()
+        return cls(
+            v=CURSOR_VERSION,
+            operation=operation,
+            continuation_token=continuation_token,
+        ).encode()
 
 
 class OffsetCursor(_PaginationCursor):
@@ -125,7 +138,11 @@ class OffsetCursor(_PaginationCursor):
         """
         if not has_more:
             return None
-        return cls(operation=operation, page_offset=page_offset + 1).encode()
+        return cls(
+            v=CURSOR_VERSION,
+            operation=operation,
+            page_offset=page_offset + 1,
+        ).encode()
 
 
 class InvoiceSearchCursor(_PaginationCursor):
@@ -140,11 +157,31 @@ class InvoiceSearchCursor(_PaginationCursor):
     """Criteria selecting the invoices for the page to fetch."""
     params: InvoiceMetadataParams
     """Page size, page offset and sort order for the page to fetch."""
-    # Pydantic reads the ISO text back into the same branch it came from: a date stays
-    # a date and a timestamp stays a datetime, which is what lets the search compare
-    # consecutive boundaries instead of raising on a date/datetime mismatch.
     previous_truncation_boundary: date | datetime | None = None
     """Boundary the previous page truncated at, used to detect a stalled search."""
+
+    @field_validator("previous_truncation_boundary", mode="before")
+    @classmethod
+    def _read_boundary_kind(cls, value: object) -> object:
+        """Read stored boundary text back as the kind of value it was written from.
+
+        Pydantic happily fills a ``date | datetime`` field with a ``date`` read from a
+        midnight timestamp, and a ``date`` never compares equal to the timestamp at that
+        same instant. The search compares consecutive boundaries to notice that KSeF
+        stopped advancing, so a boundary that came back as the other kind would hide a
+        stalled search. Stored ISO text names its own kind: a calendar date is exactly
+        ten characters, and anything longer carries a time after the ``T`` separator (or
+        the space some writers put there instead). Values that are not text keep the kind
+        they came in with.
+
+        Raises:
+            ValueError: If the stored text is neither an ISO date nor an ISO timestamp.
+        """
+        if not isinstance(value, str):
+            return value
+        if len(value) > 10 and value[10] in "Tt ":
+            return datetime.fromisoformat(value)
+        return date.fromisoformat(value)
 
 
 def _read_state(cursor: str) -> dict[str, object]:
@@ -172,21 +209,38 @@ def _read_state(cursor: str) -> dict[str, object]:
 
 
 def _decode_base64(cursor: str) -> bytes:
-    """Decode a URL-safe Base64 cursor payload with or without its padding.
+    """Decode the payload of a URL-safe Base64 cursor, padded or unpadded.
+
+    The SDK writes canonical padding and a caller who stripped it is still accepted, so
+    that a cursor survives a store that trims trailing ``=``. Every other spelling is
+    refused before a request goes out: characters outside the URL-safe alphabet (``+``,
+    ``/``, whitespace, non-ASCII), padding inside the payload, and a padding run that is
+    not the exact one a payload of that length gets.
 
     Raises:
-        KSeFArgumentError: If the cursor is empty or uses characters outside the alphabet.
+        KSeFArgumentError: If the cursor is empty or is not spelled as URL-safe Base64.
     """
     if not cursor:
         raise _invalid_cursor("it is empty")
 
-    body = cursor.rstrip("=")
-    if len(body) % 4 == 1:
+    head, equals, tail = cursor.partition("=")
+    if equals and set(tail) - {"="}:
+        raise _invalid_cursor("its Base64 padding is misplaced")
+    padding = 0 if not equals else 1 + len(tail)
+
+    if _BASE64_BODY.fullmatch(head) is None:
+        raise _invalid_cursor("it is not URL-safe Base64")
+    if len(head) % 4 == 1:
         raise _invalid_cursor("it is not valid Base64")
+    # A Base64 payload of this length takes exactly this much padding, and a cursor either
+    # carries that or carries none of it.
+    expected_padding = -len(head) % 4
+    if padding not in (0, expected_padding):
+        raise _invalid_cursor("its Base64 padding is malformed")
 
     try:
         return base64.b64decode(
-            body + "=" * (-len(body) % 4), altchars=b"-_", validate=True
+            head + "=" * expected_padding, altchars=b"-_", validate=True
         )
     except (binascii.Error, ValueError) as exc:
         raise _invalid_cursor("it is not valid Base64") from exc
@@ -196,7 +250,8 @@ def _validation_reason(exc: ValidationError) -> str:
     """Describe the first validation failure without quoting the caller's cursor."""
     error = exc.errors()[0]
     location = ".".join(str(part) for part in error["loc"]) or "cursor"
-    return f"its {location} is invalid ({error['msg']})"
+    problem = "is missing" if error["type"] == "missing" else "is invalid"
+    return f"its {location} {problem} ({error['msg']})"
 
 
 def _invalid_cursor(reason: str) -> KSeFArgumentError:

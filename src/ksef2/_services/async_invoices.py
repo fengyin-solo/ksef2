@@ -18,7 +18,7 @@ from ksef2._clients._metadata_pagination import (
     MetadataBoundary,
     next_metadata_page_request,
 )
-from ksef2._clients._pagination_cursor import InvoiceSearchCursor
+from ksef2._clients._pagination_cursor import CURSOR_VERSION, InvoiceSearchCursor
 from ksef2._clients.async_invoices import AsyncInvoicesClient
 from ksef2._clients.exported_invoices import ExportedInvoices
 from ksef2._core import exceptions
@@ -230,6 +230,7 @@ class AsyncInvoiceSearchPager(AsyncPager[InvoiceMetadata]):
         return Page[InvoiceMetadata](
             items=list(response.invoices),
             next_cursor=InvoiceSearchCursor(
+                v=CURSOR_VERSION,
                 operation="invoices.search",
                 filters=next_filters,
                 params=next_params,

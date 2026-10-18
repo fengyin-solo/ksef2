@@ -2,13 +2,17 @@
 
 import base64
 import json
-from datetime import date, datetime
-from typing import Any
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
-from polyfactory.factories.pydantic_factory import ModelFactory
+from pydantic import BaseModel
 
-from ksef2._clients._pagination_cursor import InvoiceSearchCursor, OffsetCursor
+from ksef2._clients._pagination_cursor import (
+    CURSOR_VERSION,
+    ContinuationCursor,
+    InvoiceSearchCursor,
+    OffsetCursor,
+)
 from ksef2._core.exceptions import KSeFArgumentError
 from ksef2._domain.models.invoices import InvoicesFilter
 from ksef2._domain.models.pagination import (
@@ -20,6 +24,7 @@ from ksef2._domain.models.pagination import (
     PermissionsQueryParams,
     TokenListParams,
 )
+from ksef2.clients import AsyncPager, Pager
 from tests.unit.clients.test_paging import (
     COLLECTIONS,
     CURSOR,
@@ -29,15 +34,7 @@ from tests.unit.clients.test_paging import (
     _page,
 )
 from tests.unit.factories.auth import DomainAuthTokensFactory
-from tests.unit.factories.permissions import (
-    DomainAuthorizationPermissionsQueryFactory,
-    DomainEntityPermissionsQueryFactory,
-    DomainEuEntityPermissionsQueryFactory,
-    DomainPersonalPermissionsQueryFactory,
-    DomainPersonPermissionsQueryFactory,
-    DomainSubordinateEntityRolesQueryFactory,
-    DomainSubunitPermissionsQueryFactory,
-)
+from tests.unit.fakes.transport import RecordedCall
 from tests.unit.flavors import Flavor
 
 COLLECTIONS_BY_ID: dict[str, Collection] = {c.id: c for c in COLLECTIONS}
@@ -60,10 +57,19 @@ CURSOR_STATE_FIELDS = {
     "previous_truncation_boundary",
 }
 
+# Paging parameters of the collections that name them, per operation.
+_CollectionQuery = (
+    CollectiveIdentifierParams
+    | ListSessionsQuery
+    | OffsetPaginationParams
+    | PermissionsQueryParams
+    | TokenListParams
+)
+
 # Non-default page size for every collection, plus non-default filters or identifiers
 # where the method takes them, so a resumed request proves the SDK kept the caller's
 # own query rather than a default one.
-_COLLECTION_KWARGS: dict[str, dict[str, Any]] = {
+_COLLECTION_KWARGS: dict[str, dict[str, _CollectionQuery | int]] = {
     "tokens.list": {
         "params": TokenListParams(
             page_size=15, description="nightly", author_identifier="1234567890"
@@ -86,25 +92,31 @@ _COLLECTION_KWARGS: dict[str, dict[str, Any]] = {
     "peppol.list": {"params": OffsetPaginationParams(page_size=15)},
 }
 
-_PERMISSION_QUERY_FACTORIES: dict[str, type[ModelFactory[Any]]] = {
-    "permissions.list_authorizations": DomainAuthorizationPermissionsQueryFactory,
-    "permissions.list_entities": DomainEntityPermissionsQueryFactory,
-    "permissions.list_eu_entities": DomainEuEntityPermissionsQueryFactory,
-    "permissions.list_personal": DomainPersonalPermissionsQueryFactory,
-    "permissions.list_persons": DomainPersonPermissionsQueryFactory,
-    "permissions.list_subordinate_entities": DomainSubordinateEntityRolesQueryFactory,
-    "permissions.list_subunits": DomainSubunitPermissionsQueryFactory,
-}
+# The permission queries that page through PermissionsQueryParams; list_entity_roles
+# takes plain offset parameters and needs no override.
+_PERMISSION_QUERY_COLLECTIONS = frozenset(
+    {
+        "permissions.list_authorizations",
+        "permissions.list_entities",
+        "permissions.list_eu_entities",
+        "permissions.list_personal",
+        "permissions.list_persons",
+        "permissions.list_subordinate_entities",
+        "permissions.list_subunits",
+    }
+)
 
 
-def _kwargs(collection: Collection) -> dict[str, Any]:
+def _kwargs(collection: Collection) -> dict[str, _CollectionQuery | int]:
     """Return the non-default keyword arguments for calling one collection."""
-    if collection.id in _PERMISSION_QUERY_FACTORIES:
+    if collection.id in _PERMISSION_QUERY_COLLECTIONS:
         return {"params": PermissionsQueryParams(page_size=15, page_offset=2)}
     return dict(_COLLECTION_KWARGS.get(collection.id, {}))
 
 
-def _call(collection: Collection, client: Any, **overrides: Any) -> Any:
+def _call(
+    collection: Collection, client: object, **overrides: _CollectionQuery | int
+) -> Pager[BaseModel] | AsyncPager[BaseModel]:
     """Call a collection method the way a caller would, with its own arguments."""
     kwargs = _kwargs(collection)
     kwargs.update(overrides)
@@ -114,17 +126,17 @@ def _call(collection: Collection, client: Any, **overrides: Any) -> Any:
 def _page_at(
     flavor: Flavor,
     collection: Collection,
-    client: Any,
+    client: object,
     cursor: str | None,
-    **overrides: Any,
-) -> Page[Any]:
+    **overrides: _CollectionQuery | int,
+) -> Page[BaseModel]:
     """Fetch one page in this flavour; the async pager returns an awaitable."""
     pager = _call(collection, client, **overrides)
     return flavor.run(pager.page(cursor))
 
 
-def _shape(items: list[Any]) -> list[str]:
-    """Render items so pages parsed by two different clients can be compared."""
+def _shape(items: list[BaseModel]) -> list[str]:
+    """Render items so pages read by two different clients can be compared."""
     return [item.model_dump_json() for item in items]
 
 
@@ -133,12 +145,11 @@ def _carry(cursor: str) -> str:
     return str(json.loads(json.dumps({"cursor": cursor}))["cursor"])
 
 
-def _paging_detail(collection: Collection, call: Any) -> str:
+def _paging_detail(collection: Collection, call: RecordedCall) -> str:
     """Describe the paging state one recorded request carried."""
     if collection.paging == CURSOR:
         return str((call.headers or {}).get("x-continuation-token"))
-    params = call.params
-    return "" if params is None else str(params.get("pageOffset"))
+    return "" if call.params is None else str(call.params.get("pageOffset"))
 
 
 def _cursor_payload(cursor: str) -> str:
@@ -146,9 +157,46 @@ def _cursor_payload(cursor: str) -> str:
     return base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4)).decode("utf-8")
 
 
-def _tampered_cursor(state: dict[str, Any]) -> str:
+def _cursor_state(cursor: str) -> dict[str, object]:
+    """Read the JSON state stored inside a cursor as plain values."""
+    state: dict[str, object] = json.loads(_cursor_payload(cursor))
+    return state
+
+
+def _tampered_cursor(state: dict[str, object]) -> str:
     """Build a cursor string from raw JSON state, as a caller tampering with one would."""
     return base64.urlsafe_b64encode(json.dumps(state).encode("utf-8")).decode("ascii")
+
+
+def _without_version(cursor: str) -> str:
+    """Return a real cursor with its format version taken off the wire."""
+    state = _cursor_state(cursor)
+    del state["v"]
+    return _tampered_cursor(state)
+
+
+def _offset_cursor(page_offset: int = 1) -> str:
+    """One known cursor string, spelled exactly as the SDK writes it."""
+    return OffsetCursor(
+        v=CURSOR_VERSION, operation="peppol.list", page_offset=page_offset
+    ).encode()
+
+
+def _invoice_search_cursor(
+    boundary: date | datetime | None = None,
+) -> InvoiceSearchCursor:
+    """A search cursor carrying a request and, when given, the boundary it stopped on."""
+    return InvoiceSearchCursor(
+        v=CURSOR_VERSION,
+        operation="invoices.search",
+        filters=InvoicesFilter(
+            role="seller",
+            date_type="issue_date",
+            date_from=datetime(2026, 1, 1),
+        ),
+        params=InvoiceMetadataParams(page_size=10, page_offset=1),
+        previous_truncation_boundary=boundary,
+    )
 
 
 class TestCollectionCursors:
@@ -227,6 +275,27 @@ class TestCollectionCursors:
         with pytest.raises(KSeFArgumentError, match="Invalid pagination cursor"):
             _page_at(flavor, other, _client(other, flavor), first.next_cursor)
         assert len(flavor.transport.calls) == 1
+
+    @pytest.mark.parametrize(
+        "collection",
+        [COLLECTIONS_BY_ID["peppol.list"], COLLECTIONS_BY_ID["tokens.list"]],
+        ids=["offset", "continuation"],
+    )
+    def test_cursor_missing_version_is_rejected(
+        self, collection: Collection, flavor: Flavor
+    ) -> None:
+        """A cursor that dropped its version stops a real request on either paging style."""
+        flavor.transport.enqueue(_page(collection, more=True))
+        issued = _page_at(flavor, collection, _client(collection, flavor), None)
+
+        assert issued.next_cursor is not None
+        versionless = _without_version(issued.next_cursor)
+        flavor.transport.clear()
+
+        with pytest.raises(KSeFArgumentError, match="its v is missing"):
+            _page_at(flavor, collection, _client(collection, flavor), versionless)
+
+        assert flavor.transport.calls == []
 
     @pytest.mark.parametrize("method", PERMISSION_COLLECTION_IDS)
     def test_cursor_wrong_operation_is_rejected(
@@ -339,7 +408,7 @@ class TestCursorValidation:
         ("cursor", "reason"),
         [
             ("", "it is empty"),
-            ("not a cursor!!", "not valid Base64"),
+            ("not a cursor!!", "not URL-safe Base64"),
             ("a", "not valid Base64"),
             (base64.urlsafe_b64encode(b"\xff\xfe").decode("ascii"), "not valid UTF-8"),
             ("bm90IGpzb24=", "not valid JSON"),
@@ -361,7 +430,9 @@ class TestCursorValidation:
     @pytest.mark.parametrize(
         "version", [2, True, "1", 1.0], ids=["two", "bool", "str", "float"]
     )
-    def test_cursor_with_an_unsupported_version_is_rejected(self, version: Any) -> None:
+    def test_cursor_with_an_unsupported_version_is_rejected(
+        self, version: object
+    ) -> None:
         cursor = _tampered_cursor(
             {"v": version, "operation": "peppol.list", "page_offset": 1}
         )
@@ -369,11 +440,79 @@ class TestCursorValidation:
         with pytest.raises(KSeFArgumentError, match="its v is invalid"):
             OffsetCursor.decode(cursor, operation="peppol.list")
 
+    def test_cursor_without_a_version_is_rejected(self) -> None:
+        """A cursor that names no format version is refused rather than read as v1."""
+        offset = _tampered_cursor({"operation": "peppol.list", "page_offset": 1})
+        continuation = _tampered_cursor(
+            {"operation": "tokens.list", "continuation_token": "next-page"}
+        )
+        search = _without_version(_invoice_search_cursor(date(2026, 1, 5)).encode())
+
+        with pytest.raises(KSeFArgumentError, match="its v is missing"):
+            OffsetCursor.decode(offset, operation="peppol.list")
+        with pytest.raises(KSeFArgumentError, match="its v is missing"):
+            ContinuationCursor.decode(continuation, operation="tokens.list")
+        with pytest.raises(KSeFArgumentError, match="its v is missing"):
+            InvoiceSearchCursor.decode(search, operation="invoices.search")
+
+    @pytest.mark.parametrize(
+        ("cursor", "reason"),
+        [
+            ("+/+/", "not URL-safe Base64"),
+            ("-_-_", "not valid UTF-8"),
+            (" eyJ2Ijox", "not URL-safe Base64"),
+            ("eyJ2 Ijox", "not URL-safe Base64"),
+            ("eyJ2Ijox\u00e9", "not URL-safe Base64"),
+            (f"{_offset_cursor()}=======", "Base64 padding is malformed"),
+            (f"{_offset_cursor()[:-2]}===", "Base64 padding is malformed"),
+            (f"{_offset_cursor()[:-1]}", "Base64 padding is malformed"),
+            (f"={_offset_cursor()}", "Base64 padding is misplaced"),
+            (
+                f"{_offset_cursor()[:10]}={_offset_cursor()[10:]}",
+                "Base64 padding is misplaced",
+            ),
+        ],
+        ids=[
+            "standard-alphabet",
+            "url-safe-alphabet",
+            "leading-space",
+            "inner-space",
+            "non-ascii",
+            "padding-appended",
+            "padding-overstated",
+            "padding-short",
+            "padding-leading",
+            "padding-interior",
+        ],
+    )
+    def test_cursor_spelling_is_checked_before_it_is_read(
+        self, cursor: str, reason: str
+    ) -> None:
+        """Only the URL-safe alphabet and canonical padding (or none) reach the payload.
+
+        The url-safe-alphabet case carries the same bytes as the standard-alphabet one
+        above and fails further in, on the UTF-8 read: that is how it shows the alphabet
+        itself was accepted.
+        """
+        with pytest.raises(KSeFArgumentError, match=reason):
+            OffsetCursor.decode(cursor, operation="peppol.list")
+
+    @pytest.mark.parametrize(
+        "padding", ["kept", "stripped"], ids=["padded", "unpadded"]
+    )
+    def test_cursor_is_read_with_or_without_its_padding(self, padding: str) -> None:
+        """The SDK writes canonical padding and still reads a cursor someone trimmed."""
+        cursor = _offset_cursor(page_offset=7)
+        if padding == "stripped":
+            cursor = cursor.rstrip("=")
+
+        assert OffsetCursor.decode(cursor, operation="peppol.list").page_offset == 7
+
     @pytest.mark.parametrize(
         "page_offset", [-1, "3", True, 1.5], ids=["negative", "str", "bool", "float"]
     )
     def test_cursor_with_an_invalid_page_offset_is_rejected(
-        self, page_offset: Any
+        self, page_offset: object
     ) -> None:
         cursor = _tampered_cursor(
             {"v": 1, "operation": "peppol.list", "page_offset": page_offset}
@@ -398,7 +537,7 @@ class TestCursorValidation:
     def test_cursor_missing_a_field_is_rejected(self) -> None:
         cursor = _tampered_cursor({"v": 1, "operation": "peppol.list"})
 
-        with pytest.raises(KSeFArgumentError, match="its page_offset is invalid"):
+        with pytest.raises(KSeFArgumentError, match="its page_offset is missing"):
             OffsetCursor.decode(cursor, operation="peppol.list")
 
     def test_error_never_echoes_the_cursor(self) -> None:
@@ -418,31 +557,41 @@ class TestInvoiceSearchCursorState:
 
     @pytest.mark.parametrize(
         "boundary",
-        [date(2026, 1, 5), datetime(2026, 1, 5, 12, 30, 45)],
-        ids=["date", "datetime"],
+        [
+            date(2026, 1, 5),
+            datetime(2026, 1, 5, 0, 0),
+            datetime(2026, 1, 5, 0, 0, tzinfo=timezone.utc),
+            datetime(2026, 1, 5, 0, 0, tzinfo=timezone(timedelta(hours=2))),
+            datetime(2026, 1, 5, 12, 30, 45, 123456),
+            datetime(2026, 1, 5, 12, 30, 45),
+        ],
+        ids=[
+            "date",
+            "naive-midnight",
+            "utc-midnight",
+            "offset-midnight",
+            "fractional-seconds",
+            "non-midnight",
+        ],
     )
     def test_boundary_keeps_its_own_type_through_a_cursor(
         self, boundary: date | datetime
     ) -> None:
         """A resumed search compares date with date and timestamp with timestamp.
 
-        A boundary that came back as the other type would never compare equal to the
-        next one, so the search would miss that KSeF stopped advancing.
+        A boundary that came back as the other type would never compare equal to the next
+        one, so the search would miss that KSeF stopped advancing. A midnight timestamp is
+        the sharp case: read carelessly it looks exactly like the calendar date under it.
         """
-        cursor = InvoiceSearchCursor(
-            operation="invoices.search",
-            filters=InvoicesFilter(
-                role="seller",
-                date_type="issue_date",
-                date_from=datetime(2026, 1, 1),
-            ),
-            params=InvoiceMetadataParams(page_size=10, page_offset=1),
-            previous_truncation_boundary=boundary,
-        )
+        cursor = _invoice_search_cursor(boundary)
 
         resumed = InvoiceSearchCursor.decode(
             cursor.encode(), operation="invoices.search"
         )
 
-        assert resumed.previous_truncation_boundary == boundary
-        assert type(resumed.previous_truncation_boundary) is type(boundary)
+        resumed_boundary = resumed.previous_truncation_boundary
+        assert resumed_boundary == boundary
+        assert type(resumed_boundary) is type(boundary)
+        if isinstance(boundary, datetime) and isinstance(resumed_boundary, datetime):
+            assert resumed_boundary.utcoffset() == boundary.utcoffset()
+            assert resumed_boundary.microsecond == boundary.microsecond

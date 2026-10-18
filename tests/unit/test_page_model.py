@@ -1,7 +1,5 @@
 """The public ``Page`` model: nested types survive JSON, and the schema stays usable."""
 
-from typing import Any
-
 from ksef2._infra.mappers.invoices import from_spec as invoices_from_spec
 from ksef2.models import InvoiceMetadata, Page, TokenInfo
 from tests.unit.factories.tokens import DomainTokenInfoFactory
@@ -35,7 +33,7 @@ def test_page_of_invoice_metadata_round_trips_through_json() -> None:
 
 
 def test_page_json_schema_describes_items_and_cursor() -> None:
-    schema: dict[str, Any] = Page[InvoiceMetadata].model_json_schema()
+    schema = Page[InvoiceMetadata].model_json_schema()
 
     properties = schema["properties"]
     assert properties["items"]["items"]["$ref"].endswith("InvoiceMetadata")

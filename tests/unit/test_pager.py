@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 
 from ksef2._clients._async_pager import AsyncPager
-from ksef2._clients._pagination_cursor import OffsetCursor
+from ksef2._clients._pagination_cursor import CURSOR_VERSION, OffsetCursor
 from ksef2._clients._pager import Pager
 from ksef2._core.exceptions import (
     KSeFArgumentError,
@@ -254,7 +254,7 @@ def test_page_does_not_advance_other_consumers(flavor: Flavor) -> None:
 @pytest.mark.parametrize(
     ("cursor", "reason"),
     [
-        ("not a cursor!!", "not valid Base64"),
+        ("not a cursor!!", "not URL-safe Base64"),
         ("bm90IGpzb24=", "not valid JSON"),
         ("Imp1c3QgYSBzdHJpbmci", "not a JSON object"),
     ],
@@ -273,7 +273,9 @@ def test_page_rejects_invalid_cursor_before_fetch(
 
 def test_page_rejects_a_cursor_of_another_shape(flavor: Flavor) -> None:
     source = _CursorSource(flavor, [[1]])
-    other_operation = OffsetCursor(operation="pager.other", page_offset=1).encode()
+    other_operation = OffsetCursor(
+        v=CURSOR_VERSION, operation="pager.other", page_offset=1
+    ).encode()
 
     with pytest.raises(KSeFArgumentError, match="not for pager.test"):
         flavor.run(source.pager().page(other_operation))  # pyright: ignore[reportAttributeAccessIssue]

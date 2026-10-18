@@ -25,6 +25,7 @@ from ksef2._core.exceptions import (
 from ksef2._domain.models.invoices import ExportHandle, InvoicesFilter
 from ksef2._domain.models.pagination import InvoiceMetadataParams
 from ksef2._infra.schema.api import spec
+from tests.unit.fakes.transport import RecordedCall
 from tests.unit.flavors import Flavor
 from tests.unit.payloads import (
     InvoiceMetadataFactory,
@@ -317,7 +318,7 @@ class TestExport:
         assert len(flavor.transport.calls) == 1
 
 
-def _row(boundary: str) -> dict[str, Any]:
+def _row(boundary: str) -> dict[str, object]:
     """One deterministic metadata row whose boundary dates are all the same instant.
 
     Setting issue, invoicing and permanent-storage dates together keeps the fixtures
@@ -338,7 +339,7 @@ def _boundary_page(
     has_more: bool,
     truncated: bool,
     boundaries: list[str],
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """A metadata page carrying the given boundary instants."""
     return factory.build(
         hasMore=has_more,
@@ -348,21 +349,31 @@ def _boundary_page(
     ).model_dump(mode="json")
 
 
-def _request_body(call: Any) -> dict[str, Any]:
+def _request_body(call: RecordedCall) -> dict[str, object]:
     """Return the JSON body one recorded metadata request sent."""
-    body: dict[str, Any] | None = call.json
+    body = call.json
     assert body is not None
     return body
 
 
-def _request_dates(call: Any) -> tuple[str, str | None]:
+def _request_date_range(call: RecordedCall) -> dict[str, object]:
+    """Return the ``dateRange`` object one recorded metadata request sent."""
+    date_range = _request_body(call)["dateRange"]
+    assert isinstance(date_range, dict)
+    return date_range
+
+
+def _request_dates(call: RecordedCall) -> tuple[str, str | None]:
     """Return the date range one recorded metadata request sent."""
-    range_body = _request_body(call)["dateRange"]
-    return range_body["from"], range_body.get("to")
+    date_range = _request_date_range(call)
+    date_to = date_range.get("to")
+    assert date_to is None or isinstance(date_to, str)
+    return str(date_range["from"]), date_to
 
 
-def _request_offset(call: Any) -> str:
-    return (call.params or httpx.QueryParams())["pageOffset"]
+def _request_offset(call: RecordedCall) -> str:
+    params = call.params or httpx.QueryParams()
+    return str(params["pageOffset"])
 
 
 _SEARCH_DATE_TYPES = ["issue_date", "invoicing_date", "permanent_storage"]
@@ -534,6 +545,54 @@ class TestSearchCursors:
             flavor.run(service.search(filters).page(first.next_cursor))
         assert len(flavor.transport.calls) == 2
 
+    @pytest.mark.parametrize(
+        "date_type", _SEARCH_DATE_TYPES, ids=lambda date_type: str(date_type)
+    )
+    def test_resumed_midnight_truncation_stall_is_rejected(
+        self,
+        flavor: Flavor,
+        date_type: str,
+        inv_query_metadata_resp: BaseFactory[spec.QueryInvoicesMetadataResponse],
+    ) -> None:
+        """A search that truncates twice on the same midnight still reports the stall.
+
+        Midnight is the instant at which a stored boundary can be read back as the other
+        kind of value: a timestamp that looks exactly like the calendar date under it, and
+        which then never compares equal to the next timestamp at that same instant. Reading
+        the boundary back as its own kind is what keeps this search from paging forever.
+        """
+        filters = InvoicesFilter(
+            role="seller",
+            date_type=date_type,  # pyright: ignore[reportArgumentType]
+            date_from=datetime(2026, 1, 1, tzinfo=UTC),
+            date_to=datetime(2026, 3, 1, tzinfo=UTC),
+        )
+        stalled_at = "2026-02-05T00:00:00+00:00"
+        service = flavor.invoices_service()
+        flavor.transport.enqueue(
+            _boundary_page(
+                inv_query_metadata_resp,
+                has_more=True,
+                truncated=True,
+                boundaries=[stalled_at],
+            )
+        )
+        first = flavor.run(service.search(filters).page(None))
+
+        assert first.next_cursor is not None
+        flavor.transport.enqueue(
+            _boundary_page(
+                inv_query_metadata_resp,
+                has_more=True,
+                truncated=True,
+                boundaries=[stalled_at, stalled_at],
+            )
+        )
+
+        with pytest.raises(KSeFMetadataPaginationError, match="did not advance"):
+            flavor.run(service.search(filters).page(first.next_cursor))
+        assert len(flavor.transport.calls) == 2
+
     def test_cursor_keeps_filters_and_params_after_restart(
         self,
         flavor: Flavor,
@@ -593,7 +652,7 @@ class TestSearchCursors:
         body = _request_body(resumed_call)
         assert body["invoiceNumber"] == "FV/42/2026"
         assert body["subjectType"] == "Subject2"
-        assert body["dateRange"]["dateType"] == "Invoicing"
+        assert _request_date_range(resumed_call)["dateType"] == "Invoicing"
 
     def test_cursor_empty_terminal_page(
         self,

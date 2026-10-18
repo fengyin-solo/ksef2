@@ -29,6 +29,20 @@ from ksef2._domain.types import (
 )
 
 
+class Page[T](BaseModel):
+    """One page of a collection, with the cursor that resumes after it.
+
+    Returned by ``Pager.page()``. ``next_cursor`` is opaque, versioned SDK state:
+    keep it as a string and hand it back to ``page()``, from the same collection
+    operation, to fetch the following page without replaying earlier requests.
+    """
+
+    items: list[T]
+    """Items on this page; empty when the collection has no more items to return."""
+    next_cursor: str | None = None
+    """Cursor for the next page, or ``None`` when this page is the last one."""
+
+
 class PageSizeMixin(BaseModel):
     """Adds a bounded ``page_size`` query parameter."""
 
@@ -41,6 +55,17 @@ class PageOffsetMixin(BaseModel):
 
     page_offset: int = Field(default=0, ge=0)
     """Zero-based index of the page to return."""
+
+    def with_page_offset(self, page_offset: int) -> Self:
+        """Return a copy with an explicit page offset.
+
+        Args:
+            page_offset: Zero-based index of the page to return.
+
+        Returns:
+            A copy of these parameters with ``page_offset`` replaced.
+        """
+        return self.model_copy(update={"page_offset": page_offset})
 
 
 class SortOrderMixin(BaseModel):
@@ -72,7 +97,7 @@ class OffsetPaginationParams(
         Returns:
             A copy advanced by one page offset.
         """
-        return self.model_copy(update={"page_offset": self.page_offset + 1})
+        return self.with_page_offset(self.page_offset + 1)
 
 
 class InvoiceMetadataParams(
@@ -85,17 +110,6 @@ class InvoiceMetadataParams(
 
     page_size: int = Field(default=10, ge=10, le=250)
     """Number of results per page (10–250)."""
-
-    def with_page_offset(self, page_offset: int) -> Self:
-        """Return a copy with an explicit page offset.
-
-        Args:
-            page_offset: Zero-based index of the page to return.
-
-        Returns:
-            A copy of these parameters with ``page_offset`` replaced.
-        """
-        return self.model_copy(update={"page_offset": page_offset})
 
     def next_page(self) -> Self:
         """Return a copy advanced by one invoice metadata page.

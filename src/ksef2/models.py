@@ -208,6 +208,7 @@ from ksef2._domain.models.limits import (
 from ksef2._domain.models.pagination import (
     ListSessionsQuery,
     OffsetPaginationParams,
+    Page,
     TokenListParams,
 )
 from ksef2._domain.models.session import (
@@ -484,6 +485,7 @@ __all__ = [
     "PublicKeyCertificate",
     "ListSessionsQuery",
     "OffsetPaginationParams",
+    "Page",
     "PeppolProvider",
     "ListPeppolProvidersResponse",
     "ContextIdentifierTypeEnum",

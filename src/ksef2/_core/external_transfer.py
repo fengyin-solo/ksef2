@@ -39,7 +39,7 @@ class ExternalTransferClient:
                 headers=headers,
                 content=content,
             )
-        except httpx.TransportError as exc:
+        except httpx.RequestError as exc:
             raise exceptions.KSeFExternalTransferError(
                 operation="upload",
                 host=host,
@@ -74,7 +74,7 @@ class ExternalTransferClient:
         host = urlsplit(url).hostname or "unknown"
         try:
             response = self._transport.get(url)
-        except httpx.TransportError as exc:
+        except httpx.RequestError as exc:
             raise exceptions.KSeFExternalTransferError(
                 operation="download",
                 host=host,

@@ -26,7 +26,7 @@ class AsyncBatchSessionClient:
     """Async client for managing an active batch session.
 
     Catch ``KSeFException`` for SDK-classified failures raised by this session
-    branch, and ``httpx.HTTPError`` for transport failures.
+    branch, including ``KSeFTransportError`` for transport failures.
 
     Raises:
         KSeFApiError: If KSeF returns an API error response. Catch
@@ -34,7 +34,7 @@ class AsyncBatchSessionClient:
             ``KSeFRateLimitError`` for throttling.
         KSeFValidationError: If a KSeF response cannot be parsed into SDK models.
         KSeFClientClosedError: If an operation is attempted after closing the session.
-        httpx.HTTPError: If the HTTP transport fails before KSeF returns a response.
+        KSeFTransportError: If the HTTP request fails to produce a usable response.
     """
 
     def __init__(

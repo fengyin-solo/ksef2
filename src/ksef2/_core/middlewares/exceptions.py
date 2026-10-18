@@ -5,14 +5,31 @@ from typing import final, override
 
 import httpx
 
+from ksef2._core import exceptions
 from ksef2._core.middlewares.base import BaseMiddleware
 from ksef2._core.protocols import Middleware
 from ksef2._core.response_errors import raise_for_ksef_status
 from ksef2._core.types import Headers, JsonObject, QueryParamsInput
 
+_TRANSPORT_FAILED_MESSAGE = (
+    "The HTTP request failed before the SDK could use a response from KSeF."
+)
+
+
+_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
 
 @final
 class KSeFExceptionMiddleware(BaseMiddleware):
+    """Classify failed HTTP requests and error responses as SDK exceptions.
+
+    It is the outermost middleware of the KSeF API path, so it sees a request
+    failure only after the retry middleware used its attempts up. The retry
+    middleware keeps seeing the raw ``httpx`` error and only retries the failures it
+    has always retried: a response the HTTP client could not decode, or a redirect
+    chain it gave up on, is reported at once.
+    """
+
     def __init__(self, transport: Middleware) -> None:
         self._next = transport
 
@@ -34,8 +51,8 @@ class KSeFExceptionMiddleware(BaseMiddleware):
         content: bytes | None = None,
         **kwargs: object,
     ) -> httpx.Response:
-        return self._handle(
-            self._next.request(
+        try:
+            response = self._next.request(
                 method,
                 path,
                 headers=headers,
@@ -43,7 +60,12 @@ class KSeFExceptionMiddleware(BaseMiddleware):
                 json=json,
                 content=content,
                 **kwargs,
-            ),
-            method,
-            path,
-        )
+            )
+        except httpx.RequestError as exc:
+            raise exceptions.KSeFTransportError(
+                _TRANSPORT_FAILED_MESSAGE,
+                method=method,
+                path=path,
+                outcome_ambiguous=method.upper() not in _SAFE_METHODS,
+            ) from exc
+        return self._handle(response, method, path)

@@ -10,6 +10,7 @@ from ksef2._core.exceptions import (
     KSeFApiError,
     KSeFAuthError,
     KSeFNotReadyError,
+    KSeFTransportError,
     KSeFValidationError,
 )
 from ksef2._core.middlewares.async_exceptions import AsyncKSeFExceptionMiddleware
@@ -169,14 +170,14 @@ def test_authorization_failure_is_preserved(
     assert len(flavor.transport.calls) == 1
 
 
-def test_transport_failure_is_preserved(
+def test_transport_failure_is_wrapped_as_sdk_error(
     auth: AuthenticatedClient | AsyncAuthenticatedClient,
     flavor: Flavor,
     selector: dict[str, str],
 ) -> None:
     error = httpx.ConnectError("Connection failed.")
     flavor.transport.enqueue_error(error)
-    with pytest.raises(httpx.ConnectError) as exc_info:
+    with pytest.raises(KSeFTransportError) as exc_info:
         _ = flavor.run(auth.invoice_sessions.download_upo(SESSION_REF, **selector))
-    assert exc_info.value is error
+    assert exc_info.value.__cause__ is error
     assert len(flavor.transport.calls) == 1

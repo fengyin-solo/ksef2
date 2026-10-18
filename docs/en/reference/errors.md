@@ -3,10 +3,14 @@ title: Error Reference
 description: SDK exception hierarchy, attributes, KSeF error codes, hints, and polling timeout classes.
 ---
 
-ksef2 raises SDK exceptions for failures it can classify. Transport failures
-raised before KSeF returns a parsed API response remain `httpx.HTTPError`
-exceptions. Presigned external-storage transfers use the dedicated exceptions
-described below instead of KSeF API/authentication classification.
+ksef2 raises SDK exceptions for every failure it classifies, HTTP request
+failures included: no public method lets an `httpx` request failure reach the
+caller. Catch `KSeFException` to handle any SDK failure, or the narrower
+`KSeFTransportError` for requests that produced no response the SDK could use.
+Failures the SDK does not report, such as a `TypeError` from your own arguments,
+stay ordinary Python exceptions. Presigned external-storage transfers use the
+dedicated exceptions described below instead of KSeF API/authentication
+classification.
 
 ## Branch on the class or on `ksef_code`
 
@@ -20,12 +24,13 @@ log it, but do not parse it.
 | Class | Base | `code` | Main attributes |
 | --- | --- | --- | --- |
 | `KSeFException` | `Exception` | `SDK_ERROR` | `context`, `hint` |
+| `KSeFTransportError` | `KSeFException` | `TRANSPORT_ERROR` | `method`, `path`, `outcome_ambiguous` |
 | `KSeFApiError` | `KSeFException` | `API_ERROR` | `status_code`, `ksef_code`, `exception_code`, `trace_id`, `details`, `response` |
 | `KSeFNotReadyError` | `KSeFApiError` | `NOT_READY` | API error attributes |
 | `KSeFAuthError` | `KSeFApiError` | `AUTH_ERROR` | API error attributes |
 | `KSeFAuthenticationExpiredError` | `KSeFAuthError` | `AUTHENTICATION_EXPIRED` | API error attributes |
 | `KSeFRateLimitError` | `KSeFApiError` | `RATE_LIMIT_ERROR` | `retry_after` and the API error attributes |
-| `KSeFExternalTransferError` | `KSeFException` | `EXTERNAL_TRANSFER_ERROR` | `operation`, `host`, `reference_number`, `part_ordinal`, `status_code`, `outcome_ambiguous` |
+| `KSeFExternalTransferError` | `KSeFTransportError` | `EXTERNAL_TRANSFER_ERROR` | `operation`, `host`, `reference_number`, `part_ordinal`, `status_code`, `outcome_ambiguous` |
 | `KSeFBatchUploadError` | `KSeFExternalTransferError` | `BATCH_UPLOAD_ERROR` | External-transfer attributes plus `recovery_state()` and `recovery_prepared_batch()` |
 | `KSeFInvoiceRejectedError` | `KSeFSessionError` | `INVOICE_REJECTED` | `invoice_reference_number`, `invoice_status_code`, `description`, `details`, `extensions`, `status` |
 
@@ -43,10 +48,11 @@ except KSeFApiError as exc:
     if exc.ksef_code == 21405:
         details = exc.details
     trace_id = exc.trace_id  # quote it when contacting KSeF support
+except KSeFTransportError as exc:
+    if exc.outcome_ambiguous:
+        ...  # KSeF may have taken the request; check the result before sending again
 except KSeFException as exc:
     context = exc.context
-except httpx.HTTPError as exc:
-    transport_error = exc
 ```
 
 ## SDK exception classes
@@ -64,15 +70,48 @@ except httpx.HTTPError as exc:
 | `KSeFExportFailedError` | `EXPORT_FAILED` | KSeF finished an invoice export without a package: it failed, was cancelled by the system or expired (`ExportJob.wait()`). |
 | `KSeFPermissionOperationFailedError` | `PERMISSION_OPERATION_FAILED` | KSeF finished a permission grant or revoke without applying it (`PermissionOperation.wait()`). |
 | `KSeFCertificateEnrollmentFailedError` | `CERTIFICATE_ENROLLMENT_FAILED` | KSeF rejected, cancelled or failed a certificate enrollment (`CertificateEnrollment.wait()`). |
-| `KSeFAuthTokenRedemptionError` | `AUTH_TOKEN_REDEMPTION_ERROR` | A one-shot authentication redemption lost its response and may have succeeded. |
-| `KSeFExternalTransferError` | `EXTERNAL_TRANSFER_ERROR` | A presigned external-storage upload or download was rejected or lost its response. |
+| `KSeFAuthTokenRedemptionError` | `AUTH_TOKEN_REDEMPTION_ERROR` | A one-shot authentication redemption got no usable response and may have succeeded. Subclass of `KSeFTransportError`. |
+| `KSeFExternalTransferError` | `EXTERNAL_TRANSFER_ERROR` | A presigned external-storage upload or download was rejected or got no usable response. |
 | `KSeFBatchUploadError` | `BATCH_UPLOAD_ERROR` | A batch-part upload failed while protected recovery state remains available. |
 | `NoCertificateAvailableError` | `NO_CERTIFICATE_AVAILABLE` | No valid certificate exists for signing or encryption usage. |
 | `KSeFMetadataPaginationError` | `METADATA_PAGINATION_ERROR` | Metadata pagination cannot continue safely. |
 
 `KSeFAuthTokenRedemptionError.outcome_ambiguous` is always `True`. Do not retry
 the redemption: KSeF may already have consumed the temporary authentication
-token even though the response did not reach the caller.
+token even though no usable response reached the caller.
+
+## Transport failure attributes
+
+`KSeFTransportError` is raised when a request produced no response the SDK could
+use: it never reached KSeF, the answer could not be decoded, or the redirect
+chain was abandoned. Retryable requests are retried first, so the error means the
+retries ran out or the request was not safe to retry. Only the failures KSeF may
+not have seen are retried, so a decode or redirect failure is reported after a
+single attempt; the wrapping changes no attempt count.
+
+| Attribute | Type | Meaning |
+| --- | --- | --- |
+| `method` | `str \| None` | HTTP method of the failed request, or `None` when the SDK does not know it. |
+| `path` | `str \| None` | Pathname the SDK was asked for, kept without userinfo, host, query and fragment. Presigned storage URLs are never kept here. |
+| `outcome_ambiguous` | `bool` | `True` when the request may have reached KSeF anyway: anything but `GET`, `HEAD` and `OPTIONS`, because an earlier attempt may have arrived. |
+
+The original `httpx` exception stays available as `__cause__`. It is raw HTTP
+diagnostic output and can repeat request details the error itself leaves out, so
+read it only in a protected log. Message, `str(exc)`, `repr(exc)` and `context`
+never carry a bearer token, a signed URL or a request body.
+
+```python
+from ksef2 import KSeFException, KSeFTransportError
+
+try:
+    providers = client.peppol.list().first_page()
+except KSeFTransportError as exc:
+    print(f"{exc.method} {exc.path} produced no usable response")
+    if exc.outcome_ambiguous:
+        ...  # check what KSeF recorded before sending anything again
+except KSeFException as exc:
+    print(exc)  # every other SDK failure
+```
 
 ## External transfer attributes and batch recovery
 

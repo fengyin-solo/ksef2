@@ -45,6 +45,22 @@
   happen no earlier than 2.0.0, replacing the former 1.10.0 removal schedule.
 - Add English and Polish migration examples for legacy imports and workflows.
 
+### Breaking
+
+- Wrap failed HTTP requests in `KSeFTransportError` (`code = "TRANSPORT_ERROR"`),
+  so no public method lets an `httpx` exception escape and every SDK failure is a
+  `KSeFException`. It covers every `httpx.RequestError`: connection and timeout
+  failures, a response the HTTP client could not decode, and an abandoned redirect
+  chain. The error carries the request `method`, the URL pathname as `path`
+  (userinfo, host, query and fragment are dropped) and `outcome_ambiguous` for
+  requests that may have reached KSeF; the original `httpx` exception stays
+  available as `__cause__`. It does not subclass `httpx.HTTPError`, so handlers
+  that caught `httpx.HTTPError` must name `KSeFTransportError` instead. Retries,
+  retryable statuses and API error classification are unchanged, and
+  `KSeFExternalTransferError`, `KSeFBatchUploadError` and
+  `KSeFAuthTokenRedemptionError` now derive from `KSeFTransportError` while keeping
+  their own codes, attributes and recovery behaviour (#268).
+
 ## v0.22.2 (2026-09-25)
 
 ## v0.22.1 (2026-09-25)

@@ -38,7 +38,8 @@ session history are inspection/administration surfaces.
 
 An online session is the interactive sending path. It is opened for a form
 schema such as `FormSchema.FA3`, then invoices are sent one at a time into that
-session.
+session. In JSON (model dumps, saved state and pagination cursors) a `FormSchema`
+is written as its member name, such as `"FA3"`.
 
 Opening the session is lightweight. The SDK loads the public KSeF encryption
 certificate, creates session encryption material, opens the remote session, and

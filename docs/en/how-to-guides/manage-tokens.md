@@ -102,8 +102,9 @@ if cursor is not None:
 
 Rebuild the pager with the same parameters: this cursor holds KSeF's
 continuation state for the collection, not your filters. `.pages()` and plain
-iteration follow the same cursor chain, and `next_cursor` is `None` after the
-last page.
+iteration follow the same cursor chain, and `next_cursor` is `None` only after
+the last page. An empty page on its own does not end the walk. In async code the
+same read is `second = await auth.tokens.list().page(cursor)`.
 
 ## Inspect or revoke one token
 

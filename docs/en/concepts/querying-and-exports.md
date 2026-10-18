@@ -20,7 +20,8 @@ result locally, and serve operational views from your own store.
 rows. Iterate it, or use `pages()`, `first_page()`, `page(cursor)` and `wait()`.
 These retain the generic `Pager` contracts. `page(cursor)` reads one page and
 returns the `next_cursor` that resumes the same search later, even in another
-process. Use `responses()` for complete typed pages or
+process. Only a `next_cursor` of `None` ends a search: a page can come back
+empty and still name the page after it. Use `responses()` for complete typed pages or
 `first_response()` for a single `QueryInvoicesMetadataResponse` with pagination
 flags and `permanent_storage_hwm_date`.
 
@@ -121,8 +122,9 @@ if next_checkpoint is not None:
 
 An empty, completed response can still provide a checkpoint. If KSeF omits
 the HWM, or the final response is truncated, keep the previous checkpoint.
-In async code, use `async for page in pager.responses()` and
-`page = await pager.first_response()`.
+In async code, use `async for page in pager.responses()`,
+`page = await pager.first_response()` and
+`page = await pager.page(cursor)` to read one page and its cursor.
 
 `responses()` follows metadata page and truncation boundaries automatically.
 For a truncated export package, continue from its `last_permanent_storage_date`

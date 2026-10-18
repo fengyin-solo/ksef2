@@ -109,8 +109,10 @@ if cursor is not None:
 Kursor wyszukiwania faktur zawiera całe następne żądanie: filtr, rozmiar strony,
 kolejność sortowania oraz granicę obcięcia, na której zatrzymał się KSeF.
 Wyszukiwanie wznowione z kursora zachowuje więc swoją pozycję nawet wtedy, gdy
-zakres dat w kodzie jest już inny. `next_cursor` ma wartość `None`, gdy
-ostatnia strona zostanie odczytana.
+zakres dat w kodzie jest już inny. `next_cursor` ma wartość `None` dopiero po
+przeczytaniu ostatniej strony; strona może być pusta i nadal przekazywać kursor
+następnej. W kodzie async to samo odczytanie to
+`second = await auth.invoices.search(filters, params).page(cursor)`.
 
 `pages()` oraz zwykła iteracja korzystają z tego samego łańcucha kursorów, więc
 kursorami zajmujesz się tylko wtedy, gdy chcesz przerwać i kontynuować później.

@@ -102,8 +102,9 @@ if cursor is not None:
 
 Odtwórz pager z tymi samymi parametrami: ten kursor zawiera stan kontynuacji
 KSeF dla tej kolekcji, a nie filtry. `.pages()` oraz zwykła iteracja korzystają
-z tego samego łańcucha kursorów, a `next_cursor` ma wartość `None` po ostatniej
-stronie.
+z tego samego łańcucha kursorów, a `next_cursor` ma wartość `None` dopiero po
+ostatniej stronie. Sama pusta strona nie kończy przechodzenia po kolekcji. W kodzie
+async to samo odczytanie to `second = await auth.tokens.list().page(cursor)`.
 
 ## Sprawdź albo cofnij jeden token
 

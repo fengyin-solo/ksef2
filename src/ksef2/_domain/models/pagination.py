@@ -38,9 +38,11 @@ class Page[T](BaseModel):
     """
 
     items: list[T]
-    """Items on this page; empty when the collection has no more items to return."""
+    """Items on this page. A page can come back empty while the collection continues,
+    so this is not what tells a caller that the walk is over."""
     next_cursor: str | None = None
-    """Cursor for the next page, or ``None`` when this page is the last one."""
+    """Cursor for the next page, or ``None`` when the collection is exhausted. Only this
+    ends a walk: an empty page in the middle of a collection still carries a cursor."""
 
 
 class PageSizeMixin(BaseModel):

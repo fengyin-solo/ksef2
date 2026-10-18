@@ -2,6 +2,15 @@
 
 ### Added
 
+- Hand a finished invoice export to another process or language binding with
+  `ExportedInvoices.to_model()` and `ExportedInvoices.from_model()`. The
+  `ExportedInvoicesData` model holds the decrypted archive, the package and the
+  parsed `_metadata.json`, gives a schema through `model_json_schema()`, and
+  round-trips the whole result through JSON. `to_sensitive_json()` is the complete
+  format: a presigned part URL stays out of `model_dump()` and `repr()`, so only
+  that output restores a package that still has parts. `invoices()` and `save()`,
+  including the safe-extraction checks, work the same on a rebuilt result, and
+  async `wait()` returns the same type (#269).
 - Read complete invoice search responses with `responses()` and `first_response()`,
   including the permanent-storage checkpoint on empty pages. Correct the English
   and Polish incremental-sync examples (#258).

@@ -105,6 +105,44 @@ Podaj dokładnie jedno z `filters` albo `state`. `to_dict()`, `from_json()` i
 `from_dict()` działają jak w stanach sesji; `model_dump()` i `repr()` ukrywają
 klucz.
 
+### Zserializuj zakończony eksport
+
+`ExportResumeState` służy do eksportu, który jeszcze się nie skończył. Gdy `wait()`
+zwróci wynik, `to_model()` daje snapshot `ExportedInvoicesData` zakończonego
+eksportu, który można przekazać innemu procesowi albo innemu wiązaniu językowym, a
+`from_model()` zamienia go z powrotem w ten sam obiekt wyniku.
+
+```python
+from pathlib import Path
+
+from ksef2.clients import ExportedInvoices
+from ksef2.models import ExportedInvoicesData
+
+saved = package.to_model().to_sensitive_json()  # przechowuj jak poświadczenie, nie loguj
+
+# w innym procesie
+data = ExportedInvoicesData.model_validate_json(saved)
+restored = ExportedInvoices.from_model(data)
+for ksef_number, xml in restored.invoices():
+    print(ksef_number, len(xml))
+
+written = restored.save(Path("downloads"))
+```
+
+`to_sensitive_json()` to jedyny pełny format. Archiwum jest w Base64, a paczka i
+metadane zachowują każde pole. Adres części paczki jest podpisany i stanowi
+uprawnienie, więc `model_dump()`, `model_dump_json()` i `repr()` go ukrywają: gdy
+paczka ma części, to wyjście nadaje się do logów, a nie do przechowywania.
+`to_sensitive_dict()` daje tę samą zawartość jako słownik i wymaga takiej samej
+ochrony.
+
+`to_model()` czyta archiwum, żeby wypełnić `metadata`, więc rzuca te same błędy co
+`metadata`. `from_model()` bierze snapshot taki, jaki jest: `metadata=None` znaczy,
+że snapshot nie zawiera metadanych, a pusta lista, że nie ma w nich faktur. Nic nie
+jest pobierane ponownie i żaden klucz nie jest potrzebny, bo archiwum jest już
+odszyfrowane. `await job.wait()` zwraca tę samą klasę `ExportedInvoices`, więc oba
+warianty zapisują i odtwarzają wynik tak samo.
+
 :::note[SDK odszyfrowuje części paczki]
 KSeF zwraca zaszyfrowane adresy części paczki. `export()` ładuje poprawny
 certyfikat szyfrowania KSeF i planuje eksport z lokalnym materiałem AES, a

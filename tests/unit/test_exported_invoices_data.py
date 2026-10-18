@@ -97,12 +97,67 @@ class TestArchiveSerialization:
         restored = ExportedInvoicesData.model_validate_json(data.to_sensitive_json())
 
         assert literal == sensitive["archive"]
+        assert literal == "_wBB-wAA_y89"
         assert base64.urlsafe_b64decode(literal + "=" * (-len(literal) % 4)) == (
             BINARY_ARCHIVE
         )
         assert restored.archive == BINARY_ARCHIVE
         assert ExportedInvoicesData.model_validate_json(data.model_dump_json()) == data
         assert repr(data) == "ExportedInvoicesData(package=None, metadata=None)"
+
+    @pytest.mark.parametrize(
+        ("archive", "literal"),
+        [
+            (b"", ""),
+            (b"a", "YQ=="),
+            (b"ab", "YWI="),
+            (b"abc", "YWJj"),
+            (b"\xff", "_w=="),
+            (b"\xfb\xff", "-_8="),
+            (b"\xfb\xff\xef\xbe", "-__vvg=="),
+        ],
+    )
+    def test_archive_json_uses_padded_urlsafe_base64(
+        self, archive: bytes, literal: str
+    ) -> None:
+        """Every length modulo three serializes to one fixed URL-safe spelling."""
+        data = ExportedInvoicesData(archive=archive)
+
+        assert json.loads(data.model_dump_json())["archive"] == literal
+        assert json.loads(data.to_sensitive_json())["archive"] == literal
+        assert "+" not in literal
+        assert "/" not in literal
+        assert len(literal) % 4 == 0
+
+        assert (
+            ExportedInvoicesData.model_validate_json(data.model_dump_json()).archive
+            == archive
+        )
+        assert (
+            ExportedInvoicesData.model_validate(data.to_sensitive_dict()).archive
+            == archive
+        )
+
+    @pytest.mark.parametrize(
+        ("text", "archive"),
+        [
+            ("YQ==", b"a"),
+            ("YQ", b"a"),
+            ("_w==", b"\xff"),
+            ("_w", b"\xff"),
+            ("/w==", b"\xff"),
+        ],
+    )
+    def test_archive_json_accepts_supported_base64_spellings(
+        self, text: str, archive: bytes
+    ) -> None:
+        """Validation stays lenient; only the serialized spelling is fixed."""
+        data = ExportedInvoicesData.model_validate_json(json.dumps({"archive": text}))
+
+        assert data.archive == archive
+        assert json.loads(data.model_dump_json())["archive"] == (
+            base64.urlsafe_b64encode(archive).decode()
+        )
 
     def test_empty_archive_round_trips_as_empty_bytes(self) -> None:
         data = ExportedInvoicesData(archive=b"")

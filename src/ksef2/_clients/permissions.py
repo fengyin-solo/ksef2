@@ -43,6 +43,7 @@ from ksef2._domain.models.permissions import (
     GrantSubunitPermissionsRequest,
     IndirectPermissionType,
     IndirectTargetIdentifierType,
+    PermissionOperationResumeState,
     PermissionOperationStatusResponse,
     PersonalPermissionDetail,
     PersonalPermissionsQuery,
@@ -134,6 +135,10 @@ class PermissionOperation(
     finished it. ``get_operation_status()`` on the permissions client reads the
     same status for a reference number you stored earlier.
 
+    ``resume_state()`` saves what is needed to build the handle again after a
+    restart with ``auth.permissions.operation(state)``. The reference number
+    is all KSeF returned, so a resumed handle is a full copy of the original.
+
     Raises:
         KSeFApiError: If KSeF returns an API error response.
         KSeFValidationError: If a KSeF response cannot be parsed into SDK models.
@@ -170,6 +175,17 @@ class PermissionOperation(
             The data model KSeF returned when it accepted the operation.
         """
         return self._response
+
+    def resume_state(self) -> PermissionOperationResumeState:
+        """Return the state needed to resume this operation after a restart.
+
+        Persist it with ``to_json()`` and pass it to
+        ``auth.permissions.operation(state)`` later.
+
+        Returns:
+            The operation's reference number as saveable state.
+        """
+        return PermissionOperationResumeState(reference_number=self.reference_number)
 
     @override
     def get_status(self) -> PermissionOperationStatusResponse:
@@ -256,6 +272,38 @@ class PermissionsClient:
 
     def _operation(self, response: GrantPermissionsResponse) -> PermissionOperation:
         return PermissionOperation(self, response)
+
+    def operation(
+        self, state: PermissionOperationResumeState | str
+    ) -> PermissionOperation:
+        """Rebuild the handle of a permission operation KSeF accepted earlier.
+
+        Use it after a restart to keep waiting for the grant or revoke. No request
+        is made until the handle is used.
+
+        Args:
+            state: State saved with ``resume_state().to_json()``, or the object itself.
+
+        Returns:
+            A handle that polls the operation's status.
+
+        Raises:
+            ValidationError: If ``state`` is JSON that is not a saved permission operation state.
+
+        Example:
+            ```python
+            operation = auth.permissions.operation(saved_state)
+            status = operation.wait()
+            ```
+        """
+        restored = (
+            state
+            if isinstance(state, PermissionOperationResumeState)
+            else PermissionOperationResumeState.from_json(state)
+        )
+        return self._operation(
+            GrantPermissionsResponse(reference_number=restored.reference_number)
+        )
 
     def grant_person(
         self,

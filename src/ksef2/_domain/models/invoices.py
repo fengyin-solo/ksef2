@@ -12,7 +12,11 @@ from zoneinfo import ZoneInfo
 from pydantic import ConfigDict, Field as PydanticField, SecretStr
 from pydantic import field_validator, model_validator
 
-from ksef2._domain.models.base import KSeFBaseModel, KSeFPersistedModel
+from ksef2._domain.models.base import (
+    KSeFBaseModel,
+    KSeFPersistedModel,
+    KSeFResumeState,
+)
 from ksef2._domain.models.compression import (
     CompressionType,
     normalize_compression_type,
@@ -171,6 +175,20 @@ class SendInvoiceResponse(KSeFBaseModel):
 
     reference_number: str
     """KSeF reference number of the submitted invoice within the session."""
+
+
+class InvoiceSubmissionResumeState(KSeFResumeState):
+    """Serializable state needed to resume a submitted invoice after a restart.
+
+    ``AsyncInvoiceSubmission.resume_state()`` returns it and
+    ``session.submission(state=...)`` turns it back into a handle.
+    ``reference_number`` is the invoice's reference inside the session and
+    ``session_reference_number`` is the online session it was sent into, so a
+    worker can rebuild the session from its own state and check on the invoice.
+    """
+
+    session_reference_number: str
+    """KSeF reference number of the online session the invoice was sent into."""
 
 
 class InvoicesMetadataFilter(KSeFBaseModel):

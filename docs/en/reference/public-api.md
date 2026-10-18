@@ -12,7 +12,7 @@ They are the paths intended to remain stable through the 1.x line.
 | --- | --- |
 | `ksef2` | Root clients, environment and transport config, `FormSchema`, `__version__`, and public exceptions. |
 | `ksef2.clients` | Concrete sync/async clients, the stable `InvoicesService` / `BatchService` workflow types, and the handle, paging and export result types (`InvoiceSubmission`, `ExportJob`, `GeneratedToken`, `PermissionOperation`, `CertificateEnrollment`, `ExportedInvoices`, `Pager`, `OperationHandle`), plus async twins, for type annotations. |
-| `ksef2.models` | SDK request, response, filter, pagination (including `Page`), token, permission, session, batch, export snapshot (`ExportedInvoicesData`), and XAdES credential (`XAdESCredentials`) models. |
+| `ksef2.models` | SDK request, response, filter, pagination (including `Page`), token, permission, session, batch, resume-state (`ExportResumeState`, `GeneratedTokenResumeState`, `CertificateEnrollmentResumeState`, `PermissionOperationResumeState`, `InvoiceSubmissionResumeState`), export snapshot (`ExportedInvoicesData`), and XAdES credential (`XAdESCredentials`) models. |
 | `ksef2.fa3` | FA(3) invoice builder, draft snapshots, and public FA(3) domain models used by builder workflows. |
 | `ksef2.xades` | Certificate loading, TEST certificate generation, local XAdES signing helpers, `LocalSigner`, and the `XAdESCredentials` model accepted by `with_xades()`. |
 | `ksef2.testdata` | TEST-only helpers that generate valid NIP and PESEL numbers (`generate_nip`, `generate_pesel`). |
@@ -97,6 +97,22 @@ Persist and restore state with the explicit methods instead:
   (`ExportedInvoicesData`, from `ExportedInvoices.to_model()`) keep the presigned
   package part URLs, which `model_dump()` and `repr()` drop. Only that output
   restores a package that has parts.
+
+Every operation KSeF finishes asynchronously also has a resume-state model with
+`to_dict()`, `to_json()`, `from_dict()` and `from_json()`: `ExportResumeState`,
+`GeneratedTokenResumeState`, `CertificateEnrollmentResumeState`,
+`PermissionOperationResumeState` and `InvoiceSubmissionResumeState`. Each handle
+returns its state from `resume_state()`, and the matching method turns it back
+into the handle: `auth.invoices.export(state=...)`,
+`auth.tokens.generation(state)`, `auth.certificates.enrollment(state)`,
+`auth.permissions.operation(state)` and `session.submission(state=...)`.
+
+Of these five, only `ExportResumeState` carries a secret. The other four hold a
+reference number, and `InvoiceSubmissionResumeState` also names the session the
+invoice went into, so their `to_dict()` and `to_json()` output is ordinary data
+rather than a credential. `GeneratedTokenResumeState` never contains the one-time
+token, and `to_sensitive_dict()` on `GenerateTokenResponse` stays the only way to
+read that secret out of a model.
 
 `XAdESCredentials` is deliberately left out of that list: it has no export method.
 Its private key is decrypted into memory only so `with_xades()` can sign, no password

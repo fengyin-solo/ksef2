@@ -74,6 +74,31 @@ package. To survive a restart, persist `job.resume_state().to_json()` as a
 credential and pass it to `auth.invoices.export(state=...)`; never log it.
 :::
 
+## Every asynchronous handle saves its state
+
+An export is not the only operation that outlives the call that started it. The
+handles for a generated token, a certificate enrollment, a permission operation
+and a submitted invoice save and resume the same way: `resume_state()` returns
+the state, `to_json()` writes it, and one method on the client reads it back.
+
+| Handle | Save with | Resume with |
+| --- | --- | --- |
+| `ExportJob` | `job.resume_state()` | `auth.invoices.export(state=...)` |
+| `GeneratedToken` | `token.resume_state()` | `auth.tokens.generation(state)` |
+| `CertificateEnrollment` | `enrollment.resume_state()` | `auth.certificates.enrollment(state)` |
+| `PermissionOperation` | `operation.resume_state()` | `auth.permissions.operation(state)` |
+| `InvoiceSubmission` | `submission.resume_state()` | `session.submission(state=...)` |
+
+Only `ExportResumeState` carries secrets. The other four states hold the KSeF
+reference number, and the submission state also names the session the invoice
+went into, so their `to_dict()` and `to_json()` output is ordinary data rather
+than a credential. In particular `GeneratedTokenResumeState` never contains the
+one-time token: persist that secret separately, as above.
+
+A resumed handle polls the same reference number the original one did. It does
+not invent data that was not stored, so a resumed token has no `token` and a
+resumed enrollment has no `timestamp`.
+
 ## HWM is the sync boundary
 
 For unattended synchronization, the important concept is HWM: High Water Mark.

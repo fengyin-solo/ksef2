@@ -89,6 +89,24 @@ chroń klucz prywatny w narzędziach certyfikatowych, do KSeF wyślij tylko CSR,
 a wydany certyfikat zapisz razem z pasującym kluczem.
 :::
 
+### Wznów zgłoszenie po restarcie
+
+`enrollment.resume_state()` zwraca `CertificateEnrollmentResumeState` z numerem
+referencyjnym zgłoszenia. Zapisz go przez `to_json()` i przekaż do
+`auth.certificates.enrollment()`, gdy późniejszy proces przejmuje pracę:
+
+```python
+zapisany_stan = enrollment.resume_state().to_json()
+
+# Później, w tym samym lub innym procesie:
+enrollment = auth.certificates.enrollment(zapisany_stan)
+status = enrollment.wait(timeout=60.0, poll_interval=2.0)
+```
+
+`enrollment()` przyjmuje obiekt stanu albo jego JSON i zwraca uchwyt odpytujący
+ten sam numer referencyjny. Znacznik czasu przyjęcia wniosku nie trafia do
+stanu, więc wznowiony uchwyt nie ma `timestamp` ani `response`.
+
 ## Wyszukaj, pobierz i cofnij
 
 ### Wyszukaj

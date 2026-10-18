@@ -88,6 +88,25 @@ protect the private key in your certificate tooling, submit only the CSR to
 KSeF, and store the issued certificate next to its matching key.
 :::
 
+### Resume an enrollment after a restart
+
+`enrollment.resume_state()` returns a `CertificateEnrollmentResumeState` holding
+the enrollment's reference number. Persist it with `to_json()` and pass it to
+`auth.certificates.enrollment()` when a later process picks the work up:
+
+```python
+saved_state = enrollment.resume_state().to_json()
+
+# Later, in the same or another process:
+enrollment = auth.certificates.enrollment(saved_state)
+status = enrollment.wait(timeout=60.0, poll_interval=2.0)
+```
+
+`enrollment()` takes the state object or its JSON string and returns a handle
+that polls the same reference number. The acceptance timestamp KSeF returned at
+enrollment is not part of the state, so a resumed handle has no `timestamp` and
+no `response`.
+
 ## Query, retrieve, and revoke
 
 ### Query

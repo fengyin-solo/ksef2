@@ -270,18 +270,18 @@ Wskazówki do pozostałych błędów SDK:
 | `KSeFAuthenticationExpiredError` | Authenticate again with `client.authentication.with_token()` or `client.authentication.with_xades()`, or restore tokens that are still valid with `client.authentication.resume()`. |
 | `KSeFBatchSessionTimeoutError` | KSeF may still be processing the batch. Call `wait()` on the batch session again with a larger `timeout`. After a restart, rebuild the session from the state saved with `resume_state()` using `batch_session(state=...)`. |
 | `KSeFCertificateEnrollmentFailedError` | Read `description` and `details` for the reason, then submit a corrected request with `enroll()`. `get_limits()` shows how many enrollments and certificates are still allowed. |
-| `KSeFCertificateEnrollmentTimeoutError` | KSeF may still issue the certificate. Call `wait()` on the enrollment again with a larger `timeout`, or check it with `get_enrollment_status()`. |
+| `KSeFCertificateEnrollmentTimeoutError` | KSeF may still issue the certificate. Call `wait()` on the enrollment again with a larger `timeout`, or check it with `get_enrollment_status()`. After a restart, get the handle back with `auth.certificates.enrollment(state)` using the state saved from `resume_state()`. |
 | `KSeFExportFailedError` | Read `description` and `details` for the reason, then start a new export with `export()`. |
 | `KSeFExportTimeoutError` | The export may still finish. Call `wait()` on the export again with a larger `timeout`. After a restart, get the job back with `export(state=...)` using the state saved from `resume_state()`. |
 | `KSeFInvoiceDownloadTimeoutError` | KSeF has not made the invoice available yet. Call `download()` again with a larger `timeout`. |
-| `KSeFInvoiceProcessingTimeoutError` | KSeF may still accept the invoice. Keep waiting with `submission(reference_number).wait()` on the session, with a larger `timeout`. After a restart, rebuild the session from the state saved with `resume_state()` using `online_session(state=...)`. |
+| `KSeFInvoiceProcessingTimeoutError` | KSeF may still accept the invoice. Keep waiting with `submission(reference_number).wait()` on the session, with a larger `timeout`. After a restart, rebuild the session from the state saved with `resume_state()` using `online_session(state=...)`. `submission(state=...)` also takes the state saved on the submission itself, which keeps the invoice and session references together. |
 | `KSeFInvoiceQueryTimeoutError` | No invoice matched before the deadline. Call `wait()` again with a larger `timeout`, or check the filters passed to `search()`. |
 | `KSeFInvoiceRejectedError` | Read `description` and `details` for the reason, fix the invoice and send it again with `send_invoice()`. |
 | `KSeFNotReadyError` | KSeF has not finished preparing this resource. Wait and request it again. |
 | `KSeFOnlineSessionTimeoutError` | KSeF may still be processing the session. Call `wait()` on the session again with a larger `timeout`. After a restart, rebuild the session from the state saved with `resume_state()` using `online_session(state=...)`. |
 | `KSeFPermissionOperationFailedError` | Read `description` for the reason, fix the request and grant or revoke again. `get_operation_status()` shows the operation's final state. |
-| `KSeFPermissionOperationTimeoutError` | The operation may still be applied. Call `wait()` on the operation again with a larger `timeout`, or check it with `get_operation_status()`. |
-| `KSeFTokenStatusTimeoutError` | KSeF may still be activating the token. Call `wait()` on the token again with a larger `timeout`, or check it with `get_status()`. |
+| `KSeFPermissionOperationTimeoutError` | The operation may still be applied. Call `wait()` on the operation again with a larger `timeout`, or check it with `get_operation_status()`. After a restart, get the handle back with `auth.permissions.operation(state)` using the state saved from `resume_state()`. |
+| `KSeFTokenStatusTimeoutError` | KSeF may still be activating the token. Call `wait()` on the token again with a larger `timeout`, or check it with `get_status()`. After a restart, get the handle back with `auth.tokens.generation(state)` using the state saved from `resume_state()`; that state never holds the one-time token. |
 
 `KSeFSessionError` nie ma wskazówki na poziomie klasy. SDK ustawia ją tam, gdzie
 zna przyczynę: oczekiwanie na sesję, która jest nadal otwarta (najpierw ją
@@ -389,9 +389,9 @@ czekania. Same w sobie nie dowodzą, że zdalny workflow KSeF się nie udał.
 | `KSeFBatchSessionTimeoutError` | `BATCH_SESSION_TIMEOUT` | `reference_number`, `timeout` |
 | `KSeFOnlineSessionTimeoutError` | `ONLINE_SESSION_TIMEOUT` | `reference_number`, `timeout` |
 
-Zapisz właściwą referencję przed pollingiem, aby inny proces mógł wznowić
-sprawdzanie statusu. Każdy błąd timeoutu niesie `hint`, który mówi, jak czekać
-dalej albo wznowić pracę.
+Zapisz właściwą referencję albo stan zwracany przez `resume_state()` przed
+pollingiem, aby inny proces mógł wznowić sprawdzanie statusu. Każdy błąd
+timeoutu niesie `hint`, który mówi, jak czekać dalej albo wznowić pracę.
 
 `download_upo()` na handle faktury, sesji interaktywnej i sesji batch nigdy nie
 czeka i nie ma `timeout`. Najpierw wywołaj `wait()` na handle albo sesji.

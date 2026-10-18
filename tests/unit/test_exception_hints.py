@@ -2,9 +2,14 @@
 
 from datetime import UTC, datetime
 
+import functools
 import inspect
 import pickle
 import re
+import typing
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Literal
 
@@ -128,6 +133,174 @@ class TestHintsNameRealMethods:
     def test_a_hint_naming_a_deprecated_method_would_be_caught(self) -> None:
         assert "get_state" not in _public_methods()
         assert _method_names_in("Call `get_state()` first.") == {"get_state"}
+
+
+# --- calls named in hints, followed along their chain ---------------------
+
+
+@dataclass(frozen=True)
+class _Segment:
+    name: str
+    keywords: tuple[str, ...]
+
+
+_ROOTS: dict[str, type] = {
+    "client": ksef2.Client,
+    "auth": public_clients.AuthenticatedClient,
+}
+_CHAIN = re.compile(r"(?:[A-Za-z_]\w*(?:\([^)]*\))?\.)*[A-Za-z_]\w*\([^)]*\)")
+_SEGMENT = re.compile(r"([A-Za-z_]\w*)(?:\(([^)]*)\))?(?:\.|$)")
+
+
+def _calls_in(hint: str) -> list[str]:
+    """Code spans in a hint that end in a call, such as ``auth.batch.prepare()``."""
+    spans = re.findall(r"`([^`]+)`", hint)
+    return [span for span in spans if _CHAIN.fullmatch(span)]
+
+
+def _segments(call: str) -> list[_Segment]:
+    return [
+        _Segment(name, tuple(re.findall(r"(\w+)=", arguments or "")))
+        for name, arguments in _SEGMENT.findall(call)
+    ]
+
+
+def _public_classes() -> list[type]:
+    classes = [getattr(public_clients, name) for name in public_clients.__all__]
+    return [c for c in classes if inspect.isclass(c)] + [
+        ksef2.Client,
+        ksef2.AsyncClient,
+    ]
+
+
+def _function_of(member: object) -> Callable[..., Any] | None:
+    if isinstance(member, property):
+        return member.fget
+    if isinstance(member, functools.cached_property):
+        return member.func  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+    return member if callable(member) else None
+
+
+def _return_class(function: Callable[..., Any]) -> type | None:
+    try:
+        returned = typing.get_type_hints(function).get("return")
+    except (NameError, TypeError):
+        return None
+    returned = typing.get_origin(returned) or returned
+    return returned if inspect.isclass(returned) else None
+
+
+def _resolve(call: str) -> tuple[list[Callable[..., Any]], list[str]]:
+    """Follow ``call`` from its root, returning what its last segment can be.
+
+    A call that starts with ``client.`` or ``auth.`` begins at that client; any
+    other call may begin at any public class. Every segment has to exist, not be
+    deprecated, and accept the keyword arguments the hint passes to it. The next
+    segment is looked up on what the previous one returns.
+    """
+    segments = _segments(call)
+    owners: list[type] = _public_classes()
+    if segments[0].name in _ROOTS:
+        owners = [_ROOTS[segments.pop(0).name]]
+    found: list[Callable[..., Any]] = []
+    for segment in segments:
+        found = []
+        for owner in owners:
+            function = _function_of(getattr(owner, segment.name, None))
+            if function is None or getattr(function, "__deprecated__", None):
+                continue
+            if not set(segment.keywords) <= set(inspect.signature(function).parameters):
+                continue
+            found.append(function)
+        if not found:
+            keywords = (
+                f" accepting {', '.join(segment.keywords)}" if segment.keywords else ""
+            )
+            return [], [f"`{call}`: no current `{segment.name}`{keywords} here"]
+        owners = [c for c in map(_return_class, found) if c is not None]
+    return found, []
+
+
+def _accepts_timeout(call: str) -> bool:
+    functions, _ = _resolve(call)
+    return bool(functions) and all(
+        "timeout" in inspect.signature(function).parameters for function in functions
+    )
+
+
+def _call_problems(hint: str) -> list[str]:
+    problems = [problem for call in _calls_in(hint) for problem in _resolve(call)[1]]
+    if "`timeout`" in hint and not any(map(_accepts_timeout, _calls_in(hint))):
+        problems.append(
+            "it asks for a larger `timeout`, but no call it names takes one"
+        )
+    return problems
+
+
+class TestHintCallsResolve:
+    """Beyond the method names: dotted paths, keyword arguments and ``timeout``."""
+
+    @pytest.mark.parametrize(("owner", "hint"), _all_hints(), ids=lambda v: str(v)[:60])
+    def test_every_call_in_a_hint_resolves_the_way_it_is_written(
+        self, owner: str, hint: str
+    ) -> None:
+        assert not _call_problems(hint), owner
+
+    @pytest.mark.parametrize(
+        "call",
+        [
+            "auth.batch.prepare()",
+            "client.authentication.with_xades()",
+            "submission(reference_number).wait()",
+            "online_session(state=...)",
+            "export(state=...)",
+        ],
+    )
+    def test_calls_that_exist_resolve(self, call: str) -> None:
+        assert _resolve(call)[1] == []
+
+    @pytest.mark.parametrize(
+        "call",
+        [
+            "auth.prepare()",  # prepare() lives on auth.batch, not on auth
+            "client.authentication.sign_in()",
+            "online_session(statee=...)",
+            "submission(reference_number).wait_forever()",
+            "get_state()",  # deprecated alias of resume_state()
+        ],
+    )
+    def test_calls_that_drifted_are_caught(self, call: str) -> None:
+        assert _resolve(call)[1] != []
+
+    def test_a_larger_timeout_needs_a_call_that_takes_one(self) -> None:
+        assert _call_problems("Call `wait()` again with a larger `timeout`.") == []
+        assert _call_problems("Call `get_status()` with a larger `timeout`.") != []
+
+    def test_the_helper_finds_calls_in_a_real_hint(self) -> None:
+        hint = exceptions.KSeFAuthPollingTimeoutError.hint
+
+        assert hint is not None
+        assert _calls_in(hint) == [
+            "client.authentication.with_xades()",
+            "client.authentication.with_token()",
+        ]
+
+
+class TestHintsAreDocumented:
+    DOCS = [
+        Path(__file__).parents[2] / "docs" / lang / "reference" / "errors.md"
+        for lang in ("en", "pl")
+    ]
+    HINTS = [(owner, hint) for owner, hint in _all_hints() if "(instance)" not in owner]
+
+    @pytest.mark.parametrize("path", DOCS, ids=lambda p: p.parts[-3])
+    def test_every_hint_is_in_the_error_reference_word_for_word(
+        self, path: Path
+    ) -> None:
+        text = path.read_text(encoding="utf-8")
+
+        missing = [owner for owner, hint in self.HINTS if hint not in text]
+        assert not missing, f"{path.parts[-3]} errors.md lacks the hints of {missing}"
 
 
 class TestHintCoverage:

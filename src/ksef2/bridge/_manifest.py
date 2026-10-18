@@ -11,10 +11,12 @@ import ast
 import inspect
 import json
 import textwrap
+import types
 import typing
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from functools import cached_property
+from functools import cached_property, reduce
+from operator import or_
 from typing import Final, cast
 
 import ksef2
@@ -22,6 +24,7 @@ import ksef2
 from ksef2 import KSeFException
 
 from ksef2.bridge._catalog import (
+    DATA_FORMS,
     GENERATED_TOKEN_CLASS,
     GENERATED_TOKEN_FIELD,
     WALKED_CLASSES,
@@ -47,6 +50,7 @@ EXCLUDED_SIGNATURE: Final = "no JSON schema for this signature"
 SENSITIVE_PARAMETERS: Final[frozenset[str]] = frozenset(
     {
         "access_token",
+        "credentials",
         "key_password",
         "key_pem",
         "password",
@@ -55,7 +59,11 @@ SENSITIVE_PARAMETERS: Final[frozenset[str]] = frozenset(
         "token",
     }
 )
-"""Parameter names that always name a secret."""
+"""Parameter names that always name a secret.
+
+``credentials`` is the ``XAdESCredentials`` model, which keeps the signing key as
+unencrypted PEM, so the parameter is a secret as a whole rather than in part.
+"""
 
 SENSITIVE_STATE_MODEL: Final = "AuthenticationResumeState"
 """Saved state whose presence makes a whole parameter, or a result, sensitive."""
@@ -364,6 +372,92 @@ def _implementation_form(fn: object) -> _Form:
     )
 
 
+def _without_none(annotation: object) -> object:
+    """Return the type a parameter the caller must supply accepts.
+
+    A parameter the data form always sends is not optional, so the ``None`` the
+    Python signature allows for the sake of the other form is not a value a binding
+    may send and leaves the schema.
+
+    Args:
+        annotation: Annotation of a required parameter of one form.
+
+    Returns:
+        The annotation without its ``None`` alternative, or itself when it allows
+        no ``None``.
+    """
+    alternatives: tuple[object, ...] = typing.get_args(annotation)
+    kept: tuple[object, ...] = tuple(
+        item for item in alternatives if item is not types.NoneType
+    )
+    if len(kept) == len(alternatives):
+        return annotation
+    if len(kept) == 1:
+        return kept[0]
+    return cast("object", reduce(or_, kept))
+
+
+def _as_data_form(cls: type[object], name: str, form: _Form) -> _Form:
+    """Rewrite a member's form into the one a caller sends as data.
+
+    A member that takes either live cryptography objects or the model holding the
+    same material is described by that model: the live parameters are dropped and it
+    becomes required, because its ``None`` default only says "the other form was
+    used", and a binding cannot choose between two forms. A member whose every
+    parameter is already data is returned as it stands.
+
+    Args:
+        cls: Walked class that declares the member.
+        name: Member name.
+        form: Form read from the signature.
+
+    Returns:
+        The form without its live parameters, each parameter the data form needs
+        reported as required and described without the ``None`` the signature allows
+        for the other form's sake.
+
+    Raises:
+        ManifestError: The declared data form names a parameter the member does not
+            have, so the declaration and the signature disagree.
+    """
+    declared = DATA_FORMS.get((cls, name))
+    if declared is None:
+        return form
+    known = {parameter.name for parameter in form.parameters}
+    unknown = sorted((declared.live | declared.required) - known)
+    if unknown:
+        raise ManifestError(
+            f"the data form of {cls.__name__}.{name} names parameters the signature "
+            "does not have: " + ", ".join(unknown)
+        )
+    contradictory = sorted(declared.live & declared.required)
+    if contradictory:
+        raise ManifestError(
+            f"the data form of {cls.__name__}.{name} requires parameters it also "
+            "drops: " + ", ".join(contradictory)
+        )
+    parameters = [
+        _Parameter(
+            name=parameter.name,
+            annotation=(
+                _without_none(parameter.annotation)
+                if parameter.name in declared.required
+                else parameter.annotation
+            ),
+            default=(
+                inspect.Parameter.empty
+                if parameter.name in declared.required
+                else parameter.default
+            ),
+        )
+        for parameter in form.parameters
+        if parameter.name not in declared.live
+    ]
+    return _Form(
+        keyword=form.keyword, parameters=tuple(parameters), returns=form.returns
+    )
+
+
 def _forms_of(cls: type[object], name: str, member: object) -> list[_Form]:
     """Collect every callable form of a member.
 
@@ -373,16 +467,17 @@ def _forms_of(cls: type[object], name: str, member: object) -> list[_Form]:
         member: Value read from the class.
 
     Returns:
-        The ``@overload`` forms when there are any, otherwise the single form
-        read from the runtime signature. Empty for a member with no signature.
+        The ``@overload`` forms when there are any, otherwise the single form read
+        from the runtime signature, each narrowed to the form a caller sends as
+        data. Empty for a member with no signature.
     """
     fn = _callable_of(member)
     if fn is None:
         return []
     overloads = _overload_forms(cls, name)
     if overloads:
-        return overloads
-    return [_implementation_form(fn)]
+        return [_as_data_form(cls, name, form) for form in overloads]
+    return [_as_data_form(cls, name, _implementation_form(fn))]
 
 
 def _is_json_scalar(value: object) -> bool:

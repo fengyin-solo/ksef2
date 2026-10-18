@@ -149,8 +149,57 @@ def test_every_public_sync_method_is_an_operation_or_excluded() -> None:
     assert reasons["tokens.list_all"] == "deprecated"
     assert reasons["online.get_state"] == "deprecated"
     assert reasons["client.__enter__"] == "context manager protocol"
-    assert reasons["auth.with_xades"] == "no JSON schema for this signature"
     assert "tokens.list_page" in by_id
+
+
+def test_with_xades_is_an_operation_with_the_data_form() -> None:
+    data = manifest()
+    operation = _operations()["auth.with_xades"]
+    excluded_ids = {
+        entry["id"] for entry in cast("list[dict[str, str]]", data["excluded"])
+    }
+
+    # The live certificate and key are objects, so the manifest describes the data
+    # form of the member: the XAdESCredentials model that carries the same material.
+    assert "auth.with_xades" not in excluded_ids
+    names = [parameter["name"] for parameter in operation["parameters"]]
+    assert names == [
+        "nip",
+        "credentials",
+        "verify_chain",
+        "timeout",
+        "poll_interval",
+    ]
+    assert "cert" not in names
+    assert "private_key" not in names
+
+    by_name = {parameter["name"]: parameter for parameter in operation["parameters"]}
+    credentials = by_name["credentials"]
+    assert credentials["required"] is True
+    assert credentials["schema"] == {"$ref": f"{DEFS}XAdESCredentials"}
+    assert "default" not in credentials
+
+    optional = ("verify_chain", "timeout", "poll_interval")
+    assert all(by_name[name]["required"] is False for name in optional)
+    assert {name: by_name[name]["schema"] for name in optional} == {
+        "verify_chain": {"type": "boolean"},
+        "timeout": {"type": "number"},
+        "poll_interval": {"type": "number"},
+    }
+    assert {name: by_name[name]["default"] for name in optional} == {
+        "verify_chain": False,
+        "timeout": 60.0,
+        "poll_interval": 1.0,
+    }
+
+    assert operation["receiver"] == "unauthenticated"
+    assert operation["state_schema"] is None
+    assert operation["returns"] == {"$ref": f"{DEFS}AuthenticationResumeState"}
+
+    # The model holds the private key and the resume state holds the tokens, so
+    # both ends of the call are secrets.
+    assert "credentials" in operation["sensitive"]
+    assert "state" in operation["sensitive"]
 
 
 def test_literal_alias_is_a_named_enum() -> None:

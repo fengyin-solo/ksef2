@@ -225,6 +225,36 @@ GENERATED_TOKEN_CLASS: Final[type[object]] = GeneratedToken
 GENERATED_TOKEN_STATE_MODEL: Final[type[BaseModel]] = GeneratedTokenResumeState
 GENERATED_TOKEN_FIELD: Final = "token"
 
+
+@dataclass(frozen=True)
+class DataForm:
+    """The data form of a member that also accepts live objects.
+
+    Attributes:
+        live: Parameter names that carry a live object, so the manifest leaves
+            them out of the operation.
+        required: Names among the rest that the data form cannot be called without,
+            even though the Python signature defaults them to ``None``.
+    """
+
+    live: frozenset[str]
+    required: frozenset[str]
+
+
+#: Members that accept exactly one of two forms: live cryptography objects, or the
+#: model holding the same material as data. The manifest describes the data form
+#: because a binding across a language boundary sends data, so the live parameters
+#: are left out and the model that replaces them is required. That is what keeps the
+#: described form the one the caller has to send. ``with_xades()`` takes a loaded
+#: certificate and key, or an ``XAdESCredentials`` model built from PEM, DER or
+#: PKCS#12 bytes.
+DATA_FORMS: Final[dict[tuple[type[object], str], DataForm]] = {
+    (AuthClient, "with_xades"): DataForm(
+        live=frozenset({"cert", "private_key"}),
+        required=frozenset({"credentials"}),
+    ),
+}
+
 #: Collections are described as the page they hand out, never as the live pager.
 PAGER_CLASSES: Final[tuple[type[object], ...]] = (Pager, InvoiceSearchPager)
 

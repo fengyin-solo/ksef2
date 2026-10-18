@@ -75,6 +75,31 @@ paczki. Aby przetrwać restart, zapisz `job.resume_state().to_json()` jak
 poświadczenie i przekaż do `auth.invoices.export(state=...)`; nigdy go nie loguj.
 :::
 
+## Każdy asynchroniczny uchwyt zapisuje swój stan
+
+Eksport to nie jedyna operacja, która przeżywa wywołanie, które ją zaczęło.
+Uchwyty wygenerowanego tokenu, zgłoszenia certyfikatu, operacji uprawnień i
+wysłanej faktury zapisują i wznawiają pracę tak samo: `resume_state()` zwraca
+stan, `to_json()` go zapisuje, a jedna metoda klienta czyta go z powrotem.
+
+| Uchwyt | Zapisz przez | Wznów przez |
+| --- | --- | --- |
+| `ExportJob` | `job.resume_state()` | `auth.invoices.export(state=...)` |
+| `GeneratedToken` | `token.resume_state()` | `auth.tokens.generation(state)` |
+| `CertificateEnrollment` | `enrollment.resume_state()` | `auth.certificates.enrollment(state)` |
+| `PermissionOperation` | `operation.resume_state()` | `auth.permissions.operation(state)` |
+| `InvoiceSubmission` | `submission.resume_state()` | `session.submission(state=...)` |
+
+Tylko `ExportResumeState` zawiera sekrety. Pozostałe cztery stany trzymają numer
+referencyjny KSeF, a stan wysłania faktury dodatkowo wskazuje sesję, do której
+faktura trafiła, dlatego ich `to_dict()` i `to_json()` to zwykłe dane, a nie
+poświadczenie. W szczególności `GeneratedTokenResumeState` nigdy nie zawiera
+tokenu jednorazowego: to poświadczenie zapisuj osobno, jak wyżej.
+
+Wznowiony uchwyt odpytuje ten sam numer referencyjny co oryginalny. Nie wymyśla
+danych, których nie zapisano, więc wznowiony token nie ma `token`, a wznowione
+zgłoszenie certyfikatu nie ma `timestamp`.
+
 ## HWM jest granicą synchronizacji
 
 Dla automatycznej synchronizacji kluczowym pojęciem jest HWM: High Water Mark.

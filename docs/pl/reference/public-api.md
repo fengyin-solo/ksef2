@@ -12,7 +12,7 @@ stabilne w linii 1.x.
 | --- | --- |
 | `ksef2` | Klienci root, konfiguracja środowiska i transportu, `FormSchema`, `__version__` oraz publiczne wyjątki. |
 | `ksef2.clients` | Konkretne klasy klientów sync/async, stabilne typy workflow `InvoicesService` / `BatchService` oraz typy uchwytów, stronicowania i wyniku eksportu (`InvoiceSubmission`, `ExportJob`, `GeneratedToken`, `PermissionOperation`, `CertificateEnrollment`, `ExportedInvoices`, `Pager`, `OperationHandle`) wraz z odpowiednikami async, do adnotacji typów. |
-| `ksef2.models` | Modele żądań, odpowiedzi, filtrów, paginacji (w tym `Page`), tokenów, uprawnień, sesji, batchy i poświadczeń XAdES (`XAdESCredentials`). |
+| `ksef2.models` | Modele żądań, odpowiedzi, filtrów, paginacji (w tym `Page`), tokenów, uprawnień, sesji, batchy, stanów wznowienia (`ExportResumeState`, `GeneratedTokenResumeState`, `CertificateEnrollmentResumeState`, `PermissionOperationResumeState`, `InvoiceSubmissionResumeState`) i poświadczeń XAdES (`XAdESCredentials`). |
 | `ksef2.fa3` | Publiczny builder faktur FA(3), drafty buildera oraz typy modelu faktury używane przez aplikacje. |
 | `ksef2.xades` | Ładowanie certyfikatów, generowanie certyfikatów TEST, lokalne podpisy XAdES, `LocalSigner` oraz model `XAdESCredentials` przyjmowany przez `with_xades()`. |
 | `ksef2.testdata` | Pomocniki tylko dla TEST, które generują poprawne numery NIP i PESEL (`generate_nip`, `generate_pesel`). |
@@ -94,6 +94,22 @@ Stan zapisuj i odtwarzaj jawnymi metodami:
 - `to_sensitive_dict()` w modelach odpowiedzi z sekretami, takich jak `UpoPage`,
   `GenerateTokenResponse` i `ExportHandle`, eksportuje pola sekretne do
   świadomego, chronionego użycia.
+
+Każda operacja, którą KSeF kończy asynchronicznie, ma też model stanu wznowienia
+z `to_dict()`, `to_json()`, `from_dict()` i `from_json()`: `ExportResumeState`,
+`GeneratedTokenResumeState`, `CertificateEnrollmentResumeState`,
+`PermissionOperationResumeState` i `InvoiceSubmissionResumeState`. Każdy uchwyt
+zwraca swój stan z `resume_state()`, a odpowiednia metoda zamienia go z powrotem
+na uchwyt: `auth.invoices.export(state=...)`, `auth.tokens.generation(state)`,
+`auth.certificates.enrollment(state)`, `auth.permissions.operation(state)` oraz
+`session.submission(state=...)`.
+
+Z tych pięciu stanów tylko `ExportResumeState` przenosi sekret. Pozostałe cztery
+trzymają numer referencyjny, a `InvoiceSubmissionResumeState` dodatkowo wskazuje
+sesję, do której trafiła faktura, dlatego ich `to_dict()` i `to_json()` to zwykłe
+dane, a nie poświadczenie. `GeneratedTokenResumeState` nigdy nie zawiera tokenu
+jednorazowego: jedyną drogą do jego eksportu pozostaje `to_sensitive_dict()` na
+`GenerateTokenResponse`.
 
 `XAdESCredentials` celowo nie ma metody eksportu. Jego klucz prywatny jest
 odszyfrowywany do pamięci tylko po to, żeby `with_xades()` mógł podpisać, hasło nie

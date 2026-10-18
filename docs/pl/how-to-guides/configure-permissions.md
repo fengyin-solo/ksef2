@@ -91,6 +91,24 @@ Odpowiedź grant oznacza, że KSeF przyjął żądanie operacji. Poczekaj na
 operację, zanim potraktujesz uprawnienie jako aktywne w aplikacji.
 :::
 
+### Wznów operację po restarcie
+
+`operation.resume_state()` zwraca `PermissionOperationResumeState` z numerem
+referencyjnym operacji. Zapisz go przez `to_json()` i przekaż do
+`auth.permissions.operation()`, gdy późniejszy proces przejmuje pracę:
+
+```python
+zapisany_stan = operation.resume_state().to_json()
+
+# Później, w tym samym lub innym procesie:
+operation = auth.permissions.operation(zapisany_stan)
+status = operation.wait(timeout=60.0, poll_interval=1.0)
+```
+
+`operation()` przyjmuje obiekt stanu albo jego JSON i zwraca uchwyt odpytujący
+ten sam numer referencyjny. Numer referencyjny to wszystko, co KSeF zwrócił dla
+tej operacji, więc wznowiony uchwyt jest pełną kopią oryginalnego.
+
 ## Wyszukaj uprawnienia
 
 Metody `list_*()` mają osobne kształty, ponieważ KSeF rozróżnia rekordy personal,

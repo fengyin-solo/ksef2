@@ -2,6 +2,21 @@
 
 ### Added
 
+- Save and resume every handle KSeF finishes asynchronously. `resume_state()` on a
+  `GeneratedToken`, `CertificateEnrollment`, `PermissionOperation` or
+  `InvoiceSubmission` returns a versioned state model with `to_dict()`,
+  `to_json()`, `from_dict()` and `from_json()`, and
+  `auth.tokens.generation(state)`, `auth.certificates.enrollment(state)`,
+  `auth.permissions.operation(state)` or `session.submission(state=...)` builds the
+  handle again after a restart, so a job queue or a language binding can keep
+  waiting without holding the client that started the operation. A resumed handle
+  polls the saved reference number and does not invent data: the one-time token
+  never appears in `GeneratedTokenResumeState`, in any of its exports or in `repr()`,
+  so a resumed token has no `token`, and a resumed enrollment has no `timestamp`.
+  `InvoiceSubmissionResumeState` also keeps the session reference, and
+  `submission(state=...)` rejects a state from another session, or a call that
+  passes both a reference and a state, with `KSeFArgumentError` (#266).
+
 - Authenticate with `with_xades(nip=..., credentials=XAdESCredentials...)`, where
   `XAdESCredentials.from_pem`, `.from_der` and `.from_pkcs12` take raw certificate,
   private-key or archive bytes plus an optional password. Whatever the input format,

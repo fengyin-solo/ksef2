@@ -126,6 +126,22 @@ with auth.online_session(state=session_state_json) as session:
 wcześniej wysłanej faktury. Wyjście z bloku zamyka sesję; zamknięcie już
 zamkniętej nic nie robi.
 
+`submission.resume_state()` trzyma oba numery referencyjne w jednym dokumencie:
+fakturę i sesję, do której trafiła. Ten stan przekaż do
+`session.submission(state=...)` zamiast numeru referencyjnego. Sesja musi być tą,
+do której wysłano fakturę; inna sesja zgłasza `KSeFArgumentError`, a podanie
+obu argumentów albo żadnego też go zgłasza.
+
+```python
+with auth.online_session(form_code=FormSchema.FA3) as session:
+    submission_state_json = session.send_invoice(invoice_xml).resume_state().to_json()
+
+# Później: odtwórz sesję z jej stanu, a potem fakturę z jej stanu.
+with auth.online_session(state=session_state_json) as session:
+    submission = session.submission(state=submission_state_json)
+    status = submission.wait(timeout=120.0)
+```
+
 ## Wyślij batch
 
 Batcha użyj, gdy chcesz wysłać wiele plików XML jako jeden przepływ KSeF.

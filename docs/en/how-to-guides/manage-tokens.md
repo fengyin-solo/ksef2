@@ -50,6 +50,26 @@ A timeout or transport error from `wait()` does not discard the credential you
 already stored. Resume the status check later with
 `auth.tokens.get_status(reference_number=...)`.
 
+### Resume the handle after a restart
+
+`token.resume_state()` returns a `GeneratedTokenResumeState`: the token's
+reference number and nothing else. Persist it with `to_json()` and hand it to
+`auth.tokens.generation()` when a queue worker or a restarted process picks the
+job up again.
+
+```python
+saved_state = token.resume_state().to_json()
+
+# Later, in the same or another process:
+token = auth.tokens.generation(saved_state)
+status = token.wait(timeout=60.0, poll_interval=1.0)
+```
+
+`generation()` takes the state object or its JSON string and returns a handle
+that polls the same reference number. The one-time token is never part of the
+state, in `to_json()`, `to_dict()`, `model_dump()` or `repr()`, so a resumed
+handle has no `token` and no `response`: keep storing the secret yourself.
+
 ## List tokens
 
 `list()` returns a `Pager`: iterate it for every token, call `.pages()` for

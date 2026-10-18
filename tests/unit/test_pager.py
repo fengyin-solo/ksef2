@@ -1,11 +1,57 @@
-"""The generic paging object: items, pages, first page and ``wait()``."""
+"""The generic paging object: items, pages, first page, cursors and ``wait()``."""
+
+import json
+from typing import Any
 
 import pytest
 
 from ksef2._clients._async_pager import AsyncPager
+from ksef2._clients._pagination_cursor import OffsetCursor
 from ksef2._clients._pager import Pager
-from ksef2._core.exceptions import KSeFInvoiceQueryTimeoutError
+from ksef2._core.exceptions import (
+    KSeFArgumentError,
+    KSeFInvoiceQueryTimeoutError,
+)
+from ksef2._domain.models.pagination import Page
 from tests.unit.flavors import Flavor
+
+OPERATION = "pager.test"
+
+
+class _CursorSource:
+    """A cursor page source that serves fixed pages and counts the requests it serves."""
+
+    def __init__(self, flavor: Flavor, pages: list[list[int]]) -> None:
+        self.flavor = flavor
+        self.pages = pages
+        self.fetched = 0
+
+    def pager(self, **kwargs: Any) -> Any:
+        if self.flavor.is_async:
+
+            async def _fetch_page(cursor: str | None) -> Page[int]:
+                return self.fetch(cursor)
+
+            return AsyncPager(fetch_page=_fetch_page, **kwargs)
+
+        return Pager(fetch_page=self.fetch, **kwargs)  # pyright: ignore[reportArgumentType]
+
+    def fetch(self, cursor: str | None) -> Page[int]:
+        index = (
+            0
+            if cursor is None
+            else OffsetCursor.decode(cursor, operation=OPERATION).page_offset
+        )
+        self.fetched += 1
+        items = self.pages[index] if index < len(self.pages) else []
+        return Page(
+            items=list(items),
+            next_cursor=OffsetCursor.encode_next(
+                operation=OPERATION,
+                page_offset=index,
+                has_more=index + 1 < len(self.pages),
+            ),
+        )
 
 
 class _Source:
@@ -129,3 +175,129 @@ def test_wait_raises_timeout_error_by_default(flavor: Flavor) -> None:
 
     with pytest.raises(TimeoutError):
         flavor.run(source.pager().wait(timeout=0.0, poll_interval=0.0))  # pyright: ignore[reportAttributeAccessIssue]
+
+
+def test_page_requires_a_page_source() -> None:
+    with pytest.raises(KSeFArgumentError, match="needs a source of pages"):
+        Pager[int]()  # pyright: ignore[reportCallIssue]
+
+
+def test_page_returns_a_serializable_model(flavor: Flavor) -> None:
+    source = _CursorSource(flavor, [[1, 2], [3]])
+
+    page = flavor.run(source.pager().page(None))  # pyright: ignore[reportAttributeAccessIssue]
+
+    assert isinstance(page, Page)
+    assert page.items == [1, 2]
+    assert isinstance(page.next_cursor, str)
+    assert Page[int].model_validate_json(page.model_dump_json()) == page
+
+
+def test_first_page_uses_the_cursor_source(flavor: Flavor) -> None:
+    source = _CursorSource(flavor, [[1, 2], [3]])
+
+    assert flavor.run(source.pager().first_page()) == [1, 2]  # pyright: ignore[reportAttributeAccessIssue]
+    assert source.fetched == 1
+
+
+def test_page_resume_on_fresh_pager(flavor: Flavor) -> None:
+    pages = [[1, 2], [3], [4]]
+    first = _CursorSource(flavor, pages)
+    page = flavor.run(first.pager().page(None))  # pyright: ignore[reportAttributeAccessIssue]
+
+    assert page.items == [1, 2]
+    assert page.next_cursor is not None
+
+    # A pager built from scratch, as after a restart, continues from the cursor string.
+    carried = json.loads(json.dumps({"cursor": str(page.next_cursor)}))["cursor"]
+    restarted = _CursorSource(flavor, pages)
+    resumed = flavor.run(restarted.pager().page(carried))  # pyright: ignore[reportAttributeAccessIssue]
+
+    assert resumed.items == [3]
+    assert resumed.next_cursor is not None
+    assert restarted.fetched == 1
+
+    last = flavor.run(restarted.pager().page(resumed.next_cursor))  # pyright: ignore[reportAttributeAccessIssue]
+    assert last.items == [4]
+    assert last.next_cursor is None
+
+
+def test_iterating_a_cursor_pager_walks_every_page(flavor: Flavor) -> None:
+    source = _CursorSource(flavor, [[1], [2], [3]])
+    pager = source.pager()
+
+    assert flavor.collect(pager) == [1, 2, 3]
+    assert flavor.collect(pager.pages()) == [[1], [2], [3]]
+    assert source.fetched == 6
+
+
+def test_pages_continues_after_empty_page_with_cursor(flavor: Flavor) -> None:
+    source = _CursorSource(flavor, [[1], [], [2]])
+
+    assert flavor.collect(source.pager()) == [1, 2]
+    assert flavor.collect(source.pager().pages()) == [[1], [], [2]]
+    assert source.fetched == 6
+
+
+def test_page_does_not_advance_other_consumers(flavor: Flavor) -> None:
+    source = _CursorSource(flavor, [[1], [2]])
+    pager = source.pager()
+
+    first = flavor.run(pager.page(None))  # pyright: ignore[reportAttributeAccessIssue]
+    again = flavor.run(pager.page(None))  # pyright: ignore[reportAttributeAccessIssue]
+    assert again == first
+
+    assert flavor.collect(pager.pages()) == [[1], [2]]
+    assert source.fetched == 4
+
+
+@pytest.mark.parametrize(
+    ("cursor", "reason"),
+    [
+        ("not a cursor!!", "not valid Base64"),
+        ("bm90IGpzb24=", "not valid JSON"),
+        ("Imp1c3QgYSBzdHJpbmci", "not a JSON object"),
+    ],
+    ids=["bad-base64", "not-json", "not-an-object"],
+)
+def test_page_rejects_invalid_cursor_before_fetch(
+    flavor: Flavor, cursor: str, reason: str
+) -> None:
+    source = _CursorSource(flavor, [[1]])
+
+    with pytest.raises(KSeFArgumentError, match=reason):
+        flavor.run(source.pager().page(cursor))  # pyright: ignore[reportAttributeAccessIssue]
+
+    assert source.fetched == 0
+
+
+def test_page_rejects_a_cursor_of_another_shape(flavor: Flavor) -> None:
+    source = _CursorSource(flavor, [[1]])
+    other_operation = OffsetCursor(operation="pager.other", page_offset=1).encode()
+
+    with pytest.raises(KSeFArgumentError, match="not for pager.test"):
+        flavor.run(source.pager().page(other_operation))  # pyright: ignore[reportAttributeAccessIssue]
+
+    assert source.fetched == 0
+
+
+def test_legacy_pager_page_cursor_roundtrip(flavor: Flavor) -> None:
+    source = _Source(flavor, [[1, 2], [3], [4]])
+    pager = source.pager()
+
+    first = flavor.run(pager.page(None))  # pyright: ignore[reportAttributeAccessIssue]
+    assert first.items == [1, 2]
+    assert first.next_cursor is not None
+
+    second = flavor.run(pager.page(first.next_cursor))  # pyright: ignore[reportAttributeAccessIssue]
+    assert second.items == [3]
+    assert second.next_cursor is not None
+
+    third = flavor.run(pager.page(second.next_cursor))  # pyright: ignore[reportAttributeAccessIssue]
+    assert third.items == [4]
+    assert third.next_cursor is None
+
+    # Iteration keeps using the caller's generator, so its contract is untouched.
+    assert flavor.collect(pager) == [1, 2, 3, 4]
+    # Each page() call closes the generator it opened, and iteration closes its own.
+    assert source.closed == 4

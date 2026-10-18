@@ -69,14 +69,32 @@ def _public_functions(cls: type[object]) -> list[object]:
     return functions
 
 
+def _pydantic_generic_origin(annotation: object) -> type[object] | None:
+    """Return the model behind a parametrized pydantic generic such as ``Page[_T]``."""
+    if not inspect.isclass(annotation):
+        return None
+    metadata = getattr(annotation, "__pydantic_generic_metadata__", None)
+    if not isinstance(metadata, dict):
+        return None
+    origin = metadata.get("origin")
+    return origin if isinstance(origin, type) else None
+
+
 def _annotation_types(annotation: object) -> set[type[object]]:
     types: set[type[object]] = set()
-    pending = [annotation]
+    pending: list[object] = [annotation]
 
     while pending:
         current = pending.pop()
         pending.extend(get_args(current))
-        if inspect.isclass(current):
+        origin = _pydantic_generic_origin(current)
+        if origin is not None:
+            # A parametrized generic is published under its own name, and its item
+            # types still have to resolve through the same facade.
+            types.add(origin)
+            metadata = getattr(current, "__pydantic_generic_metadata__", {})
+            pending.extend(metadata.get("args") or ())
+        elif inspect.isclass(current):
             types.add(current)
 
     return types

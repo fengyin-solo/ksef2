@@ -13,10 +13,14 @@ from pydantic import (
     AwareDatetime,
     AnyUrl,
     Field,
+    GetCoreSchemaHandler,
+    GetJsonSchemaHandler,
     SecretStr,
     field_validator,
     model_validator,
 )
+from pydantic.json_schema import JsonSchemaValue
+from pydantic_core import core_schema
 from typing_extensions import deprecated
 
 from ksef2._domain.models.base import KSeFBaseModel, KSeFPersistedModel
@@ -55,6 +59,60 @@ class FormSchema(Enum):
         self.system_code = system_code
         self.schema_version = schema_version
         self.schema_value = schema_value
+
+    @classmethod
+    def _from_json_form(cls, value: object) -> Self:
+        """Read a member, its name, or its tuple or legacy JSON list value.
+
+        Raises:
+            ValueError: If the input does not identify a supported form schema.
+        """
+        if isinstance(value, cls):
+            return value
+        names = [member.name for member in cls]
+        if isinstance(value, str):
+            try:
+                return cls[value]
+            except KeyError:
+                raise ValueError(f"expected one of {', '.join(names)}") from None
+        if isinstance(value, (tuple, list)):
+            try:
+                return cls(tuple(cast(tuple[object, ...] | list[object], value)))
+            except (ValueError, TypeError):
+                raise ValueError(f"expected one of {', '.join(names)}") from None
+        raise ValueError(f"expected one of {', '.join(names)}")
+
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls, source: object, handler: GetCoreSchemaHandler
+    ) -> core_schema.CoreSchema:
+        """Read a form schema from its name or value and write it as its name."""
+        names = [member.name for member in cls]
+
+        def serialize(member: FormSchema) -> str:
+            return member.name
+
+        return core_schema.no_info_plain_validator_function(
+            cls._from_json_form,
+            ref=cls.__name__,
+            json_schema_input_schema=core_schema.literal_schema(names),
+            serialization=core_schema.plain_serializer_function_ser_schema(
+                serialize,
+                when_used="json",
+                return_schema=core_schema.literal_schema(names),
+            ),
+        )
+
+    @classmethod
+    def __get_pydantic_json_schema__(
+        cls, schema: core_schema.CoreSchema, handler: GetJsonSchemaHandler
+    ) -> JsonSchemaValue:
+        """Describe the form schema as a named string enum of member names."""
+        json_schema = handler(schema)
+        definition = handler.resolve_ref_schema(json_schema)
+        definition["title"] = cls.__name__
+        definition["description"] = "Supported form schemas for online sessions."
+        return json_schema
 
 
 class SessionEncryptionMaterial(KSeFBaseModel):

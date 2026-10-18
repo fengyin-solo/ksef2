@@ -32,6 +32,7 @@ from ksef2._domain.models.auth import (
     InitTokenAuthenticationRequest,
     RefreshedToken,
 )
+from ksef2._domain.models.xades import XAdESCredentials
 from ksef2._endpoints.async_auth import AsyncAuthEndpoints
 from ksef2._infra.mappers.auth import from_spec, to_spec
 
@@ -185,18 +186,30 @@ class AsyncAuthClient:
         self,
         *,
         nip: str,
-        cert: Certificate,
-        private_key: XAdESPrivateKey,
+        cert: Certificate | None = None,
+        private_key: XAdESPrivateKey | None = None,
+        credentials: XAdESCredentials | None = None,
         verify_chain: bool = False,
         timeout: float = 60.0,
         poll_interval: float = 1.0,
     ) -> AsyncAuthenticatedClient:
         """Authenticate with an XAdES-signed challenge response.
 
+        Pass the signing material either as an ``XAdESCredentials`` model built from
+        PEM, DER or PKCS#12 bytes, or as a loaded certificate and key object. Exactly
+        one form is accepted, so the data form can be described by a schema and sent
+        across a language boundary.
+
         Args:
             nip: Taxpayer identifier embedded in the authentication request.
-            cert: Signing certificate accepted by the target environment.
-            private_key: RSA or EC private key used to sign the XAdES payload.
+            cert: Signing certificate accepted by the target environment; needs
+                ``private_key`` and cannot be combined with ``credentials``.
+            private_key: RSA or EC private key used to sign the XAdES payload; needs
+                ``cert`` and cannot be combined with ``credentials``.
+            credentials: Certificate and private key as data, from
+                :meth:`~ksef2._domain.models.xades.XAdESCredentials.from_pem`,
+                :meth:`~ksef2._domain.models.xades.XAdESCredentials.from_der` or
+                :meth:`~ksef2._domain.models.xades.XAdESCredentials.from_pkcs12`.
             verify_chain: Whether KSeF should verify the certificate chain.
             timeout: Maximum number of seconds to wait for authentication.
             poll_interval: Delay in seconds between authentication status checks.
@@ -207,26 +220,49 @@ class AsyncAuthClient:
         Raises:
             KSeFAuthError: If authentication fails.
             KSeFAuthPollingTimeoutError: If polling exceeds ``timeout``.
+            KSeFArgumentError: If both credential forms, or neither usable form, is
+                supplied; or if ``credentials`` cannot be turned into a signing pair.
 
         Example:
             ```python
-            from ksef2.xades import load_certificate_from_pem, load_private_key_from_pem
+            from pathlib import Path
+
+            from ksef2.xades import XAdESCredentials
 
             client = AsyncClient(Environment.DEMO)
             auth = await client.authentication.with_xades(
                 nip="5261040828",
-                cert=load_certificate_from_pem("company.pem"),
-                private_key=load_private_key_from_pem("company.key"),
+                credentials=XAdESCredentials.from_pem(
+                    Path("company.pem").read_bytes(),
+                    Path("company.key").read_bytes(),
+                ),
             )
             ```
         """
+        if credentials is not None:
+            if cert is not None or private_key is not None:
+                raise exceptions.KSeFArgumentError(
+                    "with_xades() takes credentials or the cert and private_key pair, "
+                    "not a mix of both.",
+                )
+            signing_cert, signing_key = await asyncio.to_thread(
+                credentials.to_crypto_material
+            )
+        else:
+            if cert is None or private_key is None:
+                raise exceptions.KSeFArgumentError(
+                    "with_xades() needs credentials, or both cert and private_key.",
+                )
+            signing_cert = cert
+            signing_key = private_key
+
         challenge = from_spec(await self._auth_ep.challenge())
         signed_xml = await asyncio.to_thread(
             _build_signed_xades,
             challenge=challenge.challenge,
             nip=nip,
-            cert=cert,
-            private_key=private_key,
+            cert=signing_cert,
+            private_key=signing_key,
         )
 
         init_resp = from_spec(

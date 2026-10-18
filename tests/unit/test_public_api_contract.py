@@ -153,6 +153,14 @@ def test_public_model_facade_does_not_export_nip_weights() -> None:
     assert "NIP_WEIGHTS" not in public_models.__all__
 
 
+def test_xades_facade_reexports_the_credential_model_of_the_models_facade() -> None:
+    """``ksef2.xades`` is where XAdES callers look, so it must hand out one class."""
+    import ksef2.xades as public_xades
+
+    assert "XAdESCredentials" in public_xades.__all__
+    assert public_xades.XAdESCredentials is public_models.XAdESCredentials
+
+
 def test_public_client_annotations_resolve_through_stable_facades() -> None:
     pending_clients = {
         value

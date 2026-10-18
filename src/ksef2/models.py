@@ -183,6 +183,7 @@ from ksef2._domain.models import (
     UpdateCertificateRequest,
     Upo,
     UpoPage,
+    XAdESCredentials,
 )
 from ksef2._domain.models.certificates import (
     Certificate,
@@ -509,4 +510,5 @@ __all__ = [
     "TokenPermissionEnum",
     "TokenStatusEnum",
     "CurrencyCodes",
+    "XAdESCredentials",
 ]

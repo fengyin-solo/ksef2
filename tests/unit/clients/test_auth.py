@@ -7,8 +7,15 @@ import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.serialization import (
+    Encoding,
+    NoEncryption,
+    PrivateFormat,
+)
+from cryptography.x509 import Certificate
 from cryptography.x509.oid import NameOID, ObjectIdentifier
 from polyfactory import BaseFactory
+from pydantic import SecretBytes
 
 from ksef2._clients.auth import AuthClient
 from ksef2._clients.base import Client
@@ -20,6 +27,7 @@ from ksef2._core.exceptions import (
     KSeFAuthError,
     KSeFAuthPollingTimeoutError,
     KSeFAuthTokenRedemptionError,
+    KSeFArgumentError,
     KSeFTransportError,
     KSeFUnsupportedEnvironmentError,
     KSeFValidationError,
@@ -31,9 +39,15 @@ from ksef2._domain.models import auth as domain_auth
 from ksef2._domain.models.encryption import PublicKeyCertificate
 from ksef2._infra.schema.api.supp.auth import InitTokenAuthenticationRequest
 from ksef2._infra.schema.api import spec
+from ksef2.xades import XAdESCredentials, XAdESPrivateKey
 from tests.unit.fakes.transport import FakeTransport
 from tests.unit.helpers import VALID_BASE64
 from tests.unit.helpers import legacy_api
+from tests.unit.xades_material import (
+    CredentialFormat,
+    build_credentials,
+    public_key_der,
+)
 
 
 def _generate_ec_test_certificate(
@@ -367,6 +381,135 @@ class TestAuthClient:
 
         assert isinstance(result, AuthenticatedClient)
         assert len(fake_transport.calls) == 4
+
+    @pytest.mark.parametrize("credential_format", ["pem", "der", "pkcs12"])
+    @pytest.mark.parametrize("encrypted", [False, True], ids=["plain", "password"])
+    @patch("ksef2.xades.sign_xades")
+    @patch(
+        "ksef2.xades.build_auth_token_request_xml",
+        return_value=b"<AuthTokenRequest />",
+    )
+    def test_with_xades_accepts_data_credentials(
+        self,
+        _mock_build_xml: MagicMock,
+        mock_sign_xades: MagicMock,
+        credential_format: CredentialFormat,
+        encrypted: bool,
+        fake_transport: FakeTransport,
+        domain_public_key_cert: BaseFactory[PublicKeyCertificate],
+        auth_challenge_resp: BaseFactory[spec.AuthenticationChallengeResponse],
+        auth_init_resp: BaseFactory[spec.AuthenticationInitResponse],
+        auth_status_resp: BaseFactory[spec.AuthenticationOperationStatusResponse],
+        auth_tokens_resp: BaseFactory[spec.AuthenticationTokensResponse],
+    ) -> None:
+        client = _build_auth_client(
+            fake_transport,
+            _token_store(domain_public_key_cert.build(usage=["ksef_token_encryption"])),
+        )
+        challenge = auth_challenge_resp.build()
+        init_response = auth_init_resp.build()
+        status_response = auth_status_resp.build(
+            status=spec.StatusInfo(code=200, description="Authenticated")
+        )
+        tokens_response = auth_tokens_resp.build()
+        for response in (challenge, init_response, status_response, tokens_response):
+            fake_transport.enqueue(response.model_dump(mode="json"))
+        cert, private_key = generate_test_certificate("1234567890")
+        password = b"data-credentials-password" if encrypted else None
+        credentials = build_credentials(
+            cert, private_key, credential_format, password=password
+        )
+        signed_with: list[tuple[Certificate, XAdESPrivateKey]] = []
+
+        def record_and_sign(
+            xml_bytes: bytes, signing_cert: Certificate, signing_key: XAdESPrivateKey
+        ) -> bytes:
+            signed_with.append((signing_cert, signing_key))
+            return b"<SignedXML />"
+
+        mock_sign_xades.side_effect = record_and_sign
+
+        result = client.with_xades(
+            nip="1234567890",
+            credentials=credentials,
+            verify_chain=True,
+        )
+
+        assert isinstance(result, AuthenticatedClient)
+        assert len(fake_transport.calls) == 4
+        assert len(signed_with) == 1
+        used_cert, used_key = signed_with[0]
+        assert used_cert.public_bytes(Encoding.DER) == cert.public_bytes(Encoding.DER)
+        assert public_key_der(used_key) == public_key_der(private_key)
+        xades_call = fake_transport.calls[1]
+        assert xades_call.path == AuthRoutes.XADES_SIGNATURE
+        assert xades_call.content == b"<SignedXML />"
+        assert xades_call.params is not None
+        assert xades_call.params["verifyCertificateChain"] == "true"
+
+    def test_with_xades_rejects_mixed_or_incomplete_credentials(
+        self,
+        fake_transport: FakeTransport,
+    ) -> None:
+        client = _build_auth_client(fake_transport)
+        cert, private_key = generate_test_certificate("1234567890")
+        credentials = XAdESCredentials.from_pem(
+            cert.public_bytes(Encoding.PEM),
+            private_key.private_bytes(
+                Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()
+            ),
+        )
+
+        # Both forms, one form with a leftover half of the other, and neither form.
+        with pytest.raises(KSeFArgumentError):
+            _ = client.with_xades(
+                nip="1234567890",
+                credentials=credentials,
+                cert=cert,
+                private_key=private_key,
+            )
+        with pytest.raises(KSeFArgumentError):
+            _ = client.with_xades(nip="1234567890", credentials=credentials, cert=cert)
+        with pytest.raises(KSeFArgumentError):
+            _ = client.with_xades(
+                nip="1234567890", credentials=credentials, private_key=private_key
+            )
+        with pytest.raises(KSeFArgumentError):
+            _ = client.with_xades(nip="1234567890")
+        with pytest.raises(KSeFArgumentError):
+            _ = client.with_xades(nip="1234567890", cert=cert)
+        with pytest.raises(KSeFArgumentError):
+            _ = client.with_xades(nip="1234567890", private_key=private_key)
+
+        assert fake_transport.calls == []
+
+    @pytest.mark.parametrize("invalid", ["unreadable", "mismatched"])
+    def test_with_xades_rejects_invalid_data_before_challenge(
+        self,
+        invalid: str,
+        fake_transport: FakeTransport,
+    ) -> None:
+        client = _build_auth_client(fake_transport)
+        cert, _ = generate_test_certificate("1234567890")
+        _other_cert, other_key = generate_test_certificate("1234567890")
+        if invalid == "unreadable":
+            credentials = XAdESCredentials(
+                cert_pem=b"junk", key_pem=SecretBytes(b"junk")
+            )
+        else:
+            credentials = XAdESCredentials(
+                cert_pem=cert.public_bytes(Encoding.PEM),
+                key_pem=SecretBytes(
+                    other_key.private_bytes(
+                        Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()
+                    )
+                ),
+            )
+
+        with pytest.raises(KSeFArgumentError):
+            _ = client.with_xades(nip="1234567890", credentials=credentials)
+
+        assert fake_transport.calls == []
 
     def test_refresh(
         self,

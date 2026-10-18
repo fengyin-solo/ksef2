@@ -2,6 +2,18 @@
 
 ### Added
 
+- Authenticate with `with_xades(nip=..., credentials=XAdESCredentials...)`, where
+  `XAdESCredentials.from_pem`, `.from_der` and `.from_pkcs12` take raw certificate,
+  private-key or archive bytes plus an optional password. Whatever the input format,
+  the model holds a PEM certificate and an unencrypted PKCS#8 PEM key, keeps no
+  password, and excludes the key from `repr()`, `model_dump()` and
+  `model_dump_json()`, so a generic dump is display output and never a credential
+  export. A key that cannot sign for XAdES, and a certificate that does not belong to
+  its key, are rejected before any request. The existing `cert=`/`private_key=` object
+  form is unchanged, and passing both forms or neither raises `KSeFArgumentError`.
+  Because the credentials are one data model with a Pydantic schema, a language
+  binding can call XAdES authentication without special-casing it (#267).
+
 - Read complete invoice search responses with `responses()` and `first_response()`,
   including the permanent-storage checkpoint on empty pages. Correct the English
   and Polish incremental-sync examples (#258).

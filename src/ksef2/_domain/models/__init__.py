@@ -207,6 +207,7 @@ from ksef2._domain.models.pagination import (
     InvoiceMetadataParams,
     Page,
 )
+from ksef2._domain.models.xades import XAdESCredentials
 
 if TYPE_CHECKING:
     BaseSessionState = BaseSessionResumeState
@@ -439,4 +440,6 @@ __all__ = [
     # peppol
     "PeppolProvider",
     "ListPeppolProvidersResponse",
+    # xades
+    "XAdESCredentials",
 ]

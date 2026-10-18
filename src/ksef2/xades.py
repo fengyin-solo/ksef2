@@ -11,9 +11,11 @@ from ksef2._core.xades import (
     load_private_key_from_pem,
     sign_xades,
 )
+from ksef2._domain.models.xades import XAdESCredentials
 
 __all__ = [
     "LocalSigner",
+    "XAdESCredentials",
     "XAdESPrivateKey",
     "build_auth_token_request_xml",
     "generate_personal_test_certificate",

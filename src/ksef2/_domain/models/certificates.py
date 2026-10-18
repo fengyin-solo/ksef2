@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 
 from pydantic import Field, TypeAdapter
 
-from ksef2._domain.models.base import KSeFBaseModel
+from ksef2._domain.models.base import KSeFBaseModel, KSeFResumeState
 
 type IdentifierType = Literal["nip", "pesel", "fingerprint"]
 type RevocationReason = Literal["unspecified", "superseded", "key_compromise"]
@@ -180,6 +180,16 @@ class CertificateEnrollmentResponse(KSeFBaseModel):
     """KSeF reference number of the operation or resource."""
     timestamp: datetime
     """When KSeF accepted the enrollment request."""
+
+
+class CertificateEnrollmentResumeState(KSeFResumeState):
+    """Serializable state needed to resume a certificate enrollment after a restart.
+
+    ``AsyncCertificateEnrollment.resume_state()`` returns it and
+    ``auth.certificates.enrollment(state)`` turns it back into a handle. The
+    acceptance timestamp KSeF returned at enrollment is not stored: a resumed
+    handle reads the enrollment's status, not its original response.
+    """
 
 
 class CertificateEnrollmentStatusResponse(KSeFBaseModel):

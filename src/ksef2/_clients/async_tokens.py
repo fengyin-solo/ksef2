@@ -13,6 +13,7 @@ from ksef2._core import exceptions
 from ksef2._core.async_protocols import AsyncMiddleware
 from ksef2._domain.models.pagination import Page, TokenListParams
 from ksef2._domain.models.tokens import (
+    GeneratedTokenResumeState,
     GenerateTokenRequest,
     GenerateTokenResponse,
     QueryTokensResponse,
@@ -22,6 +23,14 @@ from ksef2._domain.models.tokens import (
 )
 from ksef2._endpoints.async_tokens import AsyncTokenEndpoints
 from ksef2._infra.mappers.tokens import from_spec, to_spec
+
+
+def _not_after_resume(owner: str, name: str) -> AttributeError:
+    """Build the error for data a saved state never held."""
+    return AttributeError(
+        f"{owner!r} object has no attribute {name!r}: a handle rebuilt from"
+        " resume state only knows the reference number"
+    )
 
 
 @final
@@ -36,6 +45,11 @@ class AsyncGeneratedToken(
     generation response, for example ``token`` and ``reference_number``, and never
     includes the token in its ``repr``.
 
+    ``resume_state()`` saves what is needed to build the handle again after a
+    restart with ``auth.tokens.generation(state)``. That state holds the
+    reference number and never the one-time token, so a resumed handle has no
+    ``token``.
+
     Raises:
         KSeFApiError: If KSeF returns an API error response.
         KSeFValidationError: If a KSeF response cannot be parsed into SDK models.
@@ -45,24 +59,47 @@ class AsyncGeneratedToken(
     def __init__(
         self,
         client: "AsyncTokensClient",
-        response: GenerateTokenResponse,
+        reference_number: str,
+        response: GenerateTokenResponse | None = None,
     ) -> None:
         """Create the handle.
 
         Args:
             client: Tokens client used to poll the token's status.
-            response: Generation response returned by KSeF, carrying the one-time token.
+            reference_number: KSeF reference number of the token.
+            response: Generation response returned by KSeF, carrying the one-time token. ``None`` for a handle rebuilt from resume state, which never held the token.
         """
-        super().__init__(response.reference_number)
+        super().__init__(reference_number)
         self._client = client
         self._response = response
 
     def __getattr__(self, name: str) -> object:
         if name in GenerateTokenResponse.model_fields:
+            if self._response is None:
+                raise _not_after_resume(type(self).__name__, name)
             return cast(object, getattr(self._response, name))
         raise AttributeError(
             f"{type(self).__name__!r} object has no attribute {name!r}"
         )
+
+    def _generation_response(self, name: str) -> GenerateTokenResponse:
+        """Return the generation response, refusing to invent one after a resume."""
+        if self._response is None:
+            raise _not_after_resume(type(self).__name__, name)
+        return self._response
+
+    def resume_state(self) -> GeneratedTokenResumeState:
+        """Return the state needed to resume this token after a restart.
+
+        Persist it with ``to_json()`` and pass it to
+        ``auth.tokens.generation(state)`` later. It carries only the
+        reference number: the one-time token is not part of it and cannot be
+        recovered this way.
+
+        Returns:
+            The token's reference number as saveable state.
+        """
+        return GeneratedTokenResumeState(reference_number=self.reference_number)
 
     @property
     def token(self) -> str:
@@ -70,8 +107,11 @@ class AsyncGeneratedToken(
 
         Returns:
             The secret KSeF returned once at generation; store it securely.
+
+        Raises:
+            AttributeError: If the handle was rebuilt from resume state, which never holds the token.
         """
-        return self._response.token
+        return self._generation_response("token").token
 
     @property
     def response(self) -> GenerateTokenResponse:
@@ -79,16 +119,22 @@ class AsyncGeneratedToken(
 
         Returns:
             The data model KSeF returned when the token was generated.
+
+        Raises:
+            AttributeError: If the handle was rebuilt from resume state, which never held a generation response.
         """
-        return self._response
+        return self._generation_response("response")
 
     def to_sensitive_dict(self) -> dict[str, str]:
         """Export the one-time token for deliberately protected persistence.
 
         Returns:
             A dictionary with the reference number and the plain token.
+
+        Raises:
+            AttributeError: If the handle was rebuilt from resume state, which never holds the token.
         """
-        return self._response.to_sensitive_dict()
+        return self._generation_response("token").to_sensitive_dict()
 
     @override
     async def get_status(self) -> TokenStatusResponse:
@@ -173,6 +219,7 @@ class AsyncTokensClient:
     ) -> TokenStatusResponse:
         handle = AsyncGeneratedToken(
             self,
+            reference_number,
             GenerateTokenResponse(reference_number=reference_number, token=""),
         )
         return await handle.wait(timeout=timeout, poll_interval=poll_interval)
@@ -239,7 +286,36 @@ class AsyncTokensClient:
         )
         body = to_spec(request)
         spec_resp = await self._endpoints.generate_token(body=body)
-        return AsyncGeneratedToken(self, from_spec(spec_resp))
+        response = from_spec(spec_resp)
+        return AsyncGeneratedToken(self, response.reference_number, response)
+
+    def generation(self, state: GeneratedTokenResumeState | str) -> AsyncGeneratedToken:
+        """Rebuild the handle of a token generated earlier.
+
+        Use it after a restart to keep waiting for activation. No request is made
+        until the handle is used.
+
+        Args:
+            state: State saved with ``resume_state().to_json()``, or the object itself.
+
+        Returns:
+            A handle that polls the token's status. It has no ``token``: the one-time secret is never part of the saved state.
+
+        Raises:
+            ValidationError: If ``state`` is JSON that is not a saved token state.
+
+        Example:
+            ```python
+            handle = auth.tokens.generation(saved_state)
+            status = await handle.wait()
+            ```
+        """
+        restored = (
+            state
+            if isinstance(state, GeneratedTokenResumeState)
+            else GeneratedTokenResumeState.from_json(state)
+        )
+        return AsyncGeneratedToken(self, restored.reference_number)
 
     async def _list_page(
         self,

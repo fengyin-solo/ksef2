@@ -51,6 +51,7 @@ from ksef2._domain.models.invoices import (
     InvoiceMetadataThirdSubject,
     InvoiceMetadataThirdSubjectIdentifier,
     InvoicePackage,
+    InvoiceSubmissionResumeState,
     InvoicesFilter,
     InvoiceType,
     InvoicingMode,
@@ -109,6 +110,7 @@ from ksef2._domain.models.permissions import (
     IndirectTargetIdentifierType,
     OperationStatus,
     OperationStatusCode,
+    PermissionOperationResumeState,
     PermissionOperationStatusResponse,
     PermissionState,
     PersonalPermissionDetail,
@@ -160,6 +162,7 @@ from ksef2._domain.models.testdata import (
     UpdateCertificateRequest,
 )
 from ksef2._domain.models.tokens import (
+    GeneratedTokenResumeState,
     QueryTokensResponse,
     TokenAuthorIdentifier,
     TokenAuthorIdentifierType,
@@ -186,6 +189,7 @@ from ksef2._domain.models.auth import (
 )
 from ksef2._domain.models.certificates import (
     CertificateEnrollmentData,
+    CertificateEnrollmentResumeState,
     CertificateInfo,
     CertificateLimitsResponse,
     CertificateStatusValue,
@@ -282,6 +286,7 @@ __all__ = [
     # invoices
     "ExportHandle",
     "ExportResumeState",
+    "InvoiceSubmissionResumeState",
     "BuyerIdentifierType",
     "ExportInvoicesPayload",
     "ExportInvoicesResponse",
@@ -354,6 +359,7 @@ __all__ = [
     "IndirectTargetIdentifierType",
     "OperationStatus",
     "OperationStatusCode",
+    "PermissionOperationResumeState",
     "PermissionOperationStatusResponse",
     "PermissionState",
     "PersonalPermissionDetail",
@@ -403,6 +409,7 @@ __all__ = [
     "UnblockContextRequest",
     "UpdateCertificateRequest",
     # tokens
+    "GeneratedTokenResumeState",
     "QueryTokensResponse",
     "TokenAuthorIdentifier",
     "TokenAuthorIdentifierType",
@@ -427,6 +434,7 @@ __all__ = [
     "TokenCredentials",
     # certificates
     "CertificateEnrollmentData",
+    "CertificateEnrollmentResumeState",
     "CertificateInfo",
     "CertificateLimitsResponse",
     "CertificateStatusValue",

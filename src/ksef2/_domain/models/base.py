@@ -1,6 +1,8 @@
 """Shared Pydantic base classes for SDK models and query parameter models."""
 
-from typing import Any, cast
+import json
+from collections.abc import Mapping
+from typing import Any, Literal, Self, cast
 
 from pydantic import (
     AliasChoices,
@@ -96,6 +98,76 @@ class KSeFPersistedModel(KSeFBaseModel):
     def _warn_extra_fields(cls, data: Any) -> Any:
         """Let Pydantic reject unknown persisted fields without ignore warnings."""
         return data
+
+
+class KSeFResumeState(KSeFPersistedModel):
+    """Base for the saveable state of an operation KSeF finishes asynchronously.
+
+    A subclass names the operation and adds whatever else the resume call needs
+    to rebuild its handle. Stored state fails closed: any ``format_version``
+    other than ``1`` is rejected, and so is a field this SDK does not know.
+    These states hold no secrets, so ``to_dict()`` and ``to_json()`` are the
+    persistence format and show the same fields as ``model_dump()``.
+    """
+
+    format_version: Literal[1] = 1
+    """Version of the serialized state format; currently always ``1``."""
+    reference_number: str
+    """KSeF reference number of the operation."""
+
+    def to_dict(
+        self,
+        *,
+        mode: Literal["json", "python"] | str = "json",
+    ) -> dict[str, object]:
+        """Export the state as a dictionary.
+
+        Args:
+            mode: Pydantic dump mode, ``"json"`` for JSON-safe values or ``"python"`` for native types.
+
+        Returns:
+            A dictionary with every field of the state.
+        """
+        data: dict[str, object] = self.model_dump(mode=mode)
+        return data
+
+    def to_json(self, *, indent: int | None = None) -> str:
+        """Export the state as JSON.
+
+        Args:
+            indent: Number of spaces to indent nested values; ``None`` for compact output.
+
+        Returns:
+            JSON text with every field of the state.
+        """
+        data = self.to_dict(mode="json")
+        if indent is None:
+            return json.dumps(data, separators=(",", ":"))
+        return json.dumps(data, indent=indent)
+
+    @classmethod
+    def from_dict(cls, state: Mapping[str, object]) -> Self:
+        """Restore the state from a dictionary exported by ``to_dict()``.
+
+        Args:
+            state: Mapping produced by ``to_dict()``.
+
+        Returns:
+            The restored state.
+        """
+        return cls.model_validate(state)
+
+    @classmethod
+    def from_json(cls, state: str | bytes | bytearray) -> Self:
+        """Restore the state from JSON exported by ``to_json()``.
+
+        Args:
+            state: JSON text produced by ``to_json()``.
+
+        Returns:
+            The restored state.
+        """
+        return cls.model_validate_json(state)
 
 
 class KSeFBaseParams[ParamsT](KSeFBaseModel):

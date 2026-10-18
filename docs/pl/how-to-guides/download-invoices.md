@@ -129,12 +129,17 @@ for ksef_number, xml in restored.invoices():
 written = restored.save(Path("downloads"))
 ```
 
-`to_sensitive_json()` to jedyny pełny format. Archiwum jest w Base64, a paczka i
-metadane zachowują każde pole. Adres części paczki jest podpisany i stanowi
-uprawnienie, więc `model_dump()`, `model_dump_json()` i `repr()` go ukrywają: gdy
-paczka ma części, to wyjście nadaje się do logów, a nie do przechowywania.
-`to_sensitive_dict()` daje tę samą zawartość jako słownik i wymaga takiej samej
-ochrony.
+`to_sensitive_json()` to jedyny pełny format. `archive` jest w Base64 bezpiecznym dla
+adresów URL: alfabet to `A-Za-z0-9` oraz `-` i `_`, a tekst dostaje standardowe
+dopełnienie `=`, gdy długość archiwum nie jest wielokrotnością trzech. Wiązanie w innym
+języku powinno dekodować dopełnione Base64 URL-safe i nie może usuwać ani odrzucać tego
+dopełnienia. Walidacja przyjmuje więcej, niż zapisuje: czyta też tekst bez dopełnienia
+oraz zwykły alfabet `+` i `/`, a oba dekodują się do tych samych bajtów. Na wyjściu
+pojawia się tylko dopełnione Base64 URL-safe. Paczka i metadane zachowują każde pole.
+Adres części paczki jest podpisany i stanowi uprawnienie, więc `model_dump()`,
+`model_dump_json()` i `repr()` go ukrywają: gdy paczka ma części, to wyjście nadaje się
+do logów, a nie do przechowywania. `to_sensitive_dict()` daje tę samą zawartość jako
+słownik i wymaga takiej samej ochrony.
 
 `to_model()` czyta archiwum, żeby wypełnić `metadata`, więc rzuca te same błędy co
 `metadata`. `from_model()` bierze snapshot taki, jaki jest: `metadata=None` znaczy,

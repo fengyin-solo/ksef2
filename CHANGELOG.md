@@ -2,6 +2,10 @@
 
 ### Added
 
+- `ksef2.bridge.manifest()` describes the public sync API as JSON Schema, including
+  resume-state stand-ins for handles, sessions, pages and exports, and lists every
+  exported `KSeFException` subclass with its `code` and parent (#270).
+
 - Save and resume every handle KSeF finishes asynchronously. `resume_state()` on a
   `GeneratedToken`, `CertificateEnrollment`, `PermissionOperation` or
   `InvoiceSubmission` returns a versioned state model with `to_dict()`,

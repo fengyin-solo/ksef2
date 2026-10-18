@@ -1,8 +1,40 @@
 import pytest
 
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat
+
 from ksef2._clients.authenticated import AuthenticatedClient
 from ksef2._core.exceptions import KSeFApiError
 from ksef2._domain.models.tokens import GenerateTokenResponse
+from ksef2.xades import XAdESCredentials, generate_test_certificate
+
+
+@pytest.mark.integration
+def test_xades_auth_with_data_credentials(real_client, ksef_credentials, test_context):
+    """Authenticate on TEST with credentials supplied as PEM data (TEST env only).
+
+    This is the data-based form of the same self-signed XAdES login the fixture
+    above performs with loaded objects, so it proves ``credentials=`` works against
+    the real environment. Generated key material never leaves this process, and no
+    token value is printed.
+    """
+    cert, private_key = generate_test_certificate(ksef_credentials.subject_nip)
+    credentials = XAdESCredentials.from_pem(
+        cert.public_bytes(Encoding.PEM),
+        private_key.private_bytes(
+            Encoding.PEM, PrivateFormat.PKCS8, serialization.NoEncryption()
+        ),
+    )
+
+    auth = real_client.authentication.with_xades(
+        nip=ksef_credentials.subject_nip,
+        credentials=credentials,
+    )
+
+    assert isinstance(auth, AuthenticatedClient)
+    assert auth.access_token is not None
+    assert auth.refresh_token is not None
+    assert auth.access_token != auth.refresh_token
 
 
 @pytest.mark.integration

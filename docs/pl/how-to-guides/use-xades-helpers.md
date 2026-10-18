@@ -25,6 +25,26 @@ private_key = load_private_key_from_pem(
 )
 ```
 
+### Z DER
+
+`XAdESCredentials.from_der` czyta bajty certyfikatu i klucza w formacie DER i trzyma
+je jako jedną wiążalną wartość zamiast dwóch aktywanych obiektów.
+
+```python
+import os
+from pathlib import Path
+
+from ksef2.xades import XAdESCredentials
+
+password = os.environ.get("KSEF2_KEY_PASSWORD")
+
+credentials = XAdESCredentials.from_der(
+    Path("company.cer").read_bytes(),
+    Path("company.key").read_bytes(),
+    key_password=password.encode() if password else None,
+)
+```
+
 ### Z PKCS#12
 
 ```python
@@ -40,6 +60,20 @@ cert, private_key = load_certificate_and_key_from_p12(
 )
 ```
 
+To samo archiwum można przekazać w formie opartej na danych:
+
+```python
+import os
+from pathlib import Path
+
+from ksef2.xades import XAdESCredentials
+
+credentials = XAdESCredentials.from_pkcs12(
+    Path("company.p12").read_bytes(),
+    password=os.environ["KSEF2_P12_PASSWORD"].encode(),
+)
+```
+
 ## Uwierzytelnij przez XAdES
 
 Przekaż załadowany certyfikat i klucz prywatny do gałęzi uwierzytelniania.
@@ -49,6 +83,16 @@ auth = client.authentication.with_xades(
     nip="5261040828",
     cert=cert,
     private_key=private_key,
+)
+```
+
+Można też przekazać model poświadczeń — to forma, którą opisuje schemat JSON i która
+przechodzi przez granicę FFI. W warstwie async na ten sam wynik się czeka:
+
+```python
+auth = await client.authentication.with_xades(
+    nip="5261040828",
+    credentials=credentials,
 )
 ```
 
@@ -93,13 +137,18 @@ signed_xml = sign_xades(xml, cert, private_key)
 
 :::caution[Chroń klucze prywatne]
 Pliki kluczy prywatnych i hasła trzymaj poza kontrolą wersji. Ładuj hasła ze
-zmiennych środowiskowych albo managera sekretów i przekazuj do SDK tylko
-załadowany obiekt klucza.
+zmiennych środowiskowych albo managera sekretów. `XAdESCredentials` normalizuje
+dostarczony format do certyfikatu PEM i niezaszyfrowanego klucza PKCS#8 PEM
+przechowywanego w pamięci, nie zatrzymując żadnego hasła: klucz jest wyłączony z
+`repr()`, `model_dump()` i `model_dump_json()`, więc zrzut ogólny służy tylko do
+wyświetlania i nigdy nie jest eksportem poświadczeń. Sam model traktuj jako sekret
+dopóki żyje.
 :::
 
 ## Zalecany przepływ
 
-1. Załaduj materiał certyfikatu z PEM albo PKCS#12.
+1. Załaduj materiał certyfikatu z PEM, DER albo PKCS#12 — jako obiekty albo jako
+   jedną wartość `XAdESCredentials`.
 
 2. Trzymaj hasła kluczy prywatnych w zmiennych środowiskowych albo managerze
    sekretów.

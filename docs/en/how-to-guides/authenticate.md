@@ -83,8 +83,37 @@ auth = client.authentication.with_test_certificate(
 
 ### With PEM XAdES
 
-Use PEM certificate and private-key files when your certificate material is
-stored separately.
+Use PEM certificate and private-key bytes when your certificate material is
+stored separately. `XAdESCredentials.from_pem` takes the bytes themselves, so the
+SDK never opens a file for you and a caller that keeps material elsewhere can hand
+it over directly.
+
+```python
+import os
+from pathlib import Path
+
+from ksef2.xades import XAdESCredentials
+
+password = os.environ.get("KSEF2_KEY_PASSWORD")
+credentials = XAdESCredentials.from_pem(
+    Path("company.pem").read_bytes(),
+    Path("company.key").read_bytes(),
+    key_password=password.encode() if password else None,
+)
+
+auth = client.authentication.with_xades(
+    nip=os.environ["KSEF2_NIP"],
+    credentials=credentials,
+)
+```
+
+The password decrypts the key while the credentials are built and is not kept
+after that. The decrypted key lives in memory inside `credentials`, so treat the
+object as a secret: do not log it, cache it or persist it, and drop the reference
+once authentication is done. `repr()` and `model_dump()` never show the key.
+
+The object form stays supported. Load the material yourself and pass the certificate
+and key you get back.
 
 ```python
 import os
@@ -109,6 +138,30 @@ auth = client.authentication.with_xades(
 
 Use a PKCS#12/PFX archive when the certificate and private key are stored in one
 file.
+
+```python
+import os
+from pathlib import Path
+
+from ksef2.xades import XAdESCredentials
+
+password = os.environ.get("KSEF2_P12_PASSWORD")
+credentials = XAdESCredentials.from_pkcs12(
+    Path("company.p12").read_bytes(),
+    password=password.encode() if password else None,
+)
+
+auth = client.authentication.with_xades(
+    nip=os.environ["KSEF2_NIP"],
+    credentials=credentials,
+)
+```
+
+`XAdESCredentials.from_der` does the same for DER-encoded certificate and key
+bytes. Passing `credentials` together with `cert` or `private_key`, or passing
+neither pair, raises `KSeFArgumentError` before any request is sent.
+
+The object form stays supported:
 
 ```python
 import os

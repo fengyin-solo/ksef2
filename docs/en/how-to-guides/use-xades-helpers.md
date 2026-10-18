@@ -25,6 +25,26 @@ private_key = load_private_key_from_pem(
 )
 ```
 
+### With DER
+
+`XAdESCredentials.from_der` reads DER certificate and key bytes and keeps them as
+one bindable value instead of two live objects.
+
+```python
+import os
+from pathlib import Path
+
+from ksef2.xades import XAdESCredentials
+
+password = os.environ.get("KSEF2_KEY_PASSWORD")
+
+credentials = XAdESCredentials.from_der(
+    Path("company.cer").read_bytes(),
+    Path("company.key").read_bytes(),
+    key_password=password.encode() if password else None,
+)
+```
+
 ### With PKCS#12
 
 ```python
@@ -40,6 +60,20 @@ cert, private_key = load_certificate_and_key_from_p12(
 )
 ```
 
+The same archive can be handed to the data-based form instead:
+
+```python
+import os
+from pathlib import Path
+
+from ksef2.xades import XAdESCredentials
+
+credentials = XAdESCredentials.from_pkcs12(
+    Path("company.p12").read_bytes(),
+    password=os.environ["KSEF2_P12_PASSWORD"].encode(),
+)
+```
+
 ## Authenticate with XAdES
 
 Pass the loaded certificate and private key to the authentication branch.
@@ -49,6 +83,16 @@ auth = client.authentication.with_xades(
     nip="5261040828",
     cert=cert,
     private_key=private_key,
+)
+```
+
+Or pass the credential model, which is the form a JSON schema or an FFI boundary
+can describe. The async branch awaits the same call.
+
+```python
+auth = await client.authentication.with_xades(
+    nip="5261040828",
+    credentials=credentials,
 )
 ```
 
@@ -92,14 +136,18 @@ signed_xml = sign_xades(xml, cert, private_key)
 ```
 
 :::caution[Protect private keys]
-Keep private-key files and passwords outside source control. Load passwords
-from environment variables or a secret manager, and pass only the loaded key
-object to SDK authentication.
+Keep private-key files and passwords outside source control. Load passwords from
+environment variables or a secret manager. `XAdESCredentials` normalizes whatever
+format it was given into a PEM certificate plus an unencrypted PKCS#8 PEM key held
+in memory, and keeps no password at all: the key is excluded from `repr()`,
+`model_dump()` and `model_dump_json()`, so a generic dump is for display and never
+a credential export. Treat the model itself as a secret while it is alive.
 :::
 
 ## Recommended flow
 
-1. Load certificate material from PEM or PKCS#12.
+1. Load certificate material from PEM, DER or PKCS#12, as objects or as one
+   `XAdESCredentials` value.
 
 2. Keep private-key passwords in environment variables or a secret manager.
 

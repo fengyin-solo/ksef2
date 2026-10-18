@@ -12,9 +12,9 @@ They are the paths intended to remain stable through the 1.x line.
 | --- | --- |
 | `ksef2` | Root clients, environment and transport config, `FormSchema`, `__version__`, and public exceptions. |
 | `ksef2.clients` | Concrete sync/async clients, the stable `InvoicesService` / `BatchService` workflow types, and the handle, paging and export result types (`InvoiceSubmission`, `ExportJob`, `GeneratedToken`, `PermissionOperation`, `CertificateEnrollment`, `ExportedInvoices`, `Pager`, `OperationHandle`), plus async twins, for type annotations. |
-| `ksef2.models` | SDK request, response, filter, pagination (including `Page`), token, permission, session, and batch models. |
+| `ksef2.models` | SDK request, response, filter, pagination (including `Page`), token, permission, session, batch, and XAdES credential (`XAdESCredentials`) models. |
 | `ksef2.fa3` | FA(3) invoice builder, draft snapshots, and public FA(3) domain models used by builder workflows. |
-| `ksef2.xades` | Certificate loading, TEST certificate generation, local XAdES signing helpers, and `LocalSigner`. |
+| `ksef2.xades` | Certificate loading, TEST certificate generation, local XAdES signing helpers, `LocalSigner`, and the `XAdESCredentials` model accepted by `with_xades()`. |
 | `ksef2.testdata` | TEST-only helpers that generate valid NIP and PESEL numbers (`generate_nip`, `generate_pesel`). |
 | `ksef2.profiles` | Local `ksef2-cli` compatible profile config helpers. |
 | `ksef2.renderers` | Optional local XSLT/PDF invoice rendering helpers. |
@@ -28,7 +28,7 @@ from ksef2 import Client, Environment, FormSchema, KSeFApiError
 from ksef2.fa3 import FA3InvoiceBuilder, KsefInvoiceDraft, VatRate
 from ksef2.models import InvoicesFilter, InvoiceMetadataParams
 from ksef2.renderers import InvoicePDFExporter, InvoiceXSLTRenderer
-from ksef2.xades import load_certificate_from_pem, load_private_key_from_pem
+from ksef2.xades import XAdESCredentials, load_certificate_from_pem
 ```
 
 ## Root package exports
@@ -93,6 +93,10 @@ Persist and restore state with the explicit methods instead:
 - `to_sensitive_dict()` on secret-bearing response models such as `UpoPage`,
   `GenerateTokenResponse` and `ExportHandle` exports the secret fields for
   deliberate, protected handling.
+
+`XAdESCredentials` is deliberately left out of that list: it has no export method.
+Its private key is decrypted into memory only so `with_xades()` can sign, no password
+is retained at all, and no API returns the key or the original input bytes.
 
 Treat anything produced by these methods as a credential: store it encrypted,
 never log it, and never commit it.

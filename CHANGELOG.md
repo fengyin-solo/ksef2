@@ -6,6 +6,25 @@
   resume-state stand-ins for handles, sessions, pages and exports, and lists every
   exported `KSeFException` subclass with its `code` and parent (#270).
 
+- Run any operation the manifest reports through `ksef2.bridge.call(op, args_json,
+  state_json)`, so a binding of any language drives the SDK over one JSON boundary.
+  Arguments, the state of the session (`environment`, `authentication`,
+  `online_session`, `batch_session`, `handle`) and the result cross as JSON, bytes go
+  in and out as standard Base64 with `=` padding, and a collection operation takes a
+  `cursor` and answers with `next_cursor`. Every call returns one document: `{"ok":
+  true, "result": ..., "state": ...}`, or `{"ok": false, "error": {...}}` carrying
+  `type`, `code`, `message`, `hint` and `context`, plus `status_code`, `ksef_code`,
+  `trace_id`, `details` and `exception_code` when KSeF rejected the request. Nothing
+  raises across the boundary: an id the manifest does not report answers
+  `UNKNOWN_OPERATION`, arguments, state or a cursor the operation cannot use answer
+  `ARGUMENT_ERROR`, an operation no saved state rebuilds (a pager) answers
+  `NOT_BINDABLE` and names the collection operation to call instead, and a request
+  that produced no response is reported as `KSeFTransportError` with code
+  `TRANSPORT_ERROR`. Keys, payload bytes, presigned URLs, request details and response
+  bodies stay out of the error JSON. Calls are safe from several threads and reuse one
+  client per environment until `ksef2.bridge.close()` releases them, which is also what
+  the `client.close` operation does for its own environment (#271).
+
 - Save and resume every handle KSeF finishes asynchronously. `resume_state()` on a
   `GeneratedToken`, `CertificateEnrollment`, `PermissionOperation` or
   `InvoiceSubmission` returns a versioned state model with `to_dict()`,

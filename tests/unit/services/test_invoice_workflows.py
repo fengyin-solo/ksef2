@@ -24,6 +24,7 @@ from ksef2._core.exceptions import (
 )
 from ksef2._domain.models.invoices import ExportHandle, InvoicesFilter
 from ksef2._domain.models.pagination import InvoiceMetadataParams
+from ksef2._domain.models.session import FormSchema
 from ksef2._infra.schema.api import spec
 from ksef2.clients import ExportedInvoices
 from tests.unit.fakes.transport import RecordedCall
@@ -657,6 +658,48 @@ class TestSearchCursors:
         assert body["invoiceNumber"] == "FV/42/2026"
         assert body["subjectType"] == "Subject2"
         assert _request_date_range(resumed_call)["dateType"] == "Invoicing"
+
+    def test_cursor_keeps_invoice_schema_after_restart(
+        self,
+        flavor: Flavor,
+        inv_query_metadata_resp: BaseFactory[spec.QueryInvoicesMetadataResponse],
+    ) -> None:
+        filters = InvoicesFilter(
+            role="buyer",
+            date_type="invoicing_date",
+            date_from=datetime(2026, 1, 1, tzinfo=UTC),
+            invoice_schema=FormSchema.PEF3,
+        )
+        service = flavor.invoices_service()
+        flavor.transport.enqueue(
+            _boundary_page(
+                inv_query_metadata_resp,
+                has_more=True,
+                truncated=False,
+                boundaries=["2026-02-01T09:00:00+00:00"],
+            )
+        )
+        first = flavor.run(service.search(filters).page(None))
+
+        assert len(flavor.transport.calls) == 1
+        assert first.next_cursor is not None
+        cursor = str(
+            json.loads(json.dumps({"cursor": str(first.next_cursor)}))["cursor"]
+        )
+        flavor.transport.enqueue(
+            _boundary_page(
+                inv_query_metadata_resp,
+                has_more=False,
+                truncated=False,
+                boundaries=["2026-02-02T09:00:00+00:00"],
+            )
+        )
+
+        resumed = flavor.run(service.search(_filters()).page(cursor))
+
+        assert resumed.next_cursor is None
+        assert len(flavor.transport.calls) == 2
+        assert _request_body(flavor.transport.calls[1])["formType"] == "PEF"
 
     def test_cursor_empty_terminal_page(
         self,

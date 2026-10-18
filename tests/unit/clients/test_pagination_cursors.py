@@ -24,6 +24,7 @@ from ksef2._domain.models.pagination import (
     PermissionsQueryParams,
     TokenListParams,
 )
+from ksef2._domain.models.session import FormSchema
 from ksef2.clients import AsyncPager, Pager
 from tests.unit.clients.test_paging import (
     COLLECTIONS,
@@ -554,6 +555,27 @@ class TestCursorValidation:
 
 class TestInvoiceSearchCursorState:
     """Invoice search resumes with the request and boundary it stopped on."""
+
+    @pytest.mark.parametrize("member", FormSchema)
+    def test_cursor_keeps_invoice_schema(self, member: FormSchema) -> None:
+        filters = InvoicesFilter(
+            role="seller",
+            date_type="issue_date",
+            date_from=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            invoice_schema=member,
+        )
+        cursor = InvoiceSearchCursor(
+            v=CURSOR_VERSION,
+            operation="invoices.search",
+            filters=filters,
+            params=InvoiceMetadataParams(),
+        )
+
+        resumed = InvoiceSearchCursor.decode(
+            cursor.encode(), operation="invoices.search"
+        )
+
+        assert resumed.filters == filters
 
     @pytest.mark.parametrize(
         "boundary",

@@ -12,7 +12,7 @@ They are the paths intended to remain stable through the 1.x line.
 | --- | --- |
 | `ksef2` | Root clients, environment and transport config, `FormSchema`, `__version__`, and public exceptions. |
 | `ksef2.clients` | Concrete sync/async clients, the stable `InvoicesService` / `BatchService` workflow types, and the handle, paging and export result types (`InvoiceSubmission`, `ExportJob`, `GeneratedToken`, `PermissionOperation`, `CertificateEnrollment`, `ExportedInvoices`, `Pager`, `OperationHandle`), plus async twins, for type annotations. |
-| `ksef2.models` | SDK request, response, filter, pagination (including `Page`), token, permission, session, and batch models. |
+| `ksef2.models` | SDK request, response, filter, pagination (including `Page`), token, permission, session, batch, and export snapshot (`ExportedInvoicesData`) models. |
 | `ksef2.fa3` | FA(3) invoice builder, draft snapshots, and public FA(3) domain models used by builder workflows. |
 | `ksef2.xades` | Certificate loading, TEST certificate generation, local XAdES signing helpers, and `LocalSigner`. |
 | `ksef2.testdata` | TEST-only helpers that generate valid NIP and PESEL numbers (`generate_nip`, `generate_pesel`). |
@@ -93,6 +93,10 @@ Persist and restore state with the explicit methods instead:
 - `to_sensitive_dict()` on secret-bearing response models such as `UpoPage`,
   `GenerateTokenResponse` and `ExportHandle` exports the secret fields for
   deliberate, protected handling.
+- `to_sensitive_dict()` and `to_sensitive_json()` on a completed export snapshot
+  (`ExportedInvoicesData`, from `ExportedInvoices.to_model()`) keep the presigned
+  package part URLs, which `model_dump()` and `repr()` drop. Only that output
+  restores a package that has parts.
 
 Treat anything produced by these methods as a credential: store it encrypted,
 never log it, and never commit it.

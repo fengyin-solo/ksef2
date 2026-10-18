@@ -25,6 +25,7 @@ from ksef2._core.exceptions import (
 from ksef2._domain.models.invoices import ExportHandle, InvoicesFilter
 from ksef2._domain.models.pagination import InvoiceMetadataParams
 from ksef2._infra.schema.api import spec
+from ksef2.clients import ExportedInvoices
 from tests.unit.fakes.transport import RecordedCall
 from tests.unit.flavors import Flavor
 from tests.unit.payloads import (
@@ -256,6 +257,9 @@ class TestExport:
         assert exported.package is not None
         assert exported.package.invoice_count == 2
         assert job.reference_number == "export-ref"
+        # Both flavours hand back the same class, and it snapshots for serialization.
+        assert type(exported) is ExportedInvoices
+        assert exported.to_model().archive == payload
 
     def test_wait_raises_when_ksef_fails_the_export(
         self,

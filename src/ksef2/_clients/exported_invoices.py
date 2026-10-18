@@ -8,10 +8,14 @@ import tarfile
 import zipfile
 from collections.abc import Iterator
 from pathlib import Path, PurePosixPath
-from typing import cast, final
+from typing import Self, cast, final
 
 from ksef2._core import exceptions
-from ksef2._domain.models.invoices import InvoiceMetadata, InvoicePackage
+from ksef2._domain.models.invoices import (
+    ExportedInvoicesData,
+    InvoiceMetadata,
+    InvoicePackage,
+)
 from ksef2._infra.mappers.invoices import from_spec
 from ksef2._infra.schema.api import spec
 
@@ -27,6 +31,9 @@ class ExportedInvoices:
     ``<ksef_number>.xml`` file per invoice and a ``_metadata.json`` file. The archive is
     opened lazily; construct this object through ``ExportJob.wait()``. An export that
     matched no invoices has an empty archive.
+
+    ``to_model()`` takes a portable ``ExportedInvoicesData`` snapshot of a finished
+    export and ``from_model()`` rebuilds this result from such a snapshot.
     """
 
     def __init__(
@@ -148,6 +155,61 @@ class ExportedInvoices:
                 _ = target.write_bytes(_read_entry(archive, info))
                 written.append(target)
         return written
+
+    def to_model(self) -> ExportedInvoicesData:
+        """Take a portable snapshot of this export result.
+
+        The archive bytes are shared because they cannot change in place, while the
+        package and metadata are deep-copied, so the snapshot and this object stay
+        independent. Reading ``metadata`` parses ``_metadata.json``, so this call
+        materializes it and raises whatever that property raises; the constructor
+        itself stays lazy.
+
+        Returns:
+            A snapshot holding the archive, the package metadata and the parsed metadata, independent of this object.
+
+        Raises:
+            KSeFValidationError: If ``_metadata.json`` is not valid metadata.
+            zipfile.BadZipFile: If a ZIP archive is invalid.
+            tarfile.TarError: If a TarGz archive is invalid.
+            ValueError: If an archive contains links or special files.
+        """
+        parsed = self.metadata
+        package: InvoicePackage | None = None
+        if self._package is not None:
+            package = self._package.model_copy(deep=True)
+        metadata: list[InvoiceMetadata] | None = None
+        if parsed is not None:
+            metadata = [item.model_copy(deep=True) for item in parsed]
+        return ExportedInvoicesData(
+            archive=self._archive, package=package, metadata=metadata
+        )
+
+    @classmethod
+    def from_model(cls, data: ExportedInvoicesData) -> Self:
+        """Rebuild an export result from a portable snapshot.
+
+        The snapshot's metadata is taken as the parsed result, so the rebuilt object
+        never reopens the archive: ``None`` means the snapshot has no metadata, while
+        an empty list means it has an empty one. The archive bytes are immutable and
+        shared; the nested models are copied so neither side can change the other.
+
+        Args:
+            data: Snapshot from ``to_model()``, read back from JSON if needed.
+
+        Returns:
+            The equivalent result, whose ``invoices()`` and ``save()`` see the same archive.
+        """
+        rebuilt = cls(
+            [data.archive],
+            package=(
+                None if data.package is None else data.package.model_copy(deep=True)
+            ),
+        )
+        if data.metadata is not None:
+            rebuilt._metadata = [item.model_copy(deep=True) for item in data.metadata]
+        rebuilt._metadata_loaded = True
+        return rebuilt
 
     def _open(self) -> zipfile.ZipFile | tarfile.TarFile:
         if self._package is not None and self._package.compression_type == "tar_gz":

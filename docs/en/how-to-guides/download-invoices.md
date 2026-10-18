@@ -104,6 +104,43 @@ Pass exactly one of `filters` or `state`. `to_dict()`, `from_json()` and
 `from_dict()` work like the session states; `model_dump()` and `repr()` redact the
 key.
 
+### Serialize a completed export
+
+`ExportResumeState` is for an export that has not finished. Once `wait()` returned,
+`to_model()` gives an `ExportedInvoicesData` snapshot of the finished result, which
+you can hand to another process or another language binding, and `from_model()`
+turns it back into the same result object.
+
+```python
+from pathlib import Path
+
+from ksef2.clients import ExportedInvoices
+from ksef2.models import ExportedInvoicesData
+
+saved = package.to_model().to_sensitive_json()  # store as a credential, never log it
+
+# in another process
+data = ExportedInvoicesData.model_validate_json(saved)
+restored = ExportedInvoices.from_model(data)
+for ksef_number, xml in restored.invoices():
+    print(ksef_number, len(xml))
+
+written = restored.save(Path("downloads"))
+```
+
+`to_sensitive_json()` is the only complete format. The archive is Base64 and the
+package and metadata keep every field. A presigned part URL is a capability, so
+`model_dump()`, `model_dump_json()` and `repr()` redact it: with parts present,
+that output is a view for logs, not a persistence format. `to_sensitive_dict()` is
+the same content as a dictionary, and it needs the same protection.
+
+`to_model()` reads the archive to fill `metadata`, so it raises what `metadata`
+raises. `from_model()` takes the snapshot as it stands: `metadata=None` means the
+snapshot holds no metadata, while an empty list holds no invoices. Nothing is
+downloaded again and no key is needed, because the archive is already decrypted.
+`await job.wait()` returns the same `ExportedInvoices` class, so both flavours
+snapshot and restore in the same way.
+
 :::note[The SDK decrypts package parts]
 KSeF returns encrypted package part URLs. `export()` loads a valid KSeF
 encryption certificate, schedules the export with local AES material, and

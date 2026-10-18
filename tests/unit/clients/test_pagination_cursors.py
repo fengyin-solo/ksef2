@@ -341,10 +341,18 @@ class TestCursorValidation:
             ("", "it is empty"),
             ("not a cursor!!", "not valid Base64"),
             ("a", "not valid Base64"),
+            (base64.urlsafe_b64encode(b"\xff\xfe").decode("ascii"), "not valid UTF-8"),
             ("bm90IGpzb24=", "not valid JSON"),
             ("Imp1c3QgYSBzdHJpbmci", "not a JSON object"),
         ],
-        ids=["empty", "bad-alphabet", "bad-length", "not-json", "not-an-object"],
+        ids=[
+            "empty",
+            "bad-alphabet",
+            "bad-length",
+            "not-utf8",
+            "not-json",
+            "not-an-object",
+        ],
     )
     def test_malformed_cursor_is_rejected(self, cursor: str, reason: str) -> None:
         with pytest.raises(KSeFArgumentError, match=reason):

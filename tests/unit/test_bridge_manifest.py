@@ -5,10 +5,16 @@ import subprocess
 import sys
 from typing import Any, cast
 
+import pytest
+
 import ksef2
 import ksef2.clients as public_clients
 from ksef2 import KSeFException
 from ksef2.bridge import manifest
+from ksef2.bridge._catalog import EXCLUDED_BATCH, EXCLUDED_PAGER, WalkedClass
+from ksef2.bridge._errors import ManifestError
+from ksef2.bridge._manifest import _forms_of, _operation
+from ksef2.bridge._schemas import SchemaBuilder
 
 #: The same table the manifest walks, spelled out here so a class that quietly
 #: disappears from the manifest is a failing test and not a smaller document.
@@ -42,6 +48,17 @@ WALKED: tuple[tuple[type[object], str], ...] = (
 )
 
 DEFS = "#/$defs/"
+
+CURSOR_ENTRY = {
+    "name": "cursor",
+    "required": False,
+    "default": None,
+    "schema": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+}
+
+ALLOWED_TEXT_BYTES = {
+    "XAdESCredentials.cert_pem": "PEM text, read as UTF-8 by the model"
+}
 
 
 def _operations() -> dict[str, dict[str, Any]]:
@@ -124,15 +141,13 @@ def test_every_public_sync_method_is_an_operation_or_excluded() -> None:
     for identifier in (
         "authenticated.online_session.form_code",
         "authenticated.online_session.state",
-        "authenticated.batch_session.prepared_batch",
-        "authenticated.batch_session.batch_file",
-        "authenticated.batch_session.state",
         "invoices.export.filters",
         "invoices.export.state",
     ):
         assert identifier in by_id, identifier
     assert "authenticated.online_session" not in by_id
     assert "authenticated.batch_session" not in by_id
+    assert reasons["authenticated.batch_session"] == EXCLUDED_BATCH
     assert "invoices.export" not in by_id
 
     # The accessors hand back a walked client, so they are excluded, and so is
@@ -240,12 +255,170 @@ def test_paged_list_returns_a_page_schema() -> None:
     assert returns["properties"]["next_cursor"] == {
         "anyOf": [{"type": "string"}, {"type": "null"}]
     }
-    # The cursor stays a string: it is an ordinary parameter, not a live object.
-    page = _operations()["invoice_search.page"]
-    assert page["parameters"][0]["name"] == "cursor"
-    assert page["parameters"][0]["schema"] == {
-        "anyOf": [{"type": "string"}, {"type": "null"}]
+    assert operation["parameters"][-1] == CURSOR_ENTRY
+    assert all(
+        parameter["name"] != "cursor" for parameter in operation["parameters"][:-1]
+    )
+
+
+def test_pager_members_are_excluded() -> None:
+    data = manifest()
+    assert not any(
+        identifier.startswith(("pager.", "invoice_search."))
+        for identifier in _operations()
+    )
+    excluded = cast("list[dict[str, str]]", data["excluded"])
+    assert {entry["id"] for entry in excluded if entry["reason"] == EXCLUDED_PAGER} == {
+        "pager.first_page",
+        "pager.page",
+        "pager.pages",
+        "pager.wait",
+        "invoice_search.first_page",
+        "invoice_search.first_response",
+        "invoice_search.page",
+        "invoice_search.pages",
+        "invoice_search.responses",
+        "invoice_search.wait",
     }
+
+
+def test_collection_operations_declare_a_cursor() -> None:
+    operations = _operations()
+    collections = {
+        identifier
+        for identifier, operation in operations.items()
+        if operation["returns"].get("title") == "Page"
+    }
+    assert collections == {
+        "certificates.list",
+        "collective_identifiers.list",
+        "collective_identifiers.list_for_invoice",
+        "collective_identifiers.list_invoices",
+        "invoice_sessions.list",
+        "invoices.search",
+        "peppol.list",
+        "permissions.list_authorizations",
+        "permissions.list_entities",
+        "permissions.list_entity_roles",
+        "permissions.list_eu_entities",
+        "permissions.list_personal",
+        "permissions.list_persons",
+        "permissions.list_subordinate_entities",
+        "permissions.list_subunits",
+        "sessions.list",
+        "tokens.list",
+    }
+    for identifier, operation in operations.items():
+        names = [parameter["name"] for parameter in operation["parameters"]]
+        if identifier in collections:
+            assert operation["parameters"][-1] == CURSOR_ENTRY, identifier
+            assert names.count("cursor") == 1, identifier
+        else:
+            assert "cursor" not in names, identifier
+
+
+def test_batch_operations_are_excluded_until_bindable() -> None:
+    data = manifest()
+    assert not any(
+        identifier.startswith(
+            ("batch.", "batch_service.", "authenticated.batch_session")
+        )
+        for identifier in _operations()
+    )
+    excluded = cast("list[dict[str, str]]", data["excluded"])
+    assert {entry["id"] for entry in excluded if entry["reason"] == EXCLUDED_BATCH} == {
+        "authenticated.batch_session",
+        "batch_service.prepare",
+        "batch_service.submit",
+        "batch_service.upload_parts",
+        "batch.access_token",
+        "batch.aes_key",
+        "batch.close",
+        "batch.download_upo",
+        "batch.get_status",
+        "batch.iv",
+        "batch.list_failed_invoices",
+        "batch.list_invoices",
+        "batch.part_upload_requests",
+        "batch.reference_number",
+        "batch.resume_state",
+        "batch.upload_parts",
+        "batch.wait",
+    }
+    reasons = {entry["id"]: entry["reason"] for entry in excluded}
+    assert reasons["batch_service.submit_batch"] == "deprecated"
+    assert reasons["batch.get_state"] == "deprecated"
+    assert reasons["batch.__enter__"] == "context manager protocol"
+
+
+def test_enum_values_are_json_scalars() -> None:
+    definitions = cast("dict[str, dict[str, Any]]", manifest()["$defs"])
+    for name, definition in definitions.items():
+        if "enum" in definition:
+            assert all(
+                type(value) in (str, int, float, bool, type(None))
+                for value in definition["enum"]
+            ), name
+    assert definitions["FormSchema"]["enum"] == [
+        "FA2",
+        "FA3",
+        "FA_RR1",
+        "PEF3",
+        "PEF_KOR3",
+    ]
+
+
+def test_bytes_in_input_models_declare_their_encoding() -> None:
+    data = manifest()
+    definitions = cast("dict[str, dict[str, Any]]", data["$defs"])
+    operations = cast("list[dict[str, Any]]", data["operations"])
+    pending = {
+        ref
+        for operation in operations
+        for schema in [
+            operation["state_schema"],
+            *(parameter["schema"] for parameter in operation["parameters"]),
+        ]
+        for ref in _refs(schema)
+    }
+    reachable: set[str] = set()
+    while pending:
+        ref = pending.pop()
+        assert ref.startswith(DEFS), ref
+        name = ref[len(DEFS) :]
+        if name in reachable:
+            continue
+        reachable.add(name)
+        pending.update(_refs(definitions[name]))
+
+    allowed_found: set[str] = set()
+    for name in sorted(reachable):
+        for field, schema in definitions[name].get("properties", {}).items():
+            variants = [schema]
+            while variants:
+                variant = variants.pop()
+                variants.extend(variant.get("anyOf", []))
+                variants.extend(variant.get("oneOf", []))
+                if variant.get("format") != "binary" or "contentEncoding" in variant:
+                    continue
+                identifier = f"{name}.{field}"
+                assert identifier in ALLOWED_TEXT_BYTES, identifier
+                allowed_found.add(identifier)
+    assert allowed_found == set(ALLOWED_TEXT_BYTES)
+
+
+def test_cursor_parameter_clash_stops_the_build() -> None:
+    class Collection:
+        def list(self, cursor: str) -> public_clients.Pager[int]:
+            raise NotImplementedError
+
+    forms = _forms_of(Collection, "list", Collection.list)
+    assert len(forms) == 1
+    target = WalkedClass(
+        cls=Collection, prefix="fake", receiver="unauthenticated", state_model=None
+    )
+    with pytest.raises(ManifestError, match=r"fake\.list.*cursor"):
+        _operation(SchemaBuilder(), target, "list", forms[0], "", {}, None)
 
 
 def test_generate_token_returns_resume_state_and_the_one_time_token() -> None:

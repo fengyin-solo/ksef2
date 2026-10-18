@@ -4,7 +4,10 @@
 
 - `ksef2.bridge.manifest()` describes the public sync API as JSON Schema, including
   resume-state stand-ins for handles, sessions, pages and exports, and lists every
-  exported `KSeFException` subclass with its `code` and parent (#270).
+  exported `KSeFException` subclass with its `code` and parent. A collection
+  operation declares an optional `cursor` and returns one `Page`. The methods of a
+  live pager, and the batch operations, whose prepared payload has no complete JSON
+  form yet, are listed under `excluded` with that reason (#270).
 
 - Run any operation the manifest reports through `ksef2.bridge.call(op, args_json,
   state_json)`, so a binding of any language drives the SDK over one JSON boundary.

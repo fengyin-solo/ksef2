@@ -102,8 +102,8 @@ def _walked(
 
 
 #: The walked surface. ``TestDataClient`` is reachable from an authenticated
-#: client too and is listed once; ``Pager`` and ``InvoiceSearchPager`` carry no
-#: saved state because their cursor is an ordinary parameter.
+#: client too and is listed once. Pager and batch classes are walked only so
+#: each member is reported as excluded; see ``EXCLUDED_CLASSES``.
 WALKED_CLASSES: Final[tuple[WalkedClass, ...]] = (
     _walked(Client, "client", RECEIVER_UNAUTHENTICATED),
     _walked(AuthClient, "auth", RECEIVER_UNAUTHENTICATED),
@@ -202,6 +202,30 @@ WALKED_CLASSES: Final[tuple[WalkedClass, ...]] = (
     _walked(Pager, "pager", RECEIVER_HANDLE),
 )
 
+#: Reason given to every member of a live pager. A pager is not saved state, so a
+#: binding never holds one: it calls the collection operation again with ``cursor``.
+EXCLUDED_PAGER: Final = (
+    "pager receiver; call the collection operation again with its cursor"
+)
+
+#: Reason given to the batch surface until a prepared batch has a complete JSON form.
+#: Its encrypted parts and keys are left out of every generic dump on purpose, so the
+#: result of preparing a batch cannot be sent back to upload it.
+EXCLUDED_BATCH: Final = "not bindable yet: a prepared batch has no complete JSON form"
+
+#: Walked classes whose every public member is excluded, with the reason that applies.
+EXCLUDED_CLASSES: Final[dict[type[object], str]] = {
+    Pager: EXCLUDED_PAGER,
+    InvoiceSearchPager: EXCLUDED_PAGER,
+    BatchService: EXCLUDED_BATCH,
+    BatchSessionClient: EXCLUDED_BATCH,
+}
+
+#: Single members excluded on a class whose other members are operations.
+EXCLUDED_MEMBERS: Final[dict[tuple[type[object], str], str]] = {
+    (AuthenticatedClient, "batch_session"): EXCLUDED_BATCH,
+}
+
 
 #: Live objects a call can hand back, and the saved state that stands in for
 #: them. A binding rebuilds the object from the state instead of deserializing
@@ -256,6 +280,7 @@ DATA_FORMS: Final[dict[tuple[type[object], str], DataForm]] = {
 }
 
 #: Collections are described as the page they hand out, never as the live pager.
+#: Their operations take a cursor; pager members are excluded by ``EXCLUDED_CLASSES``.
 PAGER_CLASSES: Final[tuple[type[object], ...]] = (Pager, InvoiceSearchPager)
 
 

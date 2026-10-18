@@ -25,10 +25,13 @@ from ksef2 import KSeFException
 
 from ksef2.bridge._catalog import (
     DATA_FORMS,
+    EXCLUDED_CLASSES,
+    EXCLUDED_MEMBERS,
     GENERATED_TOKEN_CLASS,
     GENERATED_TOKEN_FIELD,
     WALKED_CLASSES,
     WalkedClass,
+    is_pager,
     typevar_bindings,
 )
 from ksef2.bridge._errors import (
@@ -40,6 +43,9 @@ from ksef2.bridge._schemas import Schema, SchemaBuilder, ref_names
 
 FORMAT_VERSION: Final = 1
 """Version of the manifest document itself."""
+
+CURSOR_PARAMETER: Final = "cursor"
+"""Parameter every collection operation takes to choose the page it returns."""
 
 EXCLUDED_DEPRECATED: Final = "deprecated"
 EXCLUDED_CONTEXT_MANAGER: Final = "context manager protocol"
@@ -631,8 +637,22 @@ def _operation(
     Raises:
         UnsupportedSignature: Part of the signature has no JSON Schema.
         HandsBackAnotherClient: The result is another walked client.
+        ManifestError: A collection member already declares a cursor parameter.
     """
     entries = _parameter_entries(builder, form, bindings, target.cls)
+    if is_pager(form.returns):
+        if any(parameter.name == CURSOR_PARAMETER for parameter in form.parameters):
+            raise ManifestError(
+                f"{target.prefix}.{name} already declares {CURSOR_PARAMETER!r}"
+            )
+        entries.append(
+            {
+                "name": CURSOR_PARAMETER,
+                "required": False,
+                "default": None,
+                "schema": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+            }
+        )
     returns = builder.schema_of(form.returns, bindings, returns=True, owner=target.cls)
     identifier = f"{target.prefix}.{name}"
     if form.keyword is not None:
@@ -670,12 +690,20 @@ def _walk_class(
     excluded: list[dict[str, object]] = []
     bindings = typevar_bindings(target.cls)
     state = (
-        None if target.state_model is None else builder.state_ref(target.state_model)
+        None
+        if target.state_model is None or target.cls in EXCLUDED_CLASSES
+        else builder.state_ref(target.state_model)
     )
     for name in _public_names(target.cls):
         member = cast("object", getattr(target.cls, name))
         if hasattr(member, "__deprecated__"):
             excluded.append(_excluded(target, name, EXCLUDED_DEPRECATED))
+            continue
+        reason = EXCLUDED_CLASSES.get(target.cls)
+        if reason is None:
+            reason = EXCLUDED_MEMBERS.get((target.cls, name))
+        if reason is not None:
+            excluded.append(_excluded(target, name, reason))
             continue
         forms = _forms_of(target.cls, name, member)
         if not forms:

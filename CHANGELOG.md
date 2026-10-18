@@ -2,6 +2,17 @@
 
 ### Added
 
+- Hand a finished invoice export to another process or language binding with
+  `ExportedInvoices.to_model()` and `ExportedInvoices.from_model()`. The
+  `ExportedInvoicesData` model holds the decrypted archive, the package and the
+  parsed `_metadata.json`, gives a schema through `model_json_schema()`, and
+  round-trips the whole result through JSON. The archive is URL-safe Base64 with
+  `=` padding when the byte length requires it. `to_sensitive_json()` is the complete
+  format: a presigned part URL stays out of `model_dump()` and `repr()`, so only
+  that output restores a package that still has parts. `invoices()` and `save()`,
+  including the safe-extraction checks, work the same on a rebuilt result, and
+  async `wait()` returns the same type (#269).
+
 - Authenticate with `with_xades(nip=..., credentials=XAdESCredentials...)`, where
   `XAdESCredentials.from_pem`, `.from_der` and `.from_pkcs12` take raw certificate,
   private-key or archive bytes plus an optional password. Whatever the input format,

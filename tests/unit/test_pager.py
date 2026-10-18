@@ -1,7 +1,6 @@
 """The generic paging object: items, pages, first page, cursors and ``wait()``."""
 
 import json
-from typing import Any
 
 import pytest
 
@@ -26,15 +25,10 @@ class _CursorSource:
         self.pages = pages
         self.fetched = 0
 
-    def pager(self, **kwargs: Any) -> Any:
+    def pager(self) -> Pager[int] | AsyncPager[int]:
         if self.flavor.is_async:
-
-            async def _fetch_page(cursor: str | None) -> Page[int]:
-                return self.fetch(cursor)
-
-            return AsyncPager(fetch_page=_fetch_page, **kwargs)
-
-        return Pager(fetch_page=self.fetch, **kwargs)  # pyright: ignore[reportArgumentType]
+            return AsyncPager[int](fetch_page=self.fetch_async)
+        return Pager[int](fetch_page=self.fetch)
 
     def fetch(self, cursor: str | None) -> Page[int]:
         index = (
@@ -52,6 +46,33 @@ class _CursorSource:
                 has_more=index + 1 < len(self.pages),
             ),
         )
+
+    async def fetch_async(self, cursor: str | None) -> Page[int]:
+        return self.fetch(cursor)
+
+
+class _SyncPageSpy(Pager[int]):
+    """Sync pager that records every cursor its own callers hand to ``page()``."""
+
+    def __init__(self, source: _CursorSource) -> None:
+        super().__init__(fetch_page=source.fetch)
+        self.cursors: list[str | None] = []
+
+    def page(self, cursor: str | None = None) -> Page[int]:
+        self.cursors.append(cursor)
+        return super().page(cursor)
+
+
+class _AsyncPageSpy(AsyncPager[int]):
+    """Async pager that records every cursor its own callers hand to ``page()``."""
+
+    def __init__(self, source: _CursorSource) -> None:
+        super().__init__(fetch_page=source.fetch_async)
+        self.cursors: list[str | None] = []
+
+    async def page(self, cursor: str | None = None) -> Page[int]:
+        self.cursors.append(cursor)
+        return await super().page(cursor)
 
 
 class _Source:
@@ -185,7 +206,7 @@ def test_page_requires_a_page_source() -> None:
 def test_page_returns_a_serializable_model(flavor: Flavor) -> None:
     source = _CursorSource(flavor, [[1, 2], [3]])
 
-    page = flavor.run(source.pager().page(None))  # pyright: ignore[reportAttributeAccessIssue]
+    page = flavor.run(source.pager().page(None))
 
     assert isinstance(page, Page)
     assert page.items == [1, 2]
@@ -196,14 +217,36 @@ def test_page_returns_a_serializable_model(flavor: Flavor) -> None:
 def test_first_page_uses_the_cursor_source(flavor: Flavor) -> None:
     source = _CursorSource(flavor, [[1, 2], [3]])
 
-    assert flavor.run(source.pager().first_page()) == [1, 2]  # pyright: ignore[reportAttributeAccessIssue]
+    assert flavor.run(source.pager().first_page()) == [1, 2]
     assert source.fetched == 1
+
+
+def test_first_page_and_iteration_use_public_page(flavor: Flavor) -> None:
+    """``first_page()`` and the page walk both go through the caller-visible ``page()``.
+
+    An empty page in the middle proves the walk follows ``next_cursor`` rather than
+    stopping on the first page with no items, and the last page carries no cursor, which
+    is what ends the walk.
+    """
+    source = _CursorSource(flavor, [[1], [], [2, 3]])
+    pager = _AsyncPageSpy(source) if flavor.is_async else _SyncPageSpy(source)
+
+    assert flavor.run(pager.first_page()) == [1]
+    assert flavor.collect(pager.pages()) == [[1], [], [2, 3]]
+
+    # One request per page: the first page, then three pages walked by cursor.
+    assert source.fetched == 4
+    # Each walk asks for the first page once and then hands on the cursor it was given.
+    asked = pager.cursors
+    assert asked[0] is None
+    assert asked[1] is None
+    assert all(cursor is not None for cursor in asked[2:])
 
 
 def test_page_resume_on_fresh_pager(flavor: Flavor) -> None:
     pages = [[1, 2], [3], [4]]
     first = _CursorSource(flavor, pages)
-    page = flavor.run(first.pager().page(None))  # pyright: ignore[reportAttributeAccessIssue]
+    page = flavor.run(first.pager().page(None))
 
     assert page.items == [1, 2]
     assert page.next_cursor is not None
@@ -211,13 +254,13 @@ def test_page_resume_on_fresh_pager(flavor: Flavor) -> None:
     # A pager built from scratch, as after a restart, continues from the cursor string.
     carried = json.loads(json.dumps({"cursor": str(page.next_cursor)}))["cursor"]
     restarted = _CursorSource(flavor, pages)
-    resumed = flavor.run(restarted.pager().page(carried))  # pyright: ignore[reportAttributeAccessIssue]
+    resumed = flavor.run(restarted.pager().page(carried))
 
     assert resumed.items == [3]
     assert resumed.next_cursor is not None
     assert restarted.fetched == 1
 
-    last = flavor.run(restarted.pager().page(resumed.next_cursor))  # pyright: ignore[reportAttributeAccessIssue]
+    last = flavor.run(restarted.pager().page(resumed.next_cursor))
     assert last.items == [4]
     assert last.next_cursor is None
 
@@ -243,8 +286,8 @@ def test_page_does_not_advance_other_consumers(flavor: Flavor) -> None:
     source = _CursorSource(flavor, [[1], [2]])
     pager = source.pager()
 
-    first = flavor.run(pager.page(None))  # pyright: ignore[reportAttributeAccessIssue]
-    again = flavor.run(pager.page(None))  # pyright: ignore[reportAttributeAccessIssue]
+    first = flavor.run(pager.page(None))
+    again = flavor.run(pager.page(None))
     assert again == first
 
     assert flavor.collect(pager.pages()) == [[1], [2]]
@@ -266,7 +309,7 @@ def test_page_rejects_invalid_cursor_before_fetch(
     source = _CursorSource(flavor, [[1]])
 
     with pytest.raises(KSeFArgumentError, match=reason):
-        flavor.run(source.pager().page(cursor))  # pyright: ignore[reportAttributeAccessIssue]
+        flavor.run(source.pager().page(cursor))
 
     assert source.fetched == 0
 
@@ -278,7 +321,7 @@ def test_page_rejects_a_cursor_of_another_shape(flavor: Flavor) -> None:
     ).encode()
 
     with pytest.raises(KSeFArgumentError, match="not for pager.test"):
-        flavor.run(source.pager().page(other_operation))  # pyright: ignore[reportAttributeAccessIssue]
+        flavor.run(source.pager().page(other_operation))
 
     assert source.fetched == 0
 

@@ -1,12 +1,12 @@
 """Generic paging object returned by collection operations."""
 
 from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
-import typing
 from typing import Generic, TypeVar
 
 from ksef2._clients._pagination_cursor import OffsetCursor
 from ksef2._core import exceptions
 from ksef2._core.polling import async_poll_until
+from ksef2._core.runtime_checks import check_return_against
 from ksef2._domain.models.pagination import Page
 
 _T = TypeVar("_T")
@@ -91,7 +91,7 @@ class AsyncPager(Generic[_T]):
         """
         pages = self._pages
         if pages is None:
-            return (await self._fetch_page(None)).items
+            return (await self.page(None)).items
 
         generator = pages()
         try:
@@ -101,12 +101,10 @@ class AsyncPager(Generic[_T]):
         finally:
             await generator.aclose()
 
-    # Runtime checks are off for this one method on purpose. Beartype compares a return
-    # value against the Page[...] class object the annotation denoted, and Page[_T] here
-    # denotes the pager's own unresolved type variable, which no page can be an instance
-    # of. Every fetch_page callback keeps its concrete Page[Item] annotation and stays
-    # checked; static typing checks this signature as usual.
-    @typing.no_type_check
+    # Page[_T] here denotes the pager's own unresolved type variable, which no concrete
+    # page is an instance of, so runtime checks read this return against Page instead.
+    # The annotation below stays as callers read it, and cursor keeps its own check.
+    @check_return_against(public_hint=Page[_T], runtime_hint=Page)
     async def page(self, cursor: str | None = None) -> Page[_T]:
         """Fetch one page and the cursor that resumes the collection after it.
 
@@ -132,7 +130,7 @@ class AsyncPager(Generic[_T]):
     async def _pages_from_cursor(self) -> AsyncGenerator[list[_T], None]:
         cursor: str | None = None
         while True:
-            page = await self._fetch_page(cursor)
+            page = await self.page(cursor)
             yield page.items
             if page.next_cursor is None:
                 return

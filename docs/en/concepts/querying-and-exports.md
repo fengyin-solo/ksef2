@@ -17,8 +17,10 @@ result locally, and serve operational views from your own store.
 ## Metadata finds invoices
 
 `auth.invoices.search()` returns an `InvoiceSearchPager` over `InvoiceMetadata`
-rows. Iterate it, or use `pages()`, `first_page()` and `wait()`. These retain
-the generic `Pager` contracts. Use `responses()` for complete typed pages or
+rows. Iterate it, or use `pages()`, `first_page()`, `page(cursor)` and `wait()`.
+These retain the generic `Pager` contracts. `page(cursor)` reads one page and
+returns the `next_cursor` that resumes the same search later, even in another
+process. Use `responses()` for complete typed pages or
 `first_response()` for a single `QueryInvoicesMetadataResponse` with pagination
 flags and `permanent_storage_hwm_date`.
 

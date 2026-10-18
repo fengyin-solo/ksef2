@@ -84,6 +84,27 @@ for page in auth.tokens.list().pages():
     print(len(page), "tokens on this page")
 ```
 
+### Resume from a cursor
+
+`.page()` returns one `Page`: its `items` and `next_cursor`, the string naming
+the page after it. Keep that string and pass it back to `.page()`, in this
+process or a later one, to continue without re-reading the tokens you already
+saw.
+
+```python
+first = auth.tokens.list().page()
+cursor = first.next_cursor
+
+# Later, after a restart.
+if cursor is not None:
+    second = auth.tokens.list().page(cursor)
+```
+
+Rebuild the pager with the same parameters: this cursor holds KSeF's
+continuation state for the collection, not your filters. `.pages()` and plain
+iteration follow the same cursor chain, and `next_cursor` is `None` after the
+last page.
+
 ## Inspect or revoke one token
 
 Use the token reference number for later lifecycle operations.

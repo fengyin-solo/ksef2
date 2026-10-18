@@ -17,8 +17,10 @@ wynik lokalnie i zasilać widoki operacyjne z własnego magazynu.
 ## Metadane znajdują faktury
 
 `auth.invoices.search()` zwraca `InvoiceSearchPager` po wierszach
-`InvoiceMetadata`. Iteruj go albo użyj `pages()`, `first_page()` i `wait()`.
-Te operacje zachowują kontrakty ogólnego `Pager`. Użyj `responses()` dla pełnych,
+`InvoiceMetadata`. Iteruj go albo użyj `pages()`, `first_page()`, `page(cursor)`
+i `wait()`. Te operacje zachowują kontrakty ogólnego `Pager`. `page(cursor)`
+pobiera jedną stronę i zwraca `next_cursor`, który pozwala wznowić to samo
+wyszukiwanie później, nawet w innym procesie. Użyj `responses()` dla pełnych,
 typowanych stron albo `first_response()` dla jednej `QueryInvoicesMetadataResponse`
 z flagami paginacji i `permanent_storage_hwm_date`.
 

@@ -17,6 +17,24 @@
   matches the session is rejected before anything is uploaded, and part bytes plus
   encryption material stay out of repr and model dumps (#256).
 
+- Page any collection one cursor at a time with `pager.page(cursor)`, which returns
+  a `Page` holding `items` and `next_cursor`. A cursor is opaque, versioned SDK
+  state, so a job that stops, restarts, or hands work to another process continues
+  with the next request instead of replaying the pages it already read. Every
+  `Pager`-returning collection answers `page()`, and `pages()` plus iteration follow
+  the same cursor chain. An invoice search cursor carries the filters, parameters
+  and truncation boundary of the page it resumes, so a search continues across KSeF
+  truncation after a restart. A cursor from another collection, or one this SDK
+  cannot read, raises `KSeFArgumentError` before any request is sent, without
+  echoing the cursor back (#265).
+
+### Changed
+
+- `auth.tokens.list_page()` is supported, not deprecated: it stays the single
+  request that takes KSeF's own continuation token, which resumable `page()`
+  paging does not replace. `auth.tokens.list_all()` remains deprecated in favour
+  of `auth.tokens.list()` (#265).
+
 ### Deprecated
 
 - Keep the former `ksef2.core`, `domain`, `infra` and `services` imports,

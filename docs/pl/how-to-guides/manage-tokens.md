@@ -84,6 +84,27 @@ for page in auth.tokens.list().pages():
     print(len(page), "tokens on this page")
 ```
 
+### Wznów od kursora
+
+`.page()` zwraca jedną stronę `Page`: jej `items` oraz `next_cursor`, czyli
+napis wskazujący stronę następną. Zapisz ten napis i przekaż go później do
+`.page()`, w tym albo w nowym procesie, aby kontynuować bez ponownego pobierania
+tokenów już odczytanych.
+
+```python
+first = auth.tokens.list().page()
+cursor = first.next_cursor
+
+# Later, after a restart.
+if cursor is not None:
+    second = auth.tokens.list().page(cursor)
+```
+
+Odtwórz pager z tymi samymi parametrami: ten kursor zawiera stan kontynuacji
+KSeF dla tej kolekcji, a nie filtry. `.pages()` oraz zwykła iteracja korzystają
+z tego samego łańcucha kursorów, a `next_cursor` ma wartość `None` po ostatniej
+stronie.
+
 ## Sprawdź albo cofnij jeden token
 
 Do późniejszych operacji cyklu życia użyj numeru referencyjnego tokena.

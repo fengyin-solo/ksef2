@@ -32,6 +32,7 @@ module in the repository.
 | High-level client branches | `client.authentication`, `client.encryption`, `client.peppol`, `client.testdata`, and authenticated branches such as `auth.invoices`, `auth.tokens`, `auth.permissions`, `auth.certificates`, `auth.collective_identifiers`, and `auth.limits`. |
 | Collective identifier workflows | `auth.collective_identifiers` generates a collective identifier for supplied invoices, queries identifiers page by page, resolves the identifiers attached to one KSeF number, and lists the invoices inside selected collective identifiers. |
 | Session helpers | Online and batch session workflows for sending, polling, UPO, and resumable KSeF references. |
+| Paging | Every `Pager` answers `.page(cursor)` with a `Page` (`items`, `next_cursor`), where the cursor is SDK-issued state you can store and replay after a restart, alongside `.pages()`, `.first_page()` and `.wait()`. |
 | `ksef2.xades` | Certificate loading, TEST certificate generation, local XAdES signing helpers, and `LocalSigner`. |
 | `ksef2.profiles` | Local `ksef2-cli` compatible profile config helpers. |
 | `ksef2.fa3` | Public FA(3) invoice builder, draft snapshots, and public FA(3) domain models used by builder workflows. |

@@ -32,6 +32,7 @@ moduł, który da się zaimportować z repozytorium.
 | Wysokopoziomowe moduły klientów | `client.authentication`, `client.encryption`, `client.peppol`, `client.testdata` oraz moduły uwierzytelnione: `auth.invoices`, `auth.tokens`, `auth.permissions`, `auth.certificates`, `auth.collective_identifiers`, `auth.limits`. |
 | Przepływy identyfikatorów zbiorczych | `auth.collective_identifiers` generuje identyfikator zbiorczy dla wskazanych faktur, odpytuje identyfikatory strona po stronie, rozwiązuje identyfikatory dołączone do jednej liczby KSeF oraz wymienia faktury w wybranych identyfikatorach zbiorczych. |
 | Pomocniki sesji | Przepływy sesji online i batch do wysyłki, pollingu, UPO i wznawialnych referencji KSeF. |
+| Stronicowanie | Każdy `Pager` odpowiada na `.page(cursor)`, zwracając `Page` (`items`, `next_cursor`), gdzie kursor to stan wydany przez SDK, który można zapisywać i odtworzyć po restarcie; obok tego `.pages()`, `.first_page()` i `.wait()`. |
 | `ksef2.xades` | Ładowanie certyfikatów, generowanie certyfikatów TEST, lokalne pomocniki podpisu XAdES i `LocalSigner`. |
 | `ksef2.profiles` | Pomocniki konfiguracji profili zgodnych z lokalnymi profilami `ksef2-cli`. |
 | `ksef2.fa3` | Publiczny builder faktur FA(3), drafty buildera i publiczne modele domenowe FA(3) używane przez przepływy buildera. |

@@ -126,6 +126,12 @@ In async code, use `async for`, await `first_page()`, `first_response()` and `do
 `job = await auth.invoices.export(filters=filters)` followed by
 `exported = await job.wait()`.
 
+Read a single page on demand with `pager.page()`, which returns a `Page` holding
+`items` and `next_cursor`. Pass that cursor back to `.page()` later, from another
+process if you need to, and the search resumes on the page after it: an invoice
+search cursor carries the filters, parameters and truncation boundary of the
+request it resumes.
+
 ## Find deprecated uses
 
 Python usually hides `DeprecationWarning` in imported application modules.

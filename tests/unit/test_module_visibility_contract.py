@@ -10,6 +10,7 @@ PACKAGE_ROOT = SRC_ROOT / "ksef2"
 PUBLIC_MODULES = frozenset(
     {
         "ksef2",
+        "ksef2.bridge",
         "ksef2.clients",
         "ksef2.fa3",
         "ksef2.models",

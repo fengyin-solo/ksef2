@@ -13,6 +13,7 @@ They are the paths intended to remain stable through the 1.x line.
 | `ksef2` | Root clients, environment and transport config, `FormSchema`, `__version__`, and public exceptions. |
 | `ksef2.clients` | Concrete sync/async clients, the stable `InvoicesService` / `BatchService` workflow types, and the handle, paging and export result types (`InvoiceSubmission`, `ExportJob`, `GeneratedToken`, `PermissionOperation`, `CertificateEnrollment`, `ExportedInvoices`, `Pager`, `OperationHandle`), plus async twins, for type annotations. |
 | `ksef2.models` | SDK request, response, filter, pagination (including `Page`), token, permission, session, batch, resume-state (`ExportResumeState`, `GeneratedTokenResumeState`, `CertificateEnrollmentResumeState`, `PermissionOperationResumeState`, `InvoiceSubmissionResumeState`), export snapshot (`ExportedInvoicesData`), and XAdES credential (`XAdESCredentials`) models. |
+| `ksef2.bridge` | Machine-readable manifest of the public sync API (`manifest()`). |
 | `ksef2.fa3` | FA(3) invoice builder, draft snapshots, and public FA(3) domain models used by builder workflows. |
 | `ksef2.xades` | Certificate loading, TEST certificate generation, local XAdES signing helpers, `LocalSigner`, and the `XAdESCredentials` model accepted by `with_xades()`. |
 | `ksef2.testdata` | TEST-only helpers that generate valid NIP and PESEL numbers (`generate_nip`, `generate_pesel`). |

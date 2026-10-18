@@ -24,7 +24,6 @@ from pydantic import BaseModel, ValidationError
 from ksef2._clients._pager import Pager
 from ksef2._clients.authenticated import AuthenticatedClient
 from ksef2._clients.base import Client
-from ksef2._clients.batch import BatchSessionClient
 from ksef2._clients.exported_invoices import ExportedInvoices
 from ksef2._clients.online import OnlineSessionClient
 from ksef2._clients.tokens import GeneratedToken
@@ -49,11 +48,16 @@ from ksef2.bridge._json import (
     dump_state,
     encode,
     error_of,
-    not_bindable,
     read_json_object,
     unknown_operation,
 )
-from ksef2.bridge._operations import CURSOR, Operation, class_of, lookup
+from ksef2.bridge._operations import (
+    CURSOR,
+    Operation,
+    class_of,
+    excluded_reasons,
+    lookup,
+)
 
 _StateT = TypeVar("_StateT", bound=BaseModel)
 
@@ -109,7 +113,6 @@ _AUTHENTICATED: Final[dict[str, str]] = {
     "certificates": "certificates",
     "permissions": "permissions",
     "invoices": "invoices",
-    "batch_service": "batch",
     "limits": "limits",
     "collective_identifiers": "collective_identifiers",
     "sessions": "sessions",
@@ -188,18 +191,15 @@ def _call(op: str, args_json: str | None, state_json: str | None) -> Outcome:
         The result data and the state that follows it.
 
     Raises:
-        KSeFArgumentError: The id is unknown, the operation cannot be bound, or the
-            documents do not describe a call.
+        KSeFArgumentError: The id is unknown or the documents do not describe a call.
         KSeFException: Anything the operation itself raises.
     """
     operation = lookup(op)
     if operation is None:
-        raise unknown_operation(op)
-    if not operation.bindable:
-        raise not_bindable(op)
+        raise unknown_operation(op, excluded_reasons().get(op))
     envelope = read_envelope(op, state_json)
     scope = _Scope(operation, envelope)
-    arguments, cursor = read_arguments(operation, args_json, scope)
+    arguments, cursor = read_arguments(operation, args_json)
     value = invoke(operation, _receiver(operation, scope), arguments, cursor)
     if operation.id == _CLOSE:
         drop_client(scope.environment)
@@ -264,18 +264,6 @@ class _Scope:
         state = self.session("online_session", OnlineSessionResumeState)
         return self.authenticated().online_session(state=state)
 
-    def batch(self) -> BatchSessionClient:
-        """Return the batch session the state names.
-
-        Returns:
-            A session handle rebuilt from saved state.
-
-        Raises:
-            KSeFArgumentError: The state carries no session or no batch session.
-        """
-        state = self.session("batch_session", BatchSessionResumeState)
-        return self.authenticated().batch_session(state=state)
-
     def handle(self, expected: type[_StateT]) -> _StateT:
         """Return the handle the state names, as the state this operation continues.
 
@@ -330,31 +318,6 @@ class _Scope:
                 hint=f"Send back the {expected.__name__} the previous call returned in {slot}.",
             )
         return read_state(self.operation.id, slot, raw, expected)
-
-    def rebuild(self, client: type[object], state: object) -> object:
-        """Turn a saved session state into the live client an argument asks for.
-
-        Args:
-            client: The client class the argument has to become.
-            state: The state that rebuilds it.
-
-        Returns:
-            The live client.
-
-        Raises:
-            KSeFArgumentError: This dispatcher cannot rebuild that client, or was
-                given a state that does not belong to it.
-        """
-        # Only a batch session is asked for as an argument today; a state of any
-        # other kind was refused by the parameter itself, so anything arriving here
-        # is a client this dispatcher has no branch for.
-        if client is BatchSessionClient and isinstance(state, BatchSessionResumeState):
-            return self.authenticated().batch_session(state=state)
-        raise argument_error(
-            self.operation.id,
-            f"this dispatcher cannot rebuild a {client.__name__} from the state it was given.",
-            hint="Send that session in state_json.",
-        )
 
 
 def read_envelope(op: str, state_json: str | None) -> dict[str, object]:
@@ -451,14 +414,13 @@ def _read_handle(op: str, handle: object) -> None:
 
 
 def read_arguments(
-    operation: Operation, args_json: str | None, scope: _Scope
+    operation: Operation, args_json: str | None
 ) -> tuple[dict[str, object], str | None]:
     """Validate the arguments of one call.
 
     Args:
         operation: The operation being called.
         args_json: The arguments as JSON text.
-        scope: The call, which rebuilds the one client an argument can ask for.
 
     Returns:
         The arguments to pass by keyword, and the cursor for a page.
@@ -493,11 +455,7 @@ def read_arguments(
             checked = parameter.validator.validate_python(document[parameter.name])
         except ValidationError as exc:
             raise describe_validation(op, parameter.name, exc) from exc
-        arguments[parameter.name] = (
-            checked
-            if parameter.client is None
-            else scope.rebuild(parameter.client, checked)
-        )
+        arguments[parameter.name] = checked
     return arguments, _read_cursor(operation, document)
 
 
@@ -679,6 +637,45 @@ def _token_of(token: GeneratedToken) -> str | None:
     return value if isinstance(value, str) else None
 
 
+_RESOLVERS: Final[dict[str, Callable[[_Scope], object]]] = {
+    "client": lambda scope: scope.client(),
+    "temporal_testdata": lambda scope: scope.client().testdata.temporal(),
+    **{
+        prefix: (lambda scope, a=accessor: cast("object", getattr(scope.client(), a)))
+        for prefix, accessor in _UNAUTHENTICATED.items()
+    },
+    "authenticated": lambda scope: scope.authenticated(),
+    **{
+        prefix: (
+            lambda scope, a=accessor: cast("object", getattr(scope.authenticated(), a))
+        )
+        for prefix, accessor in _AUTHENTICATED.items()
+    },
+    "online": lambda scope: scope.online(),
+    "generated_token": lambda scope: scope.authenticated().tokens.generation(
+        state=scope.handle(GeneratedTokenResumeState)
+    ),
+    "certificate_enrollment": lambda scope: (
+        scope.authenticated().certificates.enrollment(
+            state=scope.handle(CertificateEnrollmentResumeState)
+        )
+    ),
+    "permission_operation": lambda scope: scope.authenticated().permissions.operation(
+        state=scope.handle(PermissionOperationResumeState)
+    ),
+    "invoice_submission": lambda scope: scope.online().submission(
+        state=scope.handle(InvoiceSubmissionResumeState)
+    ),
+    "export_job": lambda scope: scope.authenticated().invoices.export(
+        state=scope.handle(ExportResumeState)
+    ),
+    "exported_invoices": lambda scope: ExportedInvoices.from_model(
+        scope.handle(ExportedInvoicesData)
+    ),
+}
+"""The receiver resolver for each published prefix."""
+
+
 def _receiver(operation: Operation, scope: _Scope) -> object:
     """Return the object one operation is called on.
 
@@ -691,58 +688,12 @@ def _receiver(operation: Operation, scope: _Scope) -> object:
 
     Raises:
         KSeFArgumentError: The state does not rebuild that receiver.
+        RuntimeError: The dispatcher has no resolver for a published prefix.
     """
     prefix = operation.prefix
     if operation.constructor:
         return cast("object", class_of(prefix))
-    if prefix == "client":
-        return cast("object", scope.client())
-    if prefix == "temporal_testdata":
-        return cast("object", scope.client().testdata.temporal())
-    if prefix in _UNAUTHENTICATED:
-        return cast("object", getattr(scope.client(), _UNAUTHENTICATED[prefix]))
-    if prefix == "authenticated":
-        return cast("object", scope.authenticated())
-    if prefix in _AUTHENTICATED:
-        return cast("object", getattr(scope.authenticated(), _AUTHENTICATED[prefix]))
-    if prefix == "online":
-        return cast("object", scope.online())
-    if prefix == "batch":
-        return cast("object", scope.batch())
-    if prefix == "generated_token":
-        return cast(
-            "object",
-            scope.authenticated().tokens.generation(
-                state=scope.handle(GeneratedTokenResumeState)
-            ),
-        )
-    if prefix == "certificate_enrollment":
-        return cast(
-            "object",
-            scope.authenticated().certificates.enrollment(
-                state=scope.handle(CertificateEnrollmentResumeState)
-            ),
-        )
-    if prefix == "permission_operation":
-        return cast(
-            "object",
-            scope.authenticated().permissions.operation(
-                state=scope.handle(PermissionOperationResumeState)
-            ),
-        )
-    if prefix == "invoice_submission":
-        return cast(
-            "object",
-            scope.online().submission(state=scope.handle(InvoiceSubmissionResumeState)),
-        )
-    if prefix == "export_job":
-        return cast(
-            "object",
-            scope.authenticated().invoices.export(
-                state=scope.handle(ExportResumeState)
-            ),
-        )
-    return cast(
-        "object",
-        ExportedInvoices.from_model(scope.handle(ExportedInvoicesData)),
-    )
+    resolver = _RESOLVERS.get(prefix)
+    if resolver is None:
+        raise RuntimeError(f"the dispatcher has no receiver for {prefix!r}")
+    return resolver(scope)

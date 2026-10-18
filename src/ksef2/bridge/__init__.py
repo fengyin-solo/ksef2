@@ -39,13 +39,14 @@ def manifest() -> dict[str, object]:
       ``receiver`` it is reached from, a one-line ``summary``, its ``parameters``
       (name, ``required``, JSON ``schema``, and ``default`` when the SDK has one),
       the ``returns`` schema and, where the call needs one, the ``state_schema``
-      that rebuilds its receiver.
-    - ``excluded``: every public method that is not an operation, each with a
-      ``reason`` and the exception type it raises when reached. A method that
-      returns an async object, takes a callback, a transport or a live session
-      client belongs here, and so does anything marked private.
-    - ``classes``: the input and result models named by those schemas, listed by
-      class name.
+      that rebuilds its receiver. Every operation also carries a ``sensitive`` list
+      naming parameters and results that hold secrets. A collection operation
+      declares an optional ``cursor`` as its last parameter.
+    - ``excluded``: every public method that is not an operation, each with its
+      ``id`` and ``reason``. Pager methods and the batch surface are excluded with
+      their reason, as are methods that return an async object, take a callback,
+      a transport or a live session client, and anything marked private.
+    - ``$defs``: the named JSON schemas referenced by the operation schemas.
     - ``exceptions``: the SDK exception hierarchy, each entry with its ``code`` and
       its ``parent``, so a binding can build a matching hierarchy and branch on the
       codes rather than on message text.
@@ -78,17 +79,17 @@ def call(op: str, args_json: str, state_json: str | None = None) -> str:
 
     ``code`` is what to branch on: ``UNKNOWN_OPERATION`` for an id the manifest does
     not report, ``ARGUMENT_ERROR`` for arguments, state or a cursor the operation
-    cannot use, ``NOT_BINDABLE`` for an operation no saved state rebuilds (a pager),
-    and otherwise the code of the SDK exception that was raised. For an error that
-    came back from KSeF the object also carries ``status_code``, ``ksef_code``,
-    ``trace_id``, ``details`` and ``exception_code``. Arguments, state, response
-    bodies and request details are never repeated in an error: an argument can be a
-    private key and a presigned URL is a capability.
+    cannot use, and otherwise the code of the SDK exception that was raised. An id
+    listed under ``excluded`` answers ``UNKNOWN_OPERATION`` with the exclusion reason
+    in its message. For an error that came back from KSeF the object also carries
+    ``status_code``, ``ksef_code``, ``trace_id``, ``details`` and ``exception_code``.
+    Arguments, state, response bodies and request details are never repeated in an
+    error: an argument can be a private key and a presigned URL is a capability.
 
     Bytes go in and out as standard Base64 with ``=`` padding, matching the
     ``contentEncoding`` the manifest gives them. A collection operation takes a
-    ``cursor`` argument besides its declared parameters: omit it or send ``null`` for
-    the first page, then send back the ``next_cursor`` of the page just read.
+    declared optional ``cursor`` parameter: omit it or send ``null`` for the first
+    page, then send back the ``next_cursor`` of the page just read.
 
     Args:
         op: The ``id`` of one operation from ``manifest()``, such as

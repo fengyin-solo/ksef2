@@ -7,11 +7,9 @@ one row per operation, holding the member to read, a validator per argument and
 the shape of the result. No operation is named here, so an operation that joins
 the walked classes reaches the dispatcher without an edit in this file.
 
-Only two things are decided locally. A pager is a position inside one
-operation's own walk, so no saved state rebuilds it and its operations cannot be
-bound. A parameter whose type is a client is written as the state that rebuilds
-it, which is how the manifest already describes it, and has to be turned back
-into the live client before the call.
+A collection operation declares a cursor for its page. The dispatcher reads
+that cursor itself rather than passing it to the Python member, so the table
+keeps it among the accepted names but leaves it out of the member parameters.
 """
 
 import functools
@@ -23,7 +21,7 @@ from typing import Final, cast
 
 from pydantic import BaseModel, ConfigDict, TypeAdapter
 
-from ksef2.bridge._catalog import WALKED_CLASSES, resume_state_for
+from ksef2.bridge._catalog import WALKED_CLASSES
 from ksef2.bridge._manifest import build_manifest
 
 CURSOR: Final = "cursor"
@@ -34,10 +32,6 @@ PAGE_TITLE: Final = "Page"
 
 GENERATED_TOKEN_TITLE: Final = "GeneratedToken"
 """The title the manifest gives a freshly generated token."""
-
-#: Receivers no saved state rebuilds, because the object is a position in a walk
-#: rather than something a document describes.
-UNBOUND_PREFIXES: Final[frozenset[str]] = frozenset({"pager", "invoice_search"})
 
 _CLASS_BY_PREFIX: Final[dict[str, type[object]]] = {
     target.prefix: target.cls for target in WALKED_CLASSES
@@ -58,14 +52,11 @@ class Parameter:
         name: The name the caller spells in ``args_json``.
         required: Whether the operation cannot be called without it.
         validator: Reads the JSON value into the Python the member accepts.
-        client: The client class the value rebuilds, when the member wants a live
-            client rather than the state it was given.
     """
 
     name: str
     required: bool
     validator: TypeAdapter[object]
-    client: type[object] | None
 
 
 @dataclass(frozen=True)
@@ -86,7 +77,6 @@ class Operation:
             receiver, because it builds one.
         page: Whether the result is one page of a collection.
         token: Whether the result is a freshly generated token.
-        bindable: Whether saved state rebuilds the receiver.
     """
 
     id: str
@@ -100,7 +90,6 @@ class Operation:
     constructor: bool
     page: bool
     token: bool
-    bindable: bool
 
 
 def required_type(annotation: object) -> object:
@@ -241,21 +230,22 @@ def _parameters_of(
     built: list[Parameter] = []
     for item in cast("list[dict[str, object]]", entry["parameters"]):
         name = cast("str", item["name"])
+        if name == CURSOR and _is_page(entry):
+            continue
         if name not in hints:
             raise RuntimeError(
                 f"the manifest gives {cls.__name__}.{member} an argument named {name!r} "
                 "that its own signature does not declare"
             )
         declared = hints[name]
-        client = declared if resume_state_for(declared) is not None else None
-        checked = resume_state_for(declared) if client is not None else declared
         required = bool(item["required"])
         built.append(
             Parameter(
                 name=name,
                 required=required,
-                validator=validator_of(required_type(checked) if required else checked),
-                client=cast("type[object] | None", client),
+                validator=validator_of(
+                    required_type(declared) if required else declared
+                ),
             )
         )
     return tuple(built)
@@ -300,7 +290,6 @@ def _operation(entry: dict[str, object]) -> Operation:
     identifier = cast("str", entry["id"])
     prefix, member = identifier.split(".")[:2]
     cls = _CLASS_BY_PREFIX[prefix]
-    bindable = prefix not in UNBOUND_PREFIXES
     parameters = _parameters_of(cls, member, entry)
     names = {parameter.name for parameter in parameters}
     if _is_page(entry):
@@ -319,7 +308,6 @@ def _operation(entry: dict[str, object]) -> Operation:
         constructor=_is_constructor(cls, member),
         page=_is_page(entry),
         token=_is_token(entry),
-        bindable=bindable,
     )
 
 
@@ -354,3 +342,10 @@ def lookup(op: str) -> Operation | None:
         The operation, or ``None`` when no operation carries that id.
     """
     return _table().get(op)
+
+
+@functools.cache
+def excluded_reasons() -> dict[str, str]:
+    """Index the manifest's excluded members by id, once per process."""
+    entries = cast("list[dict[str, object]]", build_manifest()["excluded"])
+    return {cast("str", entry["id"]): cast("str", entry["reason"]) for entry in entries}

@@ -15,6 +15,7 @@ import base64
 import datetime
 import decimal
 import enum
+import inspect
 import json
 import pathlib
 import uuid
@@ -30,9 +31,6 @@ ARGUMENT_ERROR: Final = "ARGUMENT_ERROR"
 
 UNKNOWN_OPERATION: Final = "UNKNOWN_OPERATION"
 """The code of an id the manifest does not report as an operation."""
-
-NOT_BINDABLE: Final = "NOT_BINDABLE"
-"""The code of an operation no saved state rebuilds."""
 
 VALIDATION_ERROR: Final = "VALIDATION_ERROR"
 """The code of a ``ValidationError`` that reaches the boundary from inside the SDK."""
@@ -117,11 +115,12 @@ def dispatcher_error(
     return error
 
 
-def unknown_operation(op: str) -> KSeFArgumentError:
-    """Build the error for an id the manifest does not report.
+def unknown_operation(op: str, reason: str | None = None) -> KSeFArgumentError:
+    """Build the error for an unknown or deliberately excluded id.
 
     Args:
         op: The id the caller asked for.
+        reason: The manifest's exclusion reason, when it lists this id.
 
     Returns:
         The error, whose hint points at the manifest.
@@ -129,32 +128,12 @@ def unknown_operation(op: str) -> KSeFArgumentError:
     return dispatcher_error(
         op,
         UNKNOWN_OPERATION,
-        "no operation carries this id.",
-        hint="Read ksef2.bridge.manifest() for the ids, their arguments and their state.",
-    )
-
-
-def not_bindable(op: str) -> KSeFArgumentError:
-    """Build the error for an operation no saved state rebuilds.
-
-    A pager is a position inside one operation's own walk. Nothing in a state
-    envelope says which walk it was or where in it the caller stood, so the page
-    itself is the only thing worth carrying across the boundary.
-
-    Args:
-        op: The id the caller asked for.
-
-    Returns:
-        The error, whose hint names the collection operation and its cursor.
-    """
-    return dispatcher_error(
-        op,
-        NOT_BINDABLE,
-        "this operation belongs to a pager, and no saved state rebuilds a pager.",
-        hint=(
-            "Call the collection operation that returns Page, send cursor for the page you "
-            "want, and pass the next_cursor of each page back as the cursor of the next call."
+        (
+            "no operation carries this id."
+            if reason is None
+            else f"this operation is listed in the manifest's excluded members: {reason}"
         ),
+        hint="Read ksef2.bridge.manifest() for the ids, their arguments and their state.",
     )
 
 
@@ -245,8 +224,9 @@ def dump_state(state: BaseModel) -> dict[str, object]:
 
     ``model_dump()`` keeps a bearer token and a session key redacted, which is right
     for a log and useless for state that has to work again, so a persisted model goes
-    through its own ``to_dict()``. That is the SDK's deliberate credential export, and
-    this envelope holds credential material.
+    through its own ``to_dict()`` or ``to_sensitive_dict()``. These deliberate exports
+    also preserve package part URLs that generic dumps omit, so an export handle can
+    be rebuilt. This envelope holds credential material.
 
     Args:
         state: The state to write.
@@ -257,6 +237,11 @@ def dump_state(state: BaseModel) -> dict[str, object]:
     to_dict = getattr(state, "to_dict", None)
     if callable(to_dict):
         return cast("dict[str, object]", to_dict(mode="json"))
+    to_sensitive_dict = getattr(state, "to_sensitive_dict", None)
+    if callable(to_sensitive_dict):
+        if "mode" in inspect.signature(to_sensitive_dict).parameters:
+            return cast("dict[str, object]", to_sensitive_dict(mode="json"))
+        return cast("dict[str, object]", to_sensitive_dict())
     return cast("dict[str, object]", state.model_dump(mode="json"))
 
 

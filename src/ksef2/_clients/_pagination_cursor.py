@@ -13,7 +13,7 @@ import json
 from datetime import date, datetime
 from typing import Literal, Self, cast
 
-from pydantic import Field, ValidationError, field_validator, model_validator
+from pydantic import Field, ValidationError, field_validator
 
 from ksef2._core.exceptions import KSeFArgumentError
 from ksef2._domain.models.base import KSeFPersistedModel
@@ -140,31 +140,11 @@ class InvoiceSearchCursor(_PaginationCursor):
     """Criteria selecting the invoices for the page to fetch."""
     params: InvoiceMetadataParams
     """Page size, page offset and sort order for the page to fetch."""
+    # Pydantic reads the ISO text back into the same branch it came from: a date stays
+    # a date and a timestamp stays a datetime, which is what lets the search compare
+    # consecutive boundaries instead of raising on a date/datetime mismatch.
     previous_truncation_boundary: date | datetime | None = None
     """Boundary the previous page truncated at, used to detect a stalled search."""
-
-    @model_validator(mode="before")
-    @classmethod
-    def _restore_boundary_type(cls, data: object) -> object:
-        if not isinstance(data, dict):
-            return data
-        state = cast(dict[str, object], data)
-        raw_boundary = state.get("previous_truncation_boundary")
-        if not isinstance(raw_boundary, str):
-            return state
-        restored: dict[str, object] = {
-            **state,
-            "previous_truncation_boundary": _parse_boundary(raw_boundary),
-        }
-        return restored
-
-
-def _parse_boundary(text: str) -> date | datetime:
-    """Read a truncation boundary back as the date or datetime KSeF reported."""
-    try:
-        return date.fromisoformat(text)
-    except ValueError:
-        return datetime.fromisoformat(text)
 
 
 def _read_state(cursor: str) -> dict[str, object]:

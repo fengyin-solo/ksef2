@@ -2,15 +2,18 @@
 
 import base64
 import json
+from datetime import date, datetime
 from typing import Any
 
 import pytest
 from polyfactory.factories.pydantic_factory import ModelFactory
 
-from ksef2._clients._pagination_cursor import OffsetCursor
+from ksef2._clients._pagination_cursor import InvoiceSearchCursor, OffsetCursor
 from ksef2._core.exceptions import KSeFArgumentError
+from ksef2._domain.models.invoices import InvoicesFilter
 from ksef2._domain.models.pagination import (
     CollectiveIdentifierParams,
+    InvoiceMetadataParams,
     ListSessionsQuery,
     OffsetPaginationParams,
     Page,
@@ -400,3 +403,38 @@ class TestCursorValidation:
 
         assert cursor not in str(caught.value)
         assert cursor not in str(caught.value.context)
+
+
+class TestInvoiceSearchCursorState:
+    """Invoice search resumes with the request and boundary it stopped on."""
+
+    @pytest.mark.parametrize(
+        "boundary",
+        [date(2026, 1, 5), datetime(2026, 1, 5, 12, 30, 45)],
+        ids=["date", "datetime"],
+    )
+    def test_boundary_keeps_its_own_type_through_a_cursor(
+        self, boundary: date | datetime
+    ) -> None:
+        """A resumed search compares date with date and timestamp with timestamp.
+
+        A boundary that came back as the other type would never compare equal to the
+        next one, so the search would miss that KSeF stopped advancing.
+        """
+        cursor = InvoiceSearchCursor(
+            operation="invoices.search",
+            filters=InvoicesFilter(
+                role="seller",
+                date_type="issue_date",
+                date_from=datetime(2026, 1, 1),
+            ),
+            params=InvoiceMetadataParams(page_size=10, page_offset=1),
+            previous_truncation_boundary=boundary,
+        )
+
+        resumed = InvoiceSearchCursor.decode(
+            cursor.encode(), operation="invoices.search"
+        )
+
+        assert resumed.previous_truncation_boundary == boundary
+        assert type(resumed.previous_truncation_boundary) is type(boundary)

@@ -185,17 +185,8 @@ def run(op: str, args_json: str | None, state_json: str | None) -> str:
 def _call(op: str, args_json: str | None, state_json: str | None) -> Outcome:
     """Do the work behind one call.
 
-    Args:
-        op: The manifest id of the operation.
-        args_json: Its arguments as a JSON object.
-        state_json: The state of the session it belongs to.
-
-    Returns:
-        The result data and the state that follows it.
-
-    Raises:
-        KSeFArgumentError: The id is unknown or the documents do not describe a call.
-        KSeFException: Anything the operation itself raises.
+    Unknown ids or invalid call documents raise ``KSeFArgumentError``.
+    Exceptions from the operation propagate.
     """
     operation = lookup(op)
     if operation is None:
@@ -450,17 +441,9 @@ def read_state(op: str, slot: str, raw: object, model: type[_StateT]) -> _StateT
 def _read_handle(op: str, handle: object) -> None:
     """Check the handle slot against the state the operation continues.
 
-    The kind of handle an operation continues is part of the manifest, so an envelope
-    does not have to name it, and a binding cannot send a batch session handle to an
-    export.
-
-    Args:
-        op: The operation the state belongs to.
-        handle: The JSON value in the handle slot.
-
-    Raises:
-        KSeFArgumentError: This operation continues no handle, or the value is not the
-            state this operation continues.
+    The manifest determines the handle kind without an envelope tag.
+    Operations that continue no handle or receive the wrong state raise
+    ``KSeFArgumentError``.
     """
     operation = lookup(op)
     expected = None if operation is None else operation.state_model
@@ -529,16 +512,8 @@ def read_arguments(
 def _read_cursor(operation: Operation, document: dict[str, object]) -> str | None:
     """Return the cursor a page was asked for.
 
-    Args:
-        operation: The operation being called.
-        document: The decoded arguments.
-
-    Returns:
-        The cursor, or ``None`` for the first page.
-
-    Raises:
-        KSeFArgumentError: The cursor is neither text nor null. An operation that
-            pages no more than this refuses it as an argument it does not take.
+    A cursor that is neither text nor null raises ``KSeFArgumentError``.
+    Operations that do not page reject it as an unknown argument.
     """
     if CURSOR not in document:
         return None
@@ -635,13 +610,7 @@ def _write(
 ) -> dict[str, object]:
     """Return the envelope with one slot written out.
 
-    Args:
-        envelope: The envelope the call was made with.
-        slot: The slot the result fills.
-        data: The state to leave there.
-
-    Returns:
-        A copy of the envelope holding that state in that slot.
+    The original envelope stays unchanged.
     """
     written = dict(envelope)
     written[slot] = data
@@ -670,14 +639,7 @@ def saved_form(value: object) -> object | None:
 
 
 def _slot_of(kind: type[object]) -> str | None:
-    """Return the envelope slot that holds one kind of state.
-
-    Args:
-        kind: The class of the state.
-
-    Returns:
-        The slot name, or ``None`` when no slot holds that kind of state.
-    """
+    """Return the envelope slot that holds one kind of state."""
     for cls in kind.__mro__:
         state = cast("type[BaseModel]", cls)
         slot = _SESSION_SLOT_BY_CLASS.get(state)
@@ -691,14 +653,8 @@ def _slot_of(kind: type[object]) -> str | None:
 def _token_of(token: GeneratedToken) -> str | None:
     """Return the one-time credential of a generated token, if it still holds one.
 
-    A handle rebuilt from saved state cannot recover that credential: KSeF shows it
-    once. The result says so with ``null`` instead of failing the call.
-
-    Args:
-        token: The handle to read.
-
-    Returns:
-        The credential, or ``None`` when the handle no longer holds it.
+    A handle rebuilt from saved state returns ``null`` because KSeF reveals the
+    credential only once.
     """
     value = getattr(token, _GENERATED_TOKEN, None)
     return value if isinstance(value, str) else None
@@ -747,16 +703,8 @@ _RESOLVERS: Final[dict[str, Callable[[_Scope], object]]] = {
 def _receiver(operation: Operation, scope: _Scope) -> object:
     """Return the object one operation is called on.
 
-    Args:
-        operation: The operation being called.
-        scope: The call, which resumes whatever the receiver needs.
-
-    Returns:
-        The client, session or handle that carries the member.
-
-    Raises:
-        KSeFArgumentError: The state does not rebuild that receiver.
-        RuntimeError: The dispatcher has no resolver for a published prefix.
+    State that cannot rebuild the receiver raises ``KSeFArgumentError``.
+    A published prefix without a resolver raises ``RuntimeError``.
     """
     prefix = operation.prefix
     if operation.constructor:

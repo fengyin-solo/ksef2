@@ -65,7 +65,8 @@ git add src/ksef2/bridge/manifest.json
 
 `just check-manifest` fails with a unified diff when the committed file is
 stale, and `just release-check` runs it, so a signature change with no
-regenerated snapshot blocks releases.
+regenerated snapshot blocks releases. The snapshot also records the SDK
+version, so `just bump` regenerates it after changing the version.
 
 ## Check one pair
 

@@ -44,9 +44,11 @@ test-coverage:
 # Flow: just bump <part> -> write the CHANGELOG section -> PR to main -> merge
 # -> just tag <version> -> just release <version>
 
-# Bump project.version in pyproject.toml and the version in uv.lock
+# Bump project.version in pyproject.toml and the version in uv.lock, then regenerate
+# the manifest snapshot, which records that version
 bump part:
     uv version --bump {{ part }}
+    just gen-manifest
 
 # List commits since the previous tag, one bullet per line, for the CHANGELOG
 changelog-seed:

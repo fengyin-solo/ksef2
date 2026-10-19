@@ -65,7 +65,8 @@ git add src/ksef2/bridge/manifest.json
 
 `just check-manifest` kończy się błędem i wypisuje unified diff, gdy zapisany
 plik jest nieaktualny, a `just release-check` go uruchamia, więc zmiana
-sygnatury bez odświeżonego snapshotu blokuje release.
+sygnatury bez odświeżonego snapshotu blokuje release. Snapshot zapisuje też
+wersję SDK, więc `just bump` generuje go ponownie po zmianie wersji.
 
 ## Sprawdź jedną parę
 

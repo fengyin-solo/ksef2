@@ -150,14 +150,8 @@ def validator_of(annotation: object) -> TypeAdapter[object]:
 def _member_of(cls: type[object], member: str) -> object:
     """Return the callable whose annotations describe one member.
 
-    Args:
-        cls: The class that holds the member.
-        member: The attribute name.
-
-    Returns:
-        The function itself, the getter of a property, or the function behind a class
-        or static method. A cached property is never reached here: the table treats it
-        as an attribute, which is how a value that reads no arguments is called.
+    Cached properties never reach this helper because the table treats them as
+    attributes that take no arguments.
     """
     raw = cast("object", inspect.getattr_static(cls, member))
     if isinstance(raw, property):
@@ -168,15 +162,7 @@ def _member_of(cls: type[object], member: str) -> object:
 
 
 def _is_attribute(cls: type[object], member: str) -> bool:
-    """Say whether one member is read rather than called.
-
-    Args:
-        cls: The class that holds the member.
-        member: The attribute name.
-
-    Returns:
-        True for a property or a cached property.
-    """
+    """Say whether one member is read rather than called."""
     return isinstance(
         inspect.getattr_static(cls, member), property | functools.cached_property
     )
@@ -185,16 +171,8 @@ def _is_attribute(cls: type[object], member: str) -> bool:
 def _is_constructor(cls: type[object], member: str) -> bool:
     """Say whether one member is reached on the class itself.
 
-    A class method builds the object its class otherwise hands out, so it is reached
-    without one: a binding rebuilding an export result from a snapshot has no result
-    to name yet.
-
-    Args:
-        cls: The class that holds the member.
-        member: The attribute name.
-
-    Returns:
-        True for a class method or a static method.
+    Class methods are reached without an instance so a binding can rebuild an
+    export result from a snapshot before it has a result to name.
     """
     return isinstance(
         cast("object", inspect.getattr_static(cls, member)), classmethod | staticmethod
@@ -218,17 +196,8 @@ def _parameters_of(
 ) -> tuple[Parameter, ...]:
     """Build the arguments of one operation from its manifest entry.
 
-    Args:
-        cls: The class the member belongs to.
-        member: The attribute name.
-        entry: The manifest operation entry.
-
-    Returns:
-        One parameter per declared argument, in signature order.
-
-    Raises:
-        RuntimeError: The manifest names an argument the member does not declare,
-            which means the two views of the same method have drifted apart.
+    A manifest argument the member does not declare means the two views have
+    drifted apart, which is a ``RuntimeError``.
     """
     member_of = typing.cast("typing.Callable[..., object]", _member_of(cls, member))
     hints = cast("dict[str, object]", typing.get_type_hints(member_of))
@@ -262,26 +231,12 @@ def _parameters_of(
 
 
 def _is_page(entry: dict[str, object]) -> bool:
-    """Say whether the manifest describes the result as one page.
-
-    Args:
-        entry: The manifest operation entry.
-
-    Returns:
-        True when the result schema is a page of items and a cursor.
-    """
+    """Say whether the manifest describes the result as one page."""
     return cast("dict[str, object]", entry["returns"]).get("title") == PAGE_TITLE
 
 
 def _is_token(entry: dict[str, object]) -> bool:
-    """Say whether the manifest describes the result as a fresh token.
-
-    Args:
-        entry: The manifest operation entry.
-
-    Returns:
-        True when the result schema is the token and its state together.
-    """
+    """Say whether the manifest describes the result as a fresh token."""
     return (
         cast("dict[str, object]", entry["returns"]).get("title")
         == GENERATED_TOKEN_TITLE
@@ -289,14 +244,7 @@ def _is_token(entry: dict[str, object]) -> bool:
 
 
 def _operation(entry: dict[str, object]) -> Operation:
-    """Build one row of the dispatch table.
-
-    Args:
-        entry: The manifest operation entry.
-
-    Returns:
-        The operation, ready to be called.
-    """
+    """Build one row of the dispatch table."""
     identifier = cast("str", entry["id"])
     prefix, member = identifier.split(".")[:2]
     cls = _CLASS_BY_PREFIX[prefix]
@@ -328,11 +276,7 @@ _EXCLUDED_REASONS_LOCK = threading.Lock()
 
 
 def _table() -> dict[str, Operation]:
-    """Walk the manifest once per process and index the operations by id.
-
-    Returns:
-        One row per operation the manifest reports as public and callable.
-    """
+    """Walk the manifest once per process and index the operations by id."""
     global _table_cache
     if _table_cache is None:
         with _TABLE_LOCK:

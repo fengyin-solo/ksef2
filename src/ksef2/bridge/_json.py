@@ -367,12 +367,7 @@ def error_of(exc: BaseException) -> dict[str, object]:
 def _code_of(exc: BaseException) -> str:
     """Return the stable code of one failure.
 
-    Args:
-        exc: The failure.
-
-    Returns:
-        The code its class carries, or the code of the family it belongs to when it
-        carries none.
+    Failures without a class code use the code of their exception family.
     """
     code = getattr(exc, "code", None)
     if isinstance(code, str):
@@ -385,14 +380,7 @@ def _code_of(exc: BaseException) -> str:
 
 
 def _message_of(exc: BaseException) -> str:
-    """Return the message of one failure, without its hint line or its arguments.
-
-    Args:
-        exc: The failure.
-
-    Returns:
-        The message the exception was built with.
-    """
+    """Return the message of one failure, without its hint line or its arguments."""
     if isinstance(exc, ValidationError):
         locations = [
             ".".join(str(part) for part in entry["loc"])
@@ -411,11 +399,7 @@ def _message_of(exc: BaseException) -> str:
 def _context_of(exc: BaseException) -> dict[str, object]:
     """Return the structured context of one failure.
 
-    Args:
-        exc: The failure.
-
-    Returns:
-        The context the SDK recorded, empty when there is none.
+    Missing context produces an empty mapping.
     """
     context = getattr(exc, "context", None)
     if isinstance(context, Mapping):
@@ -427,12 +411,7 @@ def _context_of(exc: BaseException) -> dict[str, object]:
 def _plain(value: object) -> object:
     """Reduce one value to JSON data, dropping anything a secret could hide in.
 
-    Args:
-        value: The value to reduce.
-
-    Returns:
-        Data ``json.dumps`` writes: scalars, lists of them and objects of them. Bytes
-        and anything the SDK keeps secret become nothing at all rather than a value.
+    Bytes and SDK secrets become ``None`` rather than an exposed value.
     """
     if value is None or isinstance(value, bool | int | float | str):
         return value

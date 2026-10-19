@@ -213,6 +213,14 @@ EXCLUDED_PAGER: Final = (
 #: result of preparing a batch cannot be sent back to upload it.
 EXCLUDED_BATCH: Final = "not bindable yet: a prepared batch has no complete JSON form"
 
+#: Reason given to handle members that only the handle returned by the creating call
+#: holds. The bridge rebuilds every handle from saved state, and that state never
+#: carries these values, so reading them on a rebuilt handle fails.
+EXCLUDED_FRESH_ONLY: Final = (
+    "only the handle the creating call returns has this value; "
+    "a handle rebuilt from saved state does not"
+)
+
 #: Walked classes whose every public member is excluded, with the reason that applies.
 EXCLUDED_CLASSES: Final[dict[type[object], str]] = {
     Pager: EXCLUDED_PAGER,
@@ -224,6 +232,11 @@ EXCLUDED_CLASSES: Final[dict[type[object], str]] = {
 #: Single members excluded on a class whose other members are operations.
 EXCLUDED_MEMBERS: Final[dict[tuple[type[object], str], str]] = {
     (AuthenticatedClient, "batch_session"): EXCLUDED_BATCH,
+    (GeneratedToken, "token"): EXCLUDED_FRESH_ONLY,
+    (GeneratedToken, "response"): EXCLUDED_FRESH_ONLY,
+    (GeneratedToken, "to_sensitive_dict"): EXCLUDED_FRESH_ONLY,
+    (CertificateEnrollment, "response"): EXCLUDED_FRESH_ONLY,
+    (CertificateEnrollment, "timestamp"): EXCLUDED_FRESH_ONLY,
 }
 
 

@@ -67,6 +67,9 @@ def call(op: str, args_json: str, state_json: str | None = None) -> str:
     session across calls, including across processes and restarts: feed the ``state``
     of each answer straight back into the next call.
 
+    Calls from several threads run concurrently and share one client per environment.
+    A call whose environment is being closed waits, then uses a new client.
+
     Every call answers with one JSON document and nothing else, so a binding that
     keeps no error handling of its own still works. A call that ran answers::
 
@@ -123,8 +126,9 @@ def close() -> None:
     Each environment keeps one client, with its connection pool and its cached
     public-key certificates, from the first call that needed it. They hold network
     resources, so a program that works through a dispatcher at the end of its work
-    should call this. A call afterwards builds what it needs again, so this is a
-    release, not a shutdown.
+    should call this. It waits for the calls in flight in each environment, then
+    closes and forgets that environment's client. A call afterwards builds what it
+    needs again. This must not be called from code a running call is waiting on.
 
     ``client.close`` closes the client of one environment and drops it from the
     cache, which is the same thing seen from inside a call.

@@ -11,7 +11,12 @@ import ksef2
 import ksef2.clients as public_clients
 from ksef2 import KSeFException
 from ksef2.bridge import manifest
-from ksef2.bridge._catalog import EXCLUDED_BATCH, EXCLUDED_PAGER, WalkedClass
+from ksef2.bridge._catalog import (
+    EXCLUDED_BATCH,
+    EXCLUDED_FRESH_ONLY,
+    EXCLUDED_PAGER,
+    WalkedClass,
+)
 from ksef2.bridge._errors import ManifestError
 from ksef2.bridge._manifest import _forms_of, _operation
 from ksef2.bridge._schemas import SchemaBuilder
@@ -419,6 +424,40 @@ def test_cursor_parameter_clash_stops_the_build() -> None:
     )
     with pytest.raises(ManifestError, match=r"fake\.list.*cursor"):
         _operation(SchemaBuilder(), target, "list", forms[0], "", {}, None)
+
+
+def test_fresh_only_handle_members_are_excluded() -> None:
+    data = manifest()
+    operations = _operations()
+    excluded = cast("list[dict[str, str]]", data["excluded"])
+    fresh_only_ids = {
+        "generated_token.token",
+        "generated_token.response",
+        "generated_token.to_sensitive_dict",
+        "certificate_enrollment.response",
+        "certificate_enrollment.timestamp",
+    }
+
+    assert {
+        entry["id"] for entry in excluded if entry["reason"] == EXCLUDED_FRESH_ONLY
+    } == fresh_only_ids
+    assert fresh_only_ids.isdisjoint(operations)
+    assert {
+        "generated_token.reference_number",
+        "generated_token.resume_state",
+        "generated_token.get_status",
+        "generated_token.wait",
+        "certificate_enrollment.reference_number",
+        "certificate_enrollment.get_status",
+        "certificate_enrollment.resume_state",
+    } <= operations.keys()
+
+    returns = operations["tokens.generate"]["returns"]
+    assert sorted(returns["required"]) == ["state", "token"]
+    assert returns["properties"] == {
+        "state": {"$ref": f"{DEFS}GeneratedTokenResumeState"},
+        "token": {"type": "string"},
+    }
 
 
 def test_generate_token_returns_resume_state_and_the_one_time_token() -> None:

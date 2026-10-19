@@ -23,6 +23,7 @@ from pydantic import BaseModel, ConfigDict, TypeAdapter
 
 from ksef2.bridge._catalog import WALKED_CLASSES
 from ksef2.bridge._manifest import build_manifest
+from ksef2.bridge._schemas import without_text_alternative
 
 CURSOR: Final = "cursor"
 """The extra argument a page takes, and no other operation takes."""
@@ -237,7 +238,7 @@ def _parameters_of(
                 f"the manifest gives {cls.__name__}.{member} an argument named {name!r} "
                 "that its own signature does not declare"
             )
-        declared = hints[name]
+        declared = without_text_alternative(hints[name])
         required = bool(item["required"])
         built.append(
             Parameter(

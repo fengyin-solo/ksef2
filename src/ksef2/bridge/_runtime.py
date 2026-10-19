@@ -93,5 +93,13 @@ def close_clients() -> None:
     with _LOCK:
         clients = list(_CLIENTS.values())
         _CLIENTS.clear()
+        errors: list[Exception] = []
         for client in clients:
-            client.close()
+            try:
+                client.close()
+            except Exception as exc:
+                errors.append(exc)
+        if len(errors) == 1:
+            raise errors[0]
+        if errors:
+            raise ExceptionGroup("closing bridge clients failed", errors)

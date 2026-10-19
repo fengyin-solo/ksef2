@@ -4,7 +4,10 @@
 
 - `ksef2.bridge.manifest()` describes the public sync API as JSON Schema, including
   resume-state stand-ins for handles, sessions, pages and exports, and lists every
-  exported `KSeFException` subclass with its `code` and parent (#270).
+  exported `KSeFException` subclass with its `code` and parent. A collection
+  operation declares an optional `cursor` and returns one `Page`. The methods of a
+  live pager, and the batch operations, whose prepared payload has no complete JSON
+  form yet, are listed under `excluded` with that reason (#270).
 
 - The bridge manifest is committed at `src/ksef2/bridge/manifest.json`, so a binding
   can read the public sync surface without running Python. `just gen-manifest`
@@ -22,8 +25,8 @@
   `trace_id`, `details` and `exception_code` when KSeF rejected the request. Nothing
   raises across the boundary: an id the manifest does not report answers
   `UNKNOWN_OPERATION`, arguments, state or a cursor the operation cannot use answer
-  `ARGUMENT_ERROR`, an operation no saved state rebuilds (a pager) answers
-  `NOT_BINDABLE` and names the collection operation to call instead, and a request
+  `ARGUMENT_ERROR`, an id the manifest lists under `excluded` answers
+  `UNKNOWN_OPERATION` and gives the exclusion reason, and a request
   that produced no response is reported as `KSeFTransportError` with code
   `TRANSPORT_ERROR`. Keys, payload bytes, presigned URLs, request details and response
   bodies stay out of the error JSON. Calls are safe from several threads and reuse one

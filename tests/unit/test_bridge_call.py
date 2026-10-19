@@ -11,6 +11,7 @@ import base64
 import json
 import threading
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import PurePosixPath
@@ -26,19 +27,22 @@ import ksef2.bridge as bridge
 from ksef2 import Client, Environment, FormSchema
 from ksef2._core import exceptions
 from ksef2._domain.models.auth import AuthenticationResumeState
-from ksef2._domain.models.batch import BatchSessionResumeState, PartUploadRequest
 from ksef2._domain.models.certificates import CertificateEnrollmentResumeState
 from ksef2._domain.models.invoices import (
     ExportedInvoicesData,
     ExportResumeState,
+    InvoicePackage,
     InvoiceSubmissionResumeState,
+    PackagePart,
 )
 from ksef2._domain.models.permissions import PermissionOperationResumeState
 from ksef2._domain.models.session import OnlineSessionResumeState
 from ksef2._domain.models.tokens import GeneratedTokenResumeState
 from ksef2._infra.schema.api import spec
 from ksef2.bridge import _runtime
-from ksef2.bridge._json import encode, error_of
+from ksef2.bridge._catalog import EXCLUDED_BATCH, EXCLUDED_PAGER
+from ksef2.bridge._dispatch import _RESOLVERS, _Scope, _receiver, read_envelope
+from ksef2.bridge._json import dump_state, encode, error_of
 from ksef2.bridge._operations import operations
 
 #: The client builder the dispatcher uses by default, kept because the fixture below
@@ -53,22 +57,6 @@ ACCESS_TOKEN = "access-token-secret"
 ARCHIVE = b"\x00\x01\x02\xfe"
 KEY = base64.b64encode(b"0" * 32).decode()
 INITIALIZER = base64.b64encode(b"0" * 16).decode()
-
-#: The pager operations, which no saved state rebuilds.
-UNBOUND: frozenset[str] = frozenset(
-    {
-        "invoice_search.first_page",
-        "invoice_search.first_response",
-        "invoice_search.page",
-        "invoice_search.pages",
-        "invoice_search.responses",
-        "invoice_search.wait",
-        "pager.first_page",
-        "pager.page",
-        "pager.pages",
-        "pager.wait",
-    }
-)
 
 
 class Recorder:
@@ -187,28 +175,6 @@ def online_state() -> dict[str, Any]:
         iv=SecretStr(INITIALIZER),
         form_code=FormSchema.FA3,
         valid_until=datetime(2030, 1, 1, tzinfo=UTC),
-    ).to_dict(mode="json")
-
-
-def batch_state() -> dict[str, Any]:
-    """Write a saved batch session, the way an envelope holds it.
-
-    Returns:
-        The exported ``BatchSessionResumeState`` of an open batch session.
-    """
-    return BatchSessionResumeState(
-        reference_number=SESSION_REF,
-        aes_key=SecretStr(KEY),
-        iv=SecretStr(INITIALIZER),
-        form_code=FormSchema.FA3,
-        part_upload_requests=[
-            PartUploadRequest(
-                ordinal_number=1,
-                method="PUT",
-                url="https://storage.mock/part-1",
-                headers={},
-            )
-        ],
     ).to_dict(mode="json")
 
 
@@ -568,21 +534,6 @@ def test_unknown_operation_and_bad_arguments(recorder: Recorder) -> None:
     assert recorder.paths == []
 
 
-def test_pager_operations_point_at_the_collection(recorder: Recorder) -> None:
-    """A pager is a position in a walk, so the page is what a binding carries."""
-    for op in sorted(UNBOUND):
-        document = ask(op, {}, envelope())
-
-        assert document["ok"] is False
-        error = document["error"]
-        assert error["code"] == "NOT_BINDABLE"
-        assert error["type"] == "KSeFArgumentError"
-        assert "returns Page" in error["hint"]
-        assert "next_cursor" in error["hint"]
-        assert "cursor" in error["hint"]
-    assert recorder.paths == []
-
-
 def test_returned_state_is_accepted_by_the_next_call(recorder: Recorder) -> None:
     """The state one call hands back is what the next call reads, unchanged."""
     saved = session_state()
@@ -603,21 +554,6 @@ def test_returned_state_is_accepted_by_the_next_call(recorder: Recorder) -> None
     assert read["ok"] is True
     assert read["state"] == resumed["state"]
     assert recorder.paths == ["/peppol/query"]
-
-
-def test_batch_session_operation(recorder: Recorder) -> None:
-    """A batch session is resumed from the envelope, and answers with its own state."""
-    saved = batch_state()
-
-    document = ask(
-        "batch.resume_state",
-        {},
-        envelope(authentication=session_state(), batch_session=saved),
-    )
-
-    assert document["result"] == saved
-    assert document["state"]["batch_session"] == saved
-    assert recorder.paths == []
 
 
 def test_generated_token_operation(recorder: Recorder) -> None:
@@ -736,23 +672,6 @@ def test_a_handle_meant_for_another_operation_is_refused(recorder: Recorder) -> 
     assert document["ok"] is False
     assert document["error"]["code"] == "ARGUMENT_ERROR"
     assert "handle" in document["error"]["message"]
-    assert recorder.paths == []
-
-
-def test_prepared_batch_bytes_have_no_json_form(recorder: Recorder) -> None:
-    """``upload_parts`` rebuilds its session, but the encrypted parts stay in Python."""
-    document = ask(
-        "batch_service.upload_parts",
-        {
-            "session": batch_state(),
-            "prepared_batch": {"form_code": "FA3", "offline_mode": False},
-        },
-        envelope(authentication=session_state()),
-    )
-
-    assert document["ok"] is False
-    assert document["error"]["code"] == "ARGUMENT_ERROR"
-    assert "prepared_batch" in document["error"]["message"]
     assert recorder.paths == []
 
 
@@ -1077,13 +996,12 @@ def test_credentials_that_are_not_key_material_are_refused_without_being_shown(
 
 
 def test_every_operation_is_callable_or_says_why() -> None:
-    """The dispatcher covers the manifest and names what it cannot bind."""
+    """The dispatcher covers every operation the manifest publishes."""
     entries = cast("list[dict[str, Any]]", bridge.manifest()["operations"])
     documented = {entry["id"] for entry in entries}
     table = operations()
 
     assert set(table) == documented
-    assert {op.id for op in table.values() if not op.bindable} == UNBOUND
 
 
 def test_arguments_are_validated_against_the_operation_itself(
@@ -1168,3 +1086,150 @@ def test_a_result_with_no_json_form_is_not_silently_dropped() -> None:
 
     with pytest.raises(TypeError, match="has no JSON form"):
         encode("peppol.list", Unencodable())
+
+
+def test_excluded_operations_answer_unknown_with_their_reason(
+    recorder: Recorder,
+) -> None:
+    """Excluded ids explain the manifest's reason without making a request."""
+    for op, reason in (
+        ("pager.page", EXCLUDED_PAGER),
+        ("invoice_search.page", EXCLUDED_PAGER),
+        ("batch_service.submit", EXCLUDED_BATCH),
+        ("authenticated.batch_session", EXCLUDED_BATCH),
+    ):
+        document = ask(op, {}, envelope())
+
+        assert document["ok"] is False
+        assert document["error"]["code"] == "UNKNOWN_OPERATION"
+        assert "manifest's excluded members" in document["error"]["message"]
+        assert reason in document["error"]["message"]
+        assert document["error"]["hint"] == (
+            "Read ksef2.bridge.manifest() for the ids, their arguments and their state."
+        )
+
+    unknown = ask("invoices.does_not_exist", {}, envelope())
+
+    assert unknown["ok"] is False
+    assert unknown["error"]["code"] == "UNKNOWN_OPERATION"
+    assert "excluded" not in unknown["error"]["message"]
+    assert unknown["error"]["message"] == (
+        "invoices.does_not_exist: no operation carries this id."
+    )
+    assert recorder.requests == []
+
+
+def test_collection_cursor_is_declared_and_read_by_the_dispatcher() -> None:
+    """A collection's declared cursor is consumed before calling its member."""
+    operation = operations()["tokens.list"]
+    entries = cast("list[dict[str, Any]]", bridge.manifest()["operations"])
+    entry = next(entry for entry in entries if entry["id"] == "tokens.list")
+
+    assert "cursor" in operation.names
+    assert all(parameter.name != "cursor" for parameter in operation.parameters)
+    assert entry["parameters"][-1] == {
+        "name": "cursor",
+        "required": False,
+        "default": None,
+        "schema": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+    }
+
+
+def test_every_published_prefix_has_exactly_one_receiver() -> None:
+    """An unrecognised prefix is a dispatcher bug, never an export handle."""
+    assert set(_RESOLVERS) == {operation.prefix for operation in operations().values()}
+    operation = replace(operations()["peppol.list"], prefix="nope")
+    scope = _Scope(operation, read_envelope(operation.id, envelope()))
+
+    with pytest.raises(
+        RuntimeError, match="the dispatcher has no receiver for 'nope'"
+    ) as raised:
+        _receiver(operation, scope)
+
+    assert not isinstance(raised.value, exceptions.KSeFException)
+
+
+def test_export_result_keeps_package_part_urls(recorder: Recorder) -> None:
+    """A multi-part export keeps the URLs needed to restore its handle."""
+    urls = [
+        "https://storage.mock/part-1?sig=first",
+        "https://storage.mock/part-2?sig=second",
+    ]
+    data = ExportedInvoicesData(
+        archive=ARCHIVE,
+        package=InvoicePackage(
+            invoice_count=2,
+            size=len(ARCHIVE),
+            parts=[
+                PackagePart(
+                    ordinal_number=ordinal,
+                    part_name=f"package-{ordinal}.zip",
+                    method="GET",
+                    url=url,
+                    part_size=1024 + ordinal,
+                    part_hash=f"hash-{ordinal}",
+                    encrypted_part_size=2048 + ordinal,
+                    encrypted_part_hash=f"encrypted-{ordinal}",
+                    expiration_date=datetime(2030, 1, 1, tzinfo=UTC),
+                )
+                for ordinal, url in enumerate(urls, start=1)
+            ],
+            is_truncated=False,
+        ),
+    )
+
+    dumped = dump_state(data)
+    package = cast("dict[str, Any]", dumped["package"])
+    assert [part["url"] for part in package["parts"]] == urls
+    assert ExportedInvoicesData.model_validate(dumped) == data
+
+    document = ask("exported_invoices.to_model", {}, envelope(handle=dumped))
+
+    assert document["ok"] is True, document
+    assert [
+        part["url"] for part in document["state"]["handle"]["package"]["parts"]
+    ] == urls
+    assert document["result"] == dumped
+    assert document["state"]["handle"] == dumped
+    assert recorder.requests == []
+
+
+def test_close_clients_closes_every_client_even_when_one_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Closing drains the cache and attempts every client before raising failures."""
+    closed: list[str] = []
+
+    class FakeClient:
+        def __init__(self, name: str, failure: Exception | None = None) -> None:
+            self.name = name
+            self.failure = failure
+
+        def close(self) -> None:
+            closed.append(self.name)
+            if self.failure is not None:
+                raise self.failure
+
+    first = ValueError("first failed")
+    third = RuntimeError("third failed")
+    fake_clients = {
+        Environment.TEST: FakeClient("first", first),
+        Environment.DEMO: FakeClient("second"),
+        Environment.PRODUCTION: FakeClient("third", third),
+    }
+    monkeypatch.setattr(_runtime, "_CLIENTS", fake_clients)
+
+    with pytest.raises(ExceptionGroup, match="closing bridge clients failed") as raised:
+        _runtime.close_clients()
+
+    assert closed == ["first", "second", "third"]
+    assert _runtime._CLIENTS == {}
+    assert raised.value.exceptions == (first, third)
+
+    fake_clients[Environment.TEST] = FakeClient("single", first)
+    with pytest.raises(ValueError) as single:
+        _runtime.close_clients()
+
+    assert single.value is first
+    assert closed == ["first", "second", "third", "single"]
+    assert _runtime._CLIENTS == {}

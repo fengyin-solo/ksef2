@@ -158,6 +158,25 @@ pomijają bajty paczki i klucze. JSON stanu celowo zawiera sekrety i URL-e uploa
 ale nie bajty przygotowanej paczki. Starsze stany bez skrótu paczki nadal
 umożliwiają pobieranie statusu i UPO, lecz nie dołączenie paczki do uploadu.
 
+Aby zachować przygotowaną paczkę po restarcie, zapisz
+`prepared.to_sensitive_json()` w chronionym magazynie. Odtwórz ją przez
+`PreparedBatch.model_validate_json(saved)` i przekaż jako `prepared_batch=` razem
+z zapisanym stanem sesji. Eksport stanowi materiał uwierzytelniający: zawiera klucz
+AES i zaszyfrowane faktury. Ogólne dumpy modeli i repr nigdy ich nie zawierają.
+
+```python
+from ksef2.models import PreparedBatch
+
+# Zapisz oba ciągi w chronionym magazynie przed restartem.
+saved = prepared.to_sensitive_json()
+saved_state = session.resume_state().to_json()
+
+# Po restarcie odczytaj oba ciągi z chronionego magazynu.
+restored = PreparedBatch.model_validate_json(saved)
+with auth.batch_session(state=saved_state, prepared_batch=restored) as session:
+    session.upload_parts()
+```
+
 ## Stan, status i historia
 
 Te trzy pojęcia łatwo pomylić:

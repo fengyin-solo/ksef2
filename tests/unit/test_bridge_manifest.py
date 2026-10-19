@@ -21,9 +21,9 @@ from ksef2.bridge._bytes import (
     bytes_plan,
 )
 from ksef2.bridge._catalog import (
-    EXCLUDED_BATCH,
     EXCLUDED_FRESH_ONLY,
     EXCLUDED_PAGER,
+    EXCLUDED_UPLOAD_WITHOUT_PAYLOAD,
     WalkedClass,
 )
 from ksef2.bridge._errors import ManifestError
@@ -194,13 +194,16 @@ def test_every_public_sync_method_is_an_operation_or_excluded() -> None:
     for identifier in (
         "authenticated.online_session.form_code",
         "authenticated.online_session.state",
+        "authenticated.batch_session.prepared_batch",
+        "authenticated.batch_session.batch_file",
+        "authenticated.batch_session.state",
         "invoices.export.filters",
         "invoices.export.state",
     ):
         assert identifier in by_id, identifier
     assert "authenticated.online_session" not in by_id
     assert "authenticated.batch_session" not in by_id
-    assert reasons["authenticated.batch_session"] == EXCLUDED_BATCH
+    assert "authenticated.batch_session" not in reasons
     assert "invoices.export" not in by_id
 
     # The accessors hand back a walked client, so they are excluded, and so is
@@ -370,17 +373,18 @@ def test_collection_operations_declare_a_cursor() -> None:
             assert "cursor" not in names, identifier
 
 
-def test_batch_operations_are_excluded_until_bindable() -> None:
+def test_batch_operations_are_published() -> None:
     data = manifest()
-    assert not any(
-        identifier.startswith(
+    assert {
+        identifier
+        for identifier in _operations()
+        if identifier.startswith(
             ("batch.", "batch_service.", "authenticated.batch_session")
         )
-        for identifier in _operations()
-    )
-    excluded = cast("list[dict[str, str]]", data["excluded"])
-    assert {entry["id"] for entry in excluded if entry["reason"] == EXCLUDED_BATCH} == {
-        "authenticated.batch_session",
+    } == {
+        "authenticated.batch_session.prepared_batch",
+        "authenticated.batch_session.batch_file",
+        "authenticated.batch_session.state",
         "batch_service.prepare",
         "batch_service.submit",
         "batch_service.upload_parts",
@@ -395,13 +399,37 @@ def test_batch_operations_are_excluded_until_bindable() -> None:
         "batch.part_upload_requests",
         "batch.reference_number",
         "batch.resume_state",
-        "batch.upload_parts",
         "batch.wait",
     }
+    excluded = cast("list[dict[str, str]]", data["excluded"])
     reasons = {entry["id"]: entry["reason"] for entry in excluded}
-    assert reasons["batch_service.submit_batch"] == "deprecated"
-    assert reasons["batch.get_state"] == "deprecated"
+    assert {
+        entry["id"]
+        for entry in excluded
+        if entry["reason"] == EXCLUDED_UPLOAD_WITHOUT_PAYLOAD
+    } == {"batch.upload_parts"}
+    for identifier in (
+        "batch_service.get_status",
+        "batch_service.get_upo",
+        "batch_service.list_failed_invoices",
+        "batch_service.list_invoices",
+        "batch_service.prepare_batch",
+        "batch_service.prepare_batch_from_paths",
+        "batch_service.submit_batch",
+        "batch_service.submit_prepared_batch",
+        "batch_service.open_session",
+        "batch_service.wait_for_completion",
+        "batch.get_state",
+        "batch.get_upo",
+    ):
+        assert reasons[identifier] == "deprecated"
     assert reasons["batch.__enter__"] == "context manager protocol"
+    upload = _operations()["batch_service.upload_parts"]
+    assert upload["parameters"][0] == {
+        "name": "session",
+        "required": True,
+        "schema": {"$ref": f"{DEFS}BatchSessionResumeState"},
+    }
 
 
 def test_enum_values_are_json_scalars() -> None:
@@ -473,6 +501,8 @@ def test_every_bytes_value_is_standard_base64() -> None:
     for model, fields in {
         "XAdESCredentials": ("cert_pem", "key_pem"),
         "ExportedInvoicesData": ("archive",),
+        "BatchInvoice": ("content",),
+        "BatchPreparedPart": ("content",),
     }.items():
         for field in fields:
             schema = definitions[model]["properties"][field]
@@ -491,7 +521,12 @@ def test_every_bytes_value_is_standard_base64() -> None:
         if plan is not None:
             assert_plan(definitions[name], plan)
             checked.add(name)
-    assert {"XAdESCredentials", "ExportedInvoicesData"} <= checked
+    assert {
+        "XAdESCredentials",
+        "ExportedInvoicesData",
+        "BatchInvoice",
+        "BatchPreparedPart",
+    } <= checked
 
 
 def test_cursor_parameter_clash_stops_the_build() -> None:

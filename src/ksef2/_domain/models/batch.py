@@ -3,10 +3,11 @@
 import base64
 import binascii
 import hashlib
+import json
 import warnings
 from typing import TYPE_CHECKING, Literal, Self, override
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import ConfigDict, Field, SecretStr, field_validator
 
 from ksef2._domain.models.base import KSeFBaseModel
 from ksef2._domain.models.compression import (
@@ -199,6 +200,8 @@ class BatchEncryptionData(KSeFBaseModel):
 class BatchPreparedPart(KSeFBaseModel):
     """Prepared encrypted batch part ready for upload."""
 
+    model_config = ConfigDict(ser_json_bytes="base64", val_json_bytes="base64")
+
     ordinal_number: int
     """One-based position of the part in the package."""
     content: bytes = Field(exclude=True, repr=False)
@@ -224,6 +227,47 @@ class PreparedBatch(KSeFBaseModel):
     """Encryption material used for the parts."""
     invoices: list[BatchInvoiceHash]
     """Hash of each invoice in the package, keyed by ZIP entry name."""
+
+    def to_sensitive_dict(
+        self, *, mode: Literal["json", "python"] | str = "json"
+    ) -> dict[str, object]:
+        """Export the complete prepared batch for protected persistence.
+
+        The output holds the AES key and encrypted invoices. Treat it as
+        credential material. ``model_dump()`` and ``repr()`` still hide them.
+
+        Args:
+            mode: Pydantic dump mode, ``"json"`` for JSON-safe values or ``"python"`` for native types.
+
+        Returns:
+            Every batch field, with part content as URL-safe padded Base64 in JSON mode or raw bytes in Python mode.
+        """
+        data: dict[str, object] = self.model_dump(mode=mode)
+        data["parts"] = [
+            {
+                **part.model_dump(mode=mode),
+                "content": base64.urlsafe_b64encode(part.content).decode()
+                if mode == "json"
+                else part.content,
+            }
+            for part in self.parts
+        ]
+        data["encryption"] = self.encryption.to_sensitive_dict()
+        return data
+
+    def to_sensitive_json(self, *, indent: int | None = None) -> str:
+        """Export the complete prepared batch as JSON for protected persistence.
+
+        The output holds the AES key and encrypted invoices. Treat it as
+        credential material. ``model_dump()`` and ``repr()`` still hide them.
+
+        Args:
+            indent: Number of spaces to indent nested values; ``None`` for compact output.
+
+        Returns:
+            JSON text that ``PreparedBatch.model_validate_json()`` restores in full.
+        """
+        return json.dumps(self.to_sensitive_dict(mode="json"), indent=indent)
 
     def recovery_digest(self) -> str:
         """Bind recovery to the exact prepared payload without exporting secrets.

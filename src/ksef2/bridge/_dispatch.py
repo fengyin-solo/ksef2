@@ -40,7 +40,6 @@ from ksef2._domain.models.invoices import (
 from ksef2._domain.models.permissions import PermissionOperationResumeState
 from ksef2._domain.models.session import OnlineSessionResumeState
 from ksef2._domain.models.tokens import GeneratedTokenResumeState
-from ksef2.bridge._runtime import client_for, drop_client, lock
 from ksef2.bridge._catalog import RESUME_STATE_BY_CLASS
 from ksef2.bridge._json import (
     argument_error,
@@ -58,6 +57,7 @@ from ksef2.bridge._operations import (
     excluded_reasons,
     lookup,
 )
+from ksef2.bridge._runtime import acquire, close_environment, release
 
 _StateT = TypeVar("_StateT", bound=BaseModel)
 
@@ -155,8 +155,8 @@ class Outcome:
 def run(op: str, args_json: str | None, state_json: str | None) -> str:
     """Run one operation and answer with exactly one JSON document.
 
-    The lock is held for the whole call, so the clients a call shares with the other
-    threads of the same program are never built twice or closed under it.
+    Calls run concurrently on shared clients. Each scope counts its use so closing
+    an environment waits until its calls have finished.
 
     Args:
         op: The manifest id of the operation.
@@ -167,11 +167,10 @@ def run(op: str, args_json: str | None, state_json: str | None) -> str:
         A success envelope holding the result and the next state, or a failure
         envelope holding the error.
     """
-    with lock():
-        try:
-            outcome = _call(op, args_json, state_json)
-        except (KSeFException, ValidationError, json.JSONDecodeError) as exc:
-            return json.dumps({"ok": False, "error": error_of(exc)}, ensure_ascii=False)
+    try:
+        outcome = _call(op, args_json, state_json)
+    except (KSeFException, ValidationError, json.JSONDecodeError) as exc:
+        return json.dumps({"ok": False, "error": error_of(exc)}, ensure_ascii=False)
     return json.dumps(
         {"ok": True, "result": outcome.result, "state": outcome.state},
         ensure_ascii=False,
@@ -199,11 +198,16 @@ def _call(op: str, args_json: str | None, state_json: str | None) -> Outcome:
         raise unknown_operation(op, excluded_reasons().get(op))
     envelope = read_envelope(op, state_json)
     scope = _Scope(operation, envelope)
-    arguments, cursor = read_arguments(operation, args_json)
-    value = invoke(operation, _receiver(operation, scope), arguments, cursor)
-    if operation.id == _CLOSE:
-        drop_client(scope.environment)
-    return Outcome(result=encode_result(op, value), state=updated(envelope, value))
+    try:
+        arguments, cursor = read_arguments(operation, args_json)
+        if operation.id == _CLOSE:
+            close_environment(scope.environment)
+            value = None
+        else:
+            value = invoke(operation, _receiver(operation, scope), arguments, cursor)
+        return Outcome(result=encode_result(op, value), state=updated(envelope, value))
+    finally:
+        scope.release()
 
 
 class _Scope:
@@ -223,6 +227,7 @@ class _Scope:
         """
         self.operation = operation
         self.envelope = envelope
+        self._client: Client | None = None
         self._authenticated: AuthenticatedClient | None = None
 
     @property
@@ -236,7 +241,15 @@ class _Scope:
         Returns:
             The shared client for that environment.
         """
-        return client_for(self.environment)
+        if self._client is None:
+            self._client = acquire(self.environment)
+        return self._client
+
+    def release(self) -> None:
+        """Release this scope's use of its shared client, if acquired."""
+        if self._client is not None:
+            release(self.environment)
+            self._client = None
 
     def authenticated(self) -> AuthenticatedClient:
         """Return the client of the saved session, resumed once per call.

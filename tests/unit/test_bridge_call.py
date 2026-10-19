@@ -850,6 +850,8 @@ def test_concurrent_calls_share_one_client(
     clients: list[Client], recorder: Recorder
 ) -> None:
     """Calls from several threads each answer in full, on one client."""
+    # Build the operation table before testing concurrent client use.
+    assert "peppol.list" in operations()
     threads = 8
     body = peppol_page(1, has_more=False)
     recorder.queued.extend(httpx.Response(200, json=body) for _ in range(threads))
@@ -865,7 +867,7 @@ def test_concurrent_calls_share_one_client(
     for runner in runners:
         runner.start()
     for runner in runners:
-        runner.join(timeout=30)
+        runner.join(timeout=5)
         assert not runner.is_alive()
 
     assert len(answers) == threads
@@ -874,38 +876,316 @@ def test_concurrent_calls_share_one_client(
     assert len(clients) == 1
 
 
-def test_call_holds_the_lock_while_it_runs(
-    recorder: Recorder, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The lock covers the whole call, so no client is built outside it."""
-    held: list[bool] = []
-    real_build = _runtime.build_client
-    lock = _runtime.lock()
+@pytest.fixture
+def blocked_calls(
+    clients: list[Client], monkeypatch: pytest.MonkeyPatch
+) -> Iterator[tuple[threading.Event, threading.Event, threading.Event]]:
+    """Block requests and report when a closer starts waiting for them.
+
+    Yields:
+        Events for request entry, request release and a waiting closer.
+    """
+    entered = threading.Event()
+    release = threading.Event()
+    closing = threading.Event()
+    condition_wait = _runtime._CONDITION.wait
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        entered.set()
+        assert release.wait(timeout=5)
+        return httpx.Response(200, json=peppol_page(0, has_more=False))
 
     def build(environment: Environment) -> Client:
-        # Only a thread that does not hold the lock can let another thread take it,
-        # so this is how the call says it is holding the lock for its whole duration.
-        granted = threading.Event()
-        answer = [False]
+        client = Client(
+            environment,
+            http_client=httpx.Client(
+                base_url=BASE_URL, transport=httpx.MockTransport(handler)
+            ),
+        )
+        clients.append(client)
+        return client
 
-        def try_from_elsewhere() -> None:
-            answer[0] = lock.acquire(timeout=2)
-            if answer[0]:
-                lock.release()
-            granted.set()
-
-        other = threading.Thread(target=try_from_elsewhere)
-        other.start()
-        granted.wait(timeout=5)
-        other.join(timeout=5)
-        held.append(not answer[0])
-        return real_build(environment)
+    def wait(timeout: float | None = None) -> bool:
+        # This runs under the registry condition, after the closer has marked TEST.
+        if Environment.TEST in _runtime._CLOSING:
+            closing.set()
+        return condition_wait(timeout=5 if timeout is None else timeout)
 
     monkeypatch.setattr(_runtime, "build_client", build)
-    recorder.queue(peppol_page(0, has_more=False))
+    monkeypatch.setattr(_runtime._CONDITION, "wait", wait)
+    try:
+        yield entered, release, closing
+    finally:
+        release.set()
 
-    assert ask("peppol.list", {}, envelope())["ok"] is True
-    assert held == [True]
+
+def finish_calls(runners: list[threading.Thread], release: threading.Event) -> None:
+    """Unblock requests and verify that every started thread finishes.
+
+    Args:
+        runners: The threads started by the test.
+        release: The event letting blocked requests return.
+    """
+    release.set()
+    for runner in runners:
+        runner.join(timeout=5)
+    assert all(not runner.is_alive() for runner in runners)
+
+
+def test_calls_run_concurrently(
+    clients: list[Client], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Four calls reach the transport together and share exactly one client."""
+    assert "peppol.list" in operations()
+    barrier = threading.Barrier(4, timeout=5)
+    answers: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        barrier.wait(timeout=5)
+        return httpx.Response(200, json=peppol_page(0, has_more=False))
+
+    def build(environment: Environment) -> Client:
+        client = Client(
+            environment,
+            http_client=httpx.Client(
+                base_url=BASE_URL, transport=httpx.MockTransport(handler)
+            ),
+        )
+        clients.append(client)
+        return client
+
+    monkeypatch.setattr(_runtime, "build_client", build)
+    runners = [
+        threading.Thread(
+            target=lambda: answers.append(ask("peppol.list", {}, envelope()))
+        )
+        for _ in range(4)
+    ]
+    for runner in runners:
+        runner.start()
+    for runner in runners:
+        runner.join(timeout=5)
+    assert all(not runner.is_alive() for runner in runners)
+    assert len(answers) == 4
+    assert all(answer["ok"] is True for answer in answers)
+    assert len(clients) == 1
+    assert _runtime._IN_FLIGHT == {}
+
+
+def test_close_waits_for_calls_in_flight(
+    blocked_calls: tuple[threading.Event, threading.Event, threading.Event],
+) -> None:
+    """Closing the bridge waits for an active request before clearing the cache."""
+    entered, release, closing = blocked_calls
+    answers: list[dict[str, Any]] = []
+    closed = threading.Event()
+
+    def close() -> None:
+        bridge.close()
+        closed.set()
+
+    caller = threading.Thread(
+        target=lambda: answers.append(ask("peppol.list", {}, envelope()))
+    )
+    closer = threading.Thread(target=close)
+    runners = [caller]
+    caller.start()
+    try:
+        assert entered.wait(timeout=5)
+        closer.start()
+        runners.append(closer)
+        assert closing.wait(timeout=5)
+        closer.join(timeout=0.2)
+        assert closer.is_alive()
+    finally:
+        finish_calls(runners, release)
+
+    assert answers[0]["ok"] is True
+    assert closed.is_set()
+    assert _runtime._CLIENTS == {}
+    assert _runtime._IN_FLIGHT == {}
+
+
+def test_a_call_during_close_gets_a_new_client(
+    clients: list[Client],
+    blocked_calls: tuple[threading.Event, threading.Event, threading.Event],
+) -> None:
+    """A call arriving during closure waits and then uses a fresh client."""
+    entered, release, closing = blocked_calls
+    answers: list[dict[str, Any]] = []
+    later_answers: list[dict[str, Any]] = []
+    caller = threading.Thread(
+        target=lambda: answers.append(ask("peppol.list", {}, envelope()))
+    )
+    closer = threading.Thread(target=bridge.close)
+    later = threading.Thread(
+        target=lambda: later_answers.append(ask("peppol.list", {}, envelope()))
+    )
+    runners = [caller]
+    caller.start()
+    try:
+        assert entered.wait(timeout=5)
+        closer.start()
+        runners.append(closer)
+        assert closing.wait(timeout=5)
+        later.start()
+        runners.append(later)
+        later.join(timeout=0.2)
+        assert later.is_alive()
+        assert len(clients) == 1
+    finally:
+        finish_calls(runners, release)
+
+    assert answers[0]["ok"] is True
+    assert later_answers[0]["ok"] is True
+    assert len(clients) == 2
+    assert _runtime._CLIENTS[Environment.TEST] is clients[1]
+    assert _runtime._IN_FLIGHT == {}
+
+
+def test_client_close_operation_waits_for_other_calls(
+    blocked_calls: tuple[threading.Event, threading.Event, threading.Event],
+) -> None:
+    """The close operation waits for peers and never counts itself as a user."""
+    entered, release, closing = blocked_calls
+    answers: list[dict[str, Any]] = []
+    closed: list[dict[str, Any]] = []
+    caller = threading.Thread(
+        target=lambda: answers.append(ask("peppol.list", {}, envelope()))
+    )
+    closer = threading.Thread(
+        target=lambda: closed.append(ask("client.close", {}, envelope()))
+    )
+    runners = [caller]
+    caller.start()
+    try:
+        assert entered.wait(timeout=5)
+        closer.start()
+        runners.append(closer)
+        assert closing.wait(timeout=5)
+        closer.join(timeout=0.2)
+        assert closer.is_alive()
+    finally:
+        finish_calls(runners, release)
+
+    assert answers[0]["ok"] is True
+    assert closed == [{"ok": True, "result": None, "state": plain()}]
+    assert _runtime._CLIENTS == {}
+
+    idle_closer = threading.Thread(
+        target=lambda: closed.append(ask("client.close", {}, envelope()))
+    )
+    idle_closer.start()
+    idle_closer.join(timeout=5)
+    assert not idle_closer.is_alive()
+    assert closed == [{"ok": True, "result": None, "state": plain()}] * 2
+
+
+def test_two_closers_do_not_deadlock(
+    blocked_calls: tuple[threading.Event, threading.Event, threading.Event],
+) -> None:
+    """Concurrent close operations and bridge closure finish without self-waits."""
+    entered, release, closing = blocked_calls
+    answers: list[dict[str, Any]] = []
+    closed: list[dict[str, Any]] = []
+    bridge_closed = threading.Event()
+
+    def close() -> None:
+        bridge.close()
+        bridge_closed.set()
+
+    caller = threading.Thread(
+        target=lambda: answers.append(ask("peppol.list", {}, envelope()))
+    )
+    closers = [
+        threading.Thread(
+            target=lambda: closed.append(ask("client.close", {}, envelope()))
+        )
+        for _ in range(2)
+    ]
+    closers.append(threading.Thread(target=close))
+    runners = [caller]
+    caller.start()
+    try:
+        assert entered.wait(timeout=5)
+        closers[0].start()
+        runners.append(closers[0])
+        assert closing.wait(timeout=5)
+        for closer in closers[1:]:
+            closer.start()
+            runners.append(closer)
+        for closer in closers[1:]:
+            closer.join(timeout=5)
+            assert not closer.is_alive()
+    finally:
+        finish_calls(runners, release)
+
+    assert answers[0]["ok"] is True
+    assert closed == [{"ok": True, "result": None, "state": plain()}] * 2
+    assert bridge_closed.is_set()
+    assert _runtime._CLIENTS == {}
+    assert _runtime._CLOSING == set()
+
+
+def test_closing_one_environment_does_not_block_another(
+    blocked_calls: tuple[threading.Event, threading.Event, threading.Event],
+) -> None:
+    """An active TEST request and its closer do not delay a DEMO close."""
+    entered, release, closing = blocked_calls
+    answers: list[dict[str, Any]] = []
+    demo_answers: list[dict[str, Any]] = []
+    caller = threading.Thread(
+        target=lambda: answers.append(ask("peppol.list", {}, envelope()))
+    )
+    closer = threading.Thread(target=lambda: ask("client.close", {}, envelope()))
+    demo_closer = threading.Thread(
+        target=lambda: demo_answers.append(
+            ask("client.close", {}, envelope(environment="demo"))
+        )
+    )
+    runners = [caller]
+    caller.start()
+    try:
+        assert entered.wait(timeout=5)
+        closer.start()
+        runners.append(closer)
+        assert closing.wait(timeout=5)
+        demo_closer.start()
+        runners.append(demo_closer)
+        demo_closer.join(timeout=5)
+        assert not demo_closer.is_alive()
+        assert caller.is_alive()
+        assert closer.is_alive()
+        assert demo_answers == [
+            {"ok": True, "result": None, "state": plain() | {"environment": "demo"}}
+        ]
+    finally:
+        finish_calls(runners, release)
+
+    assert answers[0]["ok"] is True
+
+
+def test_a_failed_call_releases_its_client(recorder: Recorder) -> None:
+    """A transport failure releases the call's count so closing can finish."""
+    recorder.fail_with(httpx.ConnectError("cannot connect"))
+
+    answer = ask("peppol.list", {}, envelope())
+
+    assert answer["ok"] is False
+    assert answer["error"]["code"] == "TRANSPORT_ERROR"
+    assert _runtime._IN_FLIGHT == {}
+    closed = threading.Event()
+
+    def close() -> None:
+        bridge.close()
+        closed.set()
+
+    closer = threading.Thread(target=close)
+    closer.start()
+    closer.join(timeout=5)
+    assert not closer.is_alive()
+    assert closed.is_set()
+    assert _runtime._CLIENTS == {}
 
 
 def test_close_drops_the_clients_and_the_next_call_builds_one(

@@ -24,9 +24,10 @@
   `UNKNOWN_OPERATION` and gives the exclusion reason, and a request
   that produced no response is reported as `KSeFTransportError` with code
   `TRANSPORT_ERROR`. Keys, payload bytes, presigned URLs, request details and response
-  bodies stay out of the error JSON. Calls are safe from several threads and reuse one
-  client per environment until `ksef2.bridge.close()` releases them, which is also what
-  the `client.close` operation does for its own environment (#271).
+  bodies stay out of the error JSON. Calls from several threads run concurrently and
+  share one client per environment. `ksef2.bridge.close()` waits for the calls in flight
+  and then releases the clients, and the `client.close` operation does the same for its
+  own environment (#271).
 
 - Save and resume every handle KSeF finishes asynchronously. `resume_state()` on a
   `GeneratedToken`, `CertificateEnrollment`, `PermissionOperation` or

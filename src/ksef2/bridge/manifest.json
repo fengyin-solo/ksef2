@@ -505,6 +505,239 @@
       "title": "AuthorizationSubjectIdentifierType",
       "type": "string"
     },
+    "BatchEncryptionData": {
+      "description": "Encryption material used for the prepared batch payload.",
+      "properties": {
+        "aes_key": {
+          "title": "Aes Key",
+          "type": "string"
+        },
+        "encrypted_key": {
+          "title": "Encrypted Key",
+          "type": "string"
+        },
+        "iv": {
+          "title": "Iv",
+          "type": "string"
+        },
+        "public_key_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Public Key Id"
+        }
+      },
+      "required": [
+        "aes_key",
+        "iv",
+        "encrypted_key"
+      ],
+      "title": "BatchEncryptionData",
+      "type": "object"
+    },
+    "BatchFileInfo": {
+      "description": "Information about the batch file being uploaded.",
+      "properties": {
+        "compression_type": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CompressionType"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "file_hash": {
+          "title": "File Hash",
+          "type": "string"
+        },
+        "file_size": {
+          "maximum": 5000000000,
+          "minimum": 0,
+          "title": "File Size",
+          "type": "integer"
+        },
+        "parts": {
+          "items": {
+            "$ref": "#/$defs/BatchFilePart"
+          },
+          "maxItems": 50,
+          "title": "Parts",
+          "type": "array"
+        }
+      },
+      "required": [
+        "file_size",
+        "file_hash",
+        "parts"
+      ],
+      "title": "BatchFileInfo",
+      "type": "object"
+    },
+    "BatchFilePart": {
+      "description": "Information about a part of the batch file.",
+      "properties": {
+        "file_hash": {
+          "title": "File Hash",
+          "type": "string"
+        },
+        "file_size": {
+          "maximum": 100000016,
+          "minimum": 0,
+          "title": "File Size",
+          "type": "integer"
+        },
+        "ordinal_number": {
+          "minimum": 1,
+          "title": "Ordinal Number",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ordinal_number",
+        "file_size",
+        "file_hash"
+      ],
+      "title": "BatchFilePart",
+      "type": "object"
+    },
+    "BatchInvoice": {
+      "description": "Single invoice payload to include in a batch ZIP.",
+      "properties": {
+        "content": {
+          "contentEncoding": "base64",
+          "title": "Content",
+          "type": "string"
+        },
+        "file_name": {
+          "title": "File Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file_name",
+        "content"
+      ],
+      "title": "BatchInvoice",
+      "type": "object"
+    },
+    "BatchInvoiceHash": {
+      "description": "Correlation data between a ZIP entry and the original XML hash.",
+      "properties": {
+        "file_name": {
+          "title": "File Name",
+          "type": "string"
+        },
+        "invoice_hash": {
+          "title": "Invoice Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file_name",
+        "invoice_hash"
+      ],
+      "title": "BatchInvoiceHash",
+      "type": "object"
+    },
+    "BatchPreparedPart": {
+      "description": "Prepared encrypted batch part ready for upload.",
+      "properties": {
+        "content": {
+          "contentEncoding": "base64",
+          "title": "Content",
+          "type": "string"
+        },
+        "file_hash": {
+          "title": "File Hash",
+          "type": "string"
+        },
+        "file_size": {
+          "title": "File Size",
+          "type": "integer"
+        },
+        "ordinal_number": {
+          "title": "Ordinal Number",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ordinal_number",
+        "content",
+        "file_size",
+        "file_hash"
+      ],
+      "title": "BatchPreparedPart",
+      "type": "object"
+    },
+    "BatchSessionResumeState": {
+      "additionalProperties": false,
+      "description": "Serializable resume state of a batch session.\n\nThis class holds information needed to resume a batch session handle.\nUpload recovery also requires the exact original ``PreparedBatch``. Use ``to_json()`` when\nintentionally exporting resumable JSON containing encryption material and\npresigned upload URLs.\n\nInherits common session fields from BaseSessionResumeState:\n- reference_number, aes_key, iv, form_code\n- get_aes_key_bytes(), get_iv_bytes() helper methods\n\nDeprecated:\n    The alias ``BatchSessionState`` may be removed no earlier than ksef2 2.0.0; use ``BatchSessionResumeState``.",
+      "properties": {
+        "aes_key": {
+          "format": "password",
+          "title": "Aes Key",
+          "type": "string",
+          "writeOnly": true
+        },
+        "form_code": {
+          "$ref": "#/$defs/FormSchema"
+        },
+        "format_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Format Version",
+          "type": "integer"
+        },
+        "iv": {
+          "format": "password",
+          "title": "Iv",
+          "type": "string",
+          "writeOnly": true
+        },
+        "part_upload_requests": {
+          "items": {
+            "$ref": "#/$defs/PartUploadRequest"
+          },
+          "title": "Part Upload Requests",
+          "type": "array"
+        },
+        "prepared_batch_digest": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prepared Batch Digest"
+        },
+        "reference_number": {
+          "title": "Reference Number",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reference_number",
+        "aes_key",
+        "iv",
+        "form_code",
+        "part_upload_requests"
+      ],
+      "title": "BatchSessionResumeState",
+      "type": "object"
+    },
     "BuyerIdentifierType": {
       "enum": [
         "nip",
@@ -1749,7 +1982,7 @@
       "description": "Portable snapshot of a completed invoice export.\n\n``ExportedInvoices.to_model()`` returns it and ``ExportedInvoices.from_model()``\nturns it back into a result, so a finished export can be handed to another\nprocess or language binding. ``archive`` holds the joined ZIP or TarGz bytes and\nis URL-safe Base64 in JSON, carrying the standard ``=`` padding whenever the\narchive length is not a multiple of three; ``package`` and ``metadata`` carry\nthe package metadata and the parsed ``_metadata.json`` records.\n\n``model_dump()``, ``model_dump_json()`` and ``repr()`` keep ``PackagePart.url``\nredacted, so for a package that still has parts they are a view and not a\npersistence format: a presigned URL is a capability, and the generic dump drops\nit. Use ``to_sensitive_dict()`` and ``to_sensitive_json()`` when the whole\npackage must travel, and protect that output like a credential. Restoring a\nresult needs no network access and no keys: the archive is already decrypted.",
       "properties": {
         "archive": {
-          "format": "base64url",
+          "contentEncoding": "base64",
           "title": "Archive",
           "type": "string"
         },
@@ -3006,6 +3239,45 @@
       "title": "PackagePart",
       "type": "object"
     },
+    "PartUploadRequest": {
+      "description": "Upload endpoint information for a batch session part.",
+      "properties": {
+        "headers": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": "Headers",
+          "type": "object"
+        },
+        "method": {
+          "title": "Method",
+          "type": "string"
+        },
+        "ordinal_number": {
+          "title": "Ordinal Number",
+          "type": "integer"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ordinal_number",
+        "method",
+        "url",
+        "headers"
+      ],
+      "title": "PartUploadRequest",
+      "type": "object"
+    },
     "PeppolProvider": {
       "description": "A Peppol service provider registered in the KSeF system.",
       "properties": {
@@ -3767,6 +4039,48 @@
       ],
       "title": "PersonalPermissionsTargetIdentifierType",
       "type": "string"
+    },
+    "PreparedBatch": {
+      "description": "Prepared batch package with encrypted parts and upload metadata.",
+      "properties": {
+        "batch_file": {
+          "$ref": "#/$defs/BatchFileInfo"
+        },
+        "encryption": {
+          "$ref": "#/$defs/BatchEncryptionData"
+        },
+        "form_code": {
+          "$ref": "#/$defs/FormSchema",
+          "default": "FA3"
+        },
+        "invoices": {
+          "items": {
+            "$ref": "#/$defs/BatchInvoiceHash"
+          },
+          "title": "Invoices",
+          "type": "array"
+        },
+        "offline_mode": {
+          "default": false,
+          "title": "Offline Mode",
+          "type": "boolean"
+        },
+        "parts": {
+          "items": {
+            "$ref": "#/$defs/BatchPreparedPart"
+          },
+          "title": "Parts",
+          "type": "array"
+        }
+      },
+      "required": [
+        "batch_file",
+        "parts",
+        "encryption",
+        "invoices"
+      ],
+      "title": "PreparedBatch",
+      "type": "object"
     },
     "PublicKeyCertificate": {
       "description": "Public certificate that can encrypt tokens or session keys for KSeF.",
@@ -4973,12 +5287,12 @@
       "description": "Certificate and private key for ``with_xades()``, held as normalized data.\n\nBuild it with :meth:`from_pem`, :meth:`from_der` or :meth:`from_pkcs12` and pass\nthe result as ``with_xades(nip=..., credentials=...)``. The constructors accept\nraw bytes rather than file paths, so a caller that reads the files, receives an\nupload or crosses a language boundary keeps control of the transport.\n\nWhatever the input format, the model stores the certificate as PEM and the key\nas unencrypted PKCS#8 PEM. The key field is a ``SecretBytes`` excluded from\n``model_dump()``, ``model_dump_json()`` and ``repr()``, so a generic dump is a\ndisplay form and never a credential export: it cannot be read back. The password\nis consumed while decoding and is not stored anywhere on the model, so there is\nno retained password to leak and none to rotate.\n\nNote:\n    Because the stored key is unencrypted PEM in memory, the model is a secret.\n    Keep it out of logs, caches and persistence, and drop the reference when\n    authentication is done. Use it for nothing but the call that signs.\n\nExample:\n    ```python\n    from pathlib import Path\n\n    from ksef2.xades import XAdESCredentials\n\n    credentials = XAdESCredentials.from_pem(\n        Path(\"company.pem\").read_bytes(),\n        Path(\"company.key\").read_bytes(),\n    )\n    auth = client.authentication.with_xades(\n        nip=\"5261040828\", credentials=credentials\n    )\n    ```",
       "properties": {
         "cert_pem": {
-          "format": "binary",
+          "contentEncoding": "base64",
           "title": "Cert Pem",
           "type": "string"
         },
         "key_pem": {
-          "format": "password",
+          "contentEncoding": "base64",
           "title": "Key Pem",
           "type": "string",
           "writeOnly": true
@@ -5165,10 +5479,6 @@
       "reason": "returns another client; its methods are separate operations"
     },
     {
-      "id": "authenticated.batch_session",
-      "reason": "not bindable yet: a prepared batch has no complete JSON form"
-    },
-    {
       "id": "authenticated.certificates",
       "reason": "returns another client; its methods are separate operations"
     },
@@ -5229,64 +5539,16 @@
       "reason": "context manager protocol"
     },
     {
-      "id": "batch.access_token",
-      "reason": "not bindable yet: a prepared batch has no complete JSON form"
-    },
-    {
-      "id": "batch.aes_key",
-      "reason": "not bindable yet: a prepared batch has no complete JSON form"
-    },
-    {
-      "id": "batch.close",
-      "reason": "not bindable yet: a prepared batch has no complete JSON form"
-    },
-    {
-      "id": "batch.download_upo",
-      "reason": "not bindable yet: a prepared batch has no complete JSON form"
-    },
-    {
       "id": "batch.get_state",
       "reason": "deprecated"
-    },
-    {
-      "id": "batch.get_status",
-      "reason": "not bindable yet: a prepared batch has no complete JSON form"
     },
     {
       "id": "batch.get_upo",
       "reason": "deprecated"
     },
     {
-      "id": "batch.iv",
-      "reason": "not bindable yet: a prepared batch has no complete JSON form"
-    },
-    {
-      "id": "batch.list_failed_invoices",
-      "reason": "not bindable yet: a prepared batch has no complete JSON form"
-    },
-    {
-      "id": "batch.list_invoices",
-      "reason": "not bindable yet: a prepared batch has no complete JSON form"
-    },
-    {
-      "id": "batch.part_upload_requests",
-      "reason": "not bindable yet: a prepared batch has no complete JSON form"
-    },
-    {
-      "id": "batch.reference_number",
-      "reason": "not bindable yet: a prepared batch has no complete JSON form"
-    },
-    {
-      "id": "batch.resume_state",
-      "reason": "not bindable yet: a prepared batch has no complete JSON form"
-    },
-    {
       "id": "batch.upload_parts",
-      "reason": "not bindable yet: a prepared batch has no complete JSON form"
-    },
-    {
-      "id": "batch.wait",
-      "reason": "not bindable yet: a prepared batch has no complete JSON form"
+      "reason": "a rebuilt batch session holds no payload; call batch_service.upload_parts with the session state and the prepared batch"
     },
     {
       "id": "batch_service.get_status",
@@ -5309,10 +5571,6 @@
       "reason": "deprecated"
     },
     {
-      "id": "batch_service.prepare",
-      "reason": "not bindable yet: a prepared batch has no complete JSON form"
-    },
-    {
       "id": "batch_service.prepare_batch",
       "reason": "deprecated"
     },
@@ -5321,20 +5579,12 @@
       "reason": "deprecated"
     },
     {
-      "id": "batch_service.submit",
-      "reason": "not bindable yet: a prepared batch has no complete JSON form"
-    },
-    {
       "id": "batch_service.submit_batch",
       "reason": "deprecated"
     },
     {
       "id": "batch_service.submit_prepared_batch",
       "reason": "deprecated"
-    },
-    {
-      "id": "batch_service.upload_parts",
-      "reason": "not bindable yet: a prepared batch has no complete JSON form"
     },
     {
       "id": "batch_service.wait_for_completion",
@@ -5956,6 +6206,129 @@
       "summary": "Return the authenticated token pair used by this client branch."
     },
     {
+      "id": "authenticated.batch_session.batch_file",
+      "parameters": [
+        {
+          "name": "batch_file",
+          "required": true,
+          "schema": {
+            "$ref": "#/$defs/BatchFileInfo"
+          }
+        },
+        {
+          "name": "form_code",
+          "required": false,
+          "schema": {
+            "$ref": "#/$defs/FormSchema"
+          }
+        },
+        {
+          "default": false,
+          "name": "offline_mode",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        }
+      ],
+      "receiver": "authenticated",
+      "returns": {
+        "$ref": "#/$defs/BatchSessionResumeState"
+      },
+      "sensitive": [
+        "aes_key",
+        "iv",
+        "part_upload_requests",
+        "url"
+      ],
+      "state_schema": {
+        "$ref": "#/$defs/AuthenticationResumeState"
+      },
+      "summary": "Open a batch session for upload work, or resume one from saved state."
+    },
+    {
+      "id": "authenticated.batch_session.prepared_batch",
+      "parameters": [
+        {
+          "name": "prepared_batch",
+          "required": true,
+          "schema": {
+            "$ref": "#/$defs/PreparedBatch"
+          }
+        }
+      ],
+      "receiver": "authenticated",
+      "returns": {
+        "$ref": "#/$defs/BatchSessionResumeState"
+      },
+      "sensitive": [
+        "aes_key",
+        "content",
+        "encrypted_key",
+        "encryption",
+        "iv",
+        "part_upload_requests",
+        "parts",
+        "url"
+      ],
+      "state_schema": {
+        "$ref": "#/$defs/AuthenticationResumeState"
+      },
+      "summary": "Open a batch session for upload work, or resume one from saved state."
+    },
+    {
+      "id": "authenticated.batch_session.state",
+      "parameters": [
+        {
+          "name": "state",
+          "required": true,
+          "schema": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/BatchSessionResumeState"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          }
+        },
+        {
+          "default": null,
+          "name": "prepared_batch",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PreparedBatch"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      ],
+      "receiver": "authenticated",
+      "returns": {
+        "$ref": "#/$defs/BatchSessionResumeState"
+      },
+      "sensitive": [
+        "aes_key",
+        "content",
+        "encrypted_key",
+        "encryption",
+        "iv",
+        "part_upload_requests",
+        "parts",
+        "url"
+      ],
+      "state_schema": {
+        "$ref": "#/$defs/AuthenticationResumeState"
+      },
+      "summary": "Open a batch session for upload work, or resume one from saved state."
+    },
+    {
       "id": "authenticated.get_encryption_key",
       "parameters": [],
       "receiver": "authenticated",
@@ -6070,6 +6443,423 @@
         "$ref": "#/$defs/AuthenticationResumeState"
       },
       "summary": "Return the authentication state needed to rehydrate this branch later."
+    },
+    {
+      "id": "batch.access_token",
+      "parameters": [],
+      "receiver": "batch_session",
+      "returns": {
+        "type": "string"
+      },
+      "sensitive": [
+        "access_token"
+      ],
+      "state_schema": {
+        "$ref": "#/$defs/BatchSessionResumeState"
+      },
+      "summary": "Deprecated compatibility accessor for the current bearer token."
+    },
+    {
+      "id": "batch.aes_key",
+      "parameters": [],
+      "receiver": "batch_session",
+      "returns": {
+        "contentEncoding": "base64",
+        "type": "string"
+      },
+      "sensitive": [],
+      "state_schema": {
+        "$ref": "#/$defs/BatchSessionResumeState"
+      },
+      "summary": "Get the AES key for encrypting batch files."
+    },
+    {
+      "id": "batch.close",
+      "parameters": [],
+      "receiver": "batch_session",
+      "returns": {
+        "type": "null"
+      },
+      "sensitive": [],
+      "state_schema": {
+        "$ref": "#/$defs/BatchSessionResumeState"
+      },
+      "summary": "Close the batch session and start processing."
+    },
+    {
+      "id": "batch.download_upo",
+      "parameters": [],
+      "receiver": "batch_session",
+      "returns": {
+        "items": {
+          "contentEncoding": "base64",
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "sensitive": [],
+      "state_schema": {
+        "$ref": "#/$defs/BatchSessionResumeState"
+      },
+      "summary": "Download every page of the collective UPO in one pass."
+    },
+    {
+      "id": "batch.get_status",
+      "parameters": [],
+      "receiver": "batch_session",
+      "returns": {
+        "$ref": "#/$defs/SessionStatusResponse"
+      },
+      "sensitive": [
+        "download_url"
+      ],
+      "state_schema": {
+        "$ref": "#/$defs/BatchSessionResumeState"
+      },
+      "summary": "Fetch the current processing state of the batch session."
+    },
+    {
+      "id": "batch.iv",
+      "parameters": [],
+      "receiver": "batch_session",
+      "returns": {
+        "contentEncoding": "base64",
+        "type": "string"
+      },
+      "sensitive": [],
+      "state_schema": {
+        "$ref": "#/$defs/BatchSessionResumeState"
+      },
+      "summary": "Get the initialization vector for AES encryption."
+    },
+    {
+      "id": "batch.list_failed_invoices",
+      "parameters": [
+        {
+          "default": 10,
+          "name": "page_size",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "default": null,
+          "name": "continuation_token",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      ],
+      "receiver": "batch_session",
+      "returns": {
+        "$ref": "#/$defs/SessionInvoicesResponse"
+      },
+      "sensitive": [
+        "upo_download_url"
+      ],
+      "state_schema": {
+        "$ref": "#/$defs/BatchSessionResumeState"
+      },
+      "summary": "Fetch one page of failed invoices from this batch session."
+    },
+    {
+      "id": "batch.list_invoices",
+      "parameters": [
+        {
+          "default": 10,
+          "name": "page_size",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "default": null,
+          "name": "continuation_token",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      ],
+      "receiver": "batch_session",
+      "returns": {
+        "$ref": "#/$defs/SessionInvoicesResponse"
+      },
+      "sensitive": [
+        "upo_download_url"
+      ],
+      "state_schema": {
+        "$ref": "#/$defs/BatchSessionResumeState"
+      },
+      "summary": "Fetch one page of invoices submitted in this batch session."
+    },
+    {
+      "id": "batch.part_upload_requests",
+      "parameters": [],
+      "receiver": "batch_session",
+      "returns": {
+        "items": {
+          "$ref": "#/$defs/PartUploadRequest"
+        },
+        "type": "array"
+      },
+      "sensitive": [
+        "url"
+      ],
+      "state_schema": {
+        "$ref": "#/$defs/BatchSessionResumeState"
+      },
+      "summary": "Get the upload instructions for each file part."
+    },
+    {
+      "id": "batch.reference_number",
+      "parameters": [],
+      "receiver": "batch_session",
+      "returns": {
+        "type": "string"
+      },
+      "sensitive": [],
+      "state_schema": {
+        "$ref": "#/$defs/BatchSessionResumeState"
+      },
+      "summary": "Get the batch session reference number."
+    },
+    {
+      "id": "batch.resume_state",
+      "parameters": [],
+      "receiver": "batch_session",
+      "returns": {
+        "$ref": "#/$defs/BatchSessionResumeState"
+      },
+      "sensitive": [
+        "aes_key",
+        "iv",
+        "part_upload_requests",
+        "url"
+      ],
+      "state_schema": {
+        "$ref": "#/$defs/BatchSessionResumeState"
+      },
+      "summary": "Return the sensitive session state needed to resume later."
+    },
+    {
+      "id": "batch.wait",
+      "parameters": [
+        {
+          "default": 120.0,
+          "name": "timeout",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "default": 2.0,
+          "name": "poll_interval",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "receiver": "batch_session",
+      "returns": {
+        "$ref": "#/$defs/SessionStatusResponse"
+      },
+      "sensitive": [
+        "download_url"
+      ],
+      "state_schema": {
+        "$ref": "#/$defs/BatchSessionResumeState"
+      },
+      "summary": "Poll until KSeF reports a terminal status for the closed batch session."
+    },
+    {
+      "id": "batch_service.prepare",
+      "parameters": [
+        {
+          "name": "invoices",
+          "required": true,
+          "schema": {
+            "items": {
+              "anyOf": [
+                {
+                  "contentEncoding": "base64",
+                  "type": "string"
+                },
+                {
+                  "$ref": "#/$defs/BatchInvoice"
+                }
+              ]
+            },
+            "type": "array"
+          }
+        },
+        {
+          "name": "form_code",
+          "required": false,
+          "schema": {
+            "$ref": "#/$defs/FormSchema"
+          }
+        },
+        {
+          "default": false,
+          "name": "offline_mode",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "default": 100000000,
+          "name": "max_part_size",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "receiver": "authenticated",
+      "returns": {
+        "$ref": "#/$defs/PreparedBatch"
+      },
+      "sensitive": [
+        "aes_key",
+        "content",
+        "encrypted_key",
+        "encryption",
+        "iv",
+        "parts"
+      ],
+      "state_schema": {
+        "$ref": "#/$defs/AuthenticationResumeState"
+      },
+      "summary": "Build a ZIP package, split it, and encrypt each upload part."
+    },
+    {
+      "id": "batch_service.submit",
+      "parameters": [
+        {
+          "name": "batch",
+          "required": true,
+          "schema": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PreparedBatch"
+              },
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "contentEncoding": "base64",
+                      "type": "string"
+                    },
+                    {
+                      "$ref": "#/$defs/BatchInvoice"
+                    }
+                  ]
+                },
+                "type": "array"
+              }
+            ]
+          }
+        },
+        {
+          "name": "form_code",
+          "required": false,
+          "schema": {
+            "$ref": "#/$defs/FormSchema"
+          }
+        },
+        {
+          "default": false,
+          "name": "offline_mode",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "default": 100000000,
+          "name": "max_part_size",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "receiver": "authenticated",
+      "returns": {
+        "$ref": "#/$defs/BatchSessionResumeState"
+      },
+      "sensitive": [
+        "aes_key",
+        "content",
+        "encrypted_key",
+        "encryption",
+        "iv",
+        "part_upload_requests",
+        "parts",
+        "url"
+      ],
+      "state_schema": {
+        "$ref": "#/$defs/AuthenticationResumeState"
+      },
+      "summary": "Open a batch session, upload the parts and close the session."
+    },
+    {
+      "id": "batch_service.upload_parts",
+      "parameters": [
+        {
+          "name": "session",
+          "required": true,
+          "schema": {
+            "$ref": "#/$defs/BatchSessionResumeState"
+          }
+        },
+        {
+          "name": "prepared_batch",
+          "required": true,
+          "schema": {
+            "$ref": "#/$defs/PreparedBatch"
+          }
+        }
+      ],
+      "receiver": "authenticated",
+      "returns": {
+        "type": "null"
+      },
+      "sensitive": [
+        "aes_key",
+        "content",
+        "encrypted_key",
+        "encryption",
+        "iv",
+        "part_upload_requests",
+        "parts",
+        "url"
+      ],
+      "state_schema": {
+        "$ref": "#/$defs/AuthenticationResumeState"
+      },
+      "summary": "Upload all prepared batch parts using the session's presigned URLs."
     },
     {
       "id": "certificate_enrollment.get_status",

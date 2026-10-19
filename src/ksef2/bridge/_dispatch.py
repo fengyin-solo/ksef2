@@ -372,7 +372,7 @@ def read_envelope(op: str, state_json: str | None) -> dict[str, object]:
         if envelope[slot] is not None:
             _ = read_state(op, slot, envelope[slot], model)
     handle = envelope["handle"]
-    if handle is not None:
+    if handle is not None and op.partition(".")[0] in _HANDLES:
         _read_handle(op, handle)
     return envelope
 

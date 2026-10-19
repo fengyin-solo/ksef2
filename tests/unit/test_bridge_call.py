@@ -663,16 +663,16 @@ def test_temporal_testdata_reaches_only_the_test_environment(
     assert recorder.paths == []
 
 
-def test_a_handle_meant_for_another_operation_is_refused(recorder: Recorder) -> None:
-    """State is not a general pocket: an operation that continues none says so."""
+def test_an_unrelated_handle_rides_along(recorder: Recorder) -> None:
+    """An operation that continues no handle passes its state through unchanged."""
     saved = GeneratedTokenResumeState(reference_number=SESSION_REF).to_dict(mode="json")
+    recorder.queue(peppol_page(1, has_more=False))
 
     document = ask("peppol.list", {}, envelope(handle=saved))
 
-    assert document["ok"] is False
-    assert document["error"]["code"] == "ARGUMENT_ERROR"
-    assert "handle" in document["error"]["message"]
-    assert recorder.paths == []
+    assert document["ok"] is True
+    assert document["state"]["handle"] == saved
+    assert recorder.paths == ["/peppol/query"]
 
 
 def test_arguments_the_operation_itself_requires_are_checked(

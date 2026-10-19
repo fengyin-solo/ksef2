@@ -66,6 +66,7 @@ def call(op: str, args_json: str, state_json: str | None = None) -> str:
     state of the session the operation belongs to. The state is what carries a
     session across calls, including across processes and restarts: feed the ``state``
     of each answer straight back into the next call.
+    An operation that does not continue a handle leaves the ``handle`` slot as it was sent.
 
     Calls from several threads run concurrently and share one client per environment.
     A call whose environment is being closed waits, then uses a new client.

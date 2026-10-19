@@ -26,6 +26,7 @@ from ksef2._domain.models.invoices import (
 from ksef2._domain.models.permissions import PermissionOperationResumeState
 from ksef2._domain.models.tokens import GeneratedTokenResumeState
 from ksef2._infra.schema.api import spec
+from ksef2.bridge._json import dump_state
 from ksef2.bridge._operations import operations
 from tests.unit.payloads import (
     INVOICE_REF,
@@ -379,7 +380,7 @@ def test_export_runs_to_its_archive(
     assert not recorder.queued
 
 
-# W5: PEM literals cross JSON and produce a real XAdES signature at KSeF.
+# W5: Base64 PEM bytes cross JSON and produce a real XAdES signature at KSeF.
 def test_xades_auth_with_pem_credentials(
     recorder: Recorder, auth_answers: list[dict[str, Any]]
 ) -> None:
@@ -395,8 +396,8 @@ def test_xades_auth_with_pem_credentials(
         {
             "nip": NIP,
             "credentials": {
-                "cert_pem": cert.public_bytes(Encoding.PEM).decode(),
-                "key_pem": key_pem(key).decode(),
+                "cert_pem": base64.b64encode(cert.public_bytes(Encoding.PEM)).decode(),
+                "key_pem": base64.b64encode(key_pem(key)).decode(),
             },
         },
         INITIAL_STATE,
@@ -419,6 +420,31 @@ def test_xades_auth_with_pem_credentials(
         is not None
     )
     assert not recorder.queued
+
+
+@pytest.mark.parametrize("raw_field", ["cert_pem", "key_pem"])
+def test_xades_pem_text_is_refused(recorder: Recorder, raw_field: str) -> None:
+    """Raw PEM never reaches KSeF or appears in the error document."""
+    key = ec.generate_private_key(ec.SECP256R1())
+    cert_bytes = self_signed(key).public_bytes(Encoding.PEM)
+    private_bytes = key_pem(key)
+    credentials = {
+        "cert_pem": base64.b64encode(cert_bytes).decode(),
+        "key_pem": base64.b64encode(private_bytes).decode(),
+    }
+    credentials[raw_field] = (
+        cert_bytes if raw_field == "cert_pem" else private_bytes
+    ).decode()
+
+    answer = ask(
+        "auth.with_xades", {"nip": NIP, "credentials": credentials}, INITIAL_STATE
+    )
+
+    assert answer["ok"] is False
+    assert answer["error"]["code"] == "ARGUMENT_ERROR"
+    assert f"credentials.{raw_field}" in answer["error"]["message"]
+    assert private_bytes.decode().splitlines()[1][10:30] not in json.dumps(answer)
+    assert recorder.requests == []
 
 
 # W6: retain a generated token's resume state while reading status and reference.
@@ -495,9 +521,7 @@ def test_every_argument_free_handle_operation_answers_json(
             aes_key=SecretStr(base64.b64encode(KEY).decode()),
             iv=SecretStr(base64.b64encode(IV).decode()),
         ).to_dict(mode="json"),
-        "exported_invoices": ExportedInvoicesData(archive=archive()).model_dump(
-            mode="json"
-        ),
+        "exported_invoices": dump_state(ExportedInvoicesData(archive=archive())),
     }
     recorder.fail_with(httpx.ConnectError("offline"))
     answer = ask(

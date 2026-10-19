@@ -90,8 +90,10 @@ def call(op: str, args_json: str, state_json: str | None = None) -> str:
     Arguments, state, response bodies and request details are never repeated in an
     error: an argument can be a private key and a presigned URL is a capability.
 
-    Bytes go in and out as standard Base64 with ``=`` padding, matching the
-    ``contentEncoding`` the manifest gives them. A collection operation takes a
+    Bytes go in and out as standard Base64 with ``=`` padding everywhere, including
+    inside models such as ``XAdESCredentials`` and ``ExportedInvoicesData``, matching
+    the manifest's ``contentEncoding``. Any other spelling is refused with
+    ``ARGUMENT_ERROR``. A collection operation takes a
     declared optional ``cursor`` parameter: omit it or send ``null`` for the first
     page, then send back the ``next_cursor`` of the page just read.
 

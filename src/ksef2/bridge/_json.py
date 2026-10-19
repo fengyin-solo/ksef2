@@ -25,6 +25,8 @@ from typing import Final, cast
 from pydantic import BaseModel, SecretBytes, SecretStr, ValidationError
 
 from ksef2._core.exceptions import KSeFApiError, KSeFArgumentError
+from ksef2.bridge._bytes import bytes_plan
+from ksef2.bridge._codec import encode_base64 as encode_model_base64
 
 ARGUMENT_ERROR: Final = "ARGUMENT_ERROR"
 """The code of an argument, state or cursor the dispatcher cannot use."""
@@ -219,7 +221,7 @@ def encode_base64(value: bytes) -> str:
     return base64.b64encode(value).decode("ascii")
 
 
-def dump_state(state: BaseModel) -> dict[str, object]:
+def dump_state(state: BaseModel, *, sensitive: bool = True) -> dict[str, object]:
     """Write a saved state as the JSON the next call reads back.
 
     ``model_dump()`` keeps a bearer token and a session key redacted, which is right
@@ -230,18 +232,28 @@ def dump_state(state: BaseModel) -> dict[str, object]:
 
     Args:
         state: The state to write.
+        sensitive: Use deliberate credential exports rather than a redacted dump.
 
     Returns:
         JSON data holding the fields of that state.
     """
-    to_dict = getattr(state, "to_dict", None)
-    if callable(to_dict):
-        return cast("dict[str, object]", to_dict(mode="json"))
-    to_sensitive_dict = getattr(state, "to_sensitive_dict", None)
-    if callable(to_sensitive_dict):
-        if "mode" in inspect.signature(to_sensitive_dict).parameters:
-            return cast("dict[str, object]", to_sensitive_dict(mode="json"))
-        return cast("dict[str, object]", to_sensitive_dict())
+    data = _export_model(state, sensitive=sensitive)
+    return cast(
+        "dict[str, object]", encode_model_base64(data, state, bytes_plan(type(state)))
+    )
+
+
+def _export_model(state: BaseModel, *, sensitive: bool) -> dict[str, object]:
+    """Select the model's deliberate export, or its redacted JSON dump."""
+    if sensitive:
+        to_dict = getattr(state, "to_dict", None)
+        if callable(to_dict):
+            return cast("dict[str, object]", to_dict(mode="json"))
+        to_sensitive_dict = getattr(state, "to_sensitive_dict", None)
+        if callable(to_sensitive_dict):
+            if "mode" in inspect.signature(to_sensitive_dict).parameters:
+                return cast("dict[str, object]", to_sensitive_dict(mode="json"))
+            return cast("dict[str, object]", to_sensitive_dict())
     return cast("dict[str, object]", state.model_dump(mode="json"))
 
 
@@ -304,15 +316,8 @@ def encode(op: str, value: object) -> object:
 
 
 def state_data(model: BaseModel) -> dict[str, object]:
-    """Reduce a model result to JSON data through its own dump.
-
-    Args:
-        model: The model to write.
-
-    Returns:
-        What its own configuration says it looks like in JSON.
-    """
-    return cast("dict[str, object]", model.model_dump(mode="json"))
+    """Write error-context models with secrets still redacted."""
+    return dump_state(model, sensitive=False)
 
 
 def error_of(exc: BaseException) -> dict[str, object]:

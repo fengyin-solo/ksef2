@@ -22,8 +22,6 @@ from types import ModuleType
 from typing import Final, cast
 
 from pydantic import (
-    AliasChoices,
-    AliasPath,
     BaseModel,
     PydanticSchemaGenerationError,
     SecretBytes,
@@ -38,6 +36,7 @@ from ksef2.bridge._bytes import (
     UnionPlan,
     ValuesPlan,
     bytes_plan,
+    field_keys,
     without_text_alternative as without_text_alternative,
 )
 from ksef2.bridge._catalog import (
@@ -488,30 +487,12 @@ def _model_closure(model: type[BaseModel]) -> Iterator[type[BaseModel]]:
         pending.extend(type_args(cast("object", annotation)))
 
 
-def _schema_field_name(model: type[BaseModel], name: str) -> str:
-    """Return the validation-mode property key Pydantic uses for a field."""
-    field = model.model_fields[name]
-    alias = field.validation_alias
-    if isinstance(alias, str):
-        return alias
-    if isinstance(alias, AliasChoices):
-        paths = alias.convert_to_aliases()
-    elif isinstance(alias, AliasPath):
-        paths = [alias.convert_to_aliases()]
-    else:
-        return field.alias or name
-    for path in paths:
-        if len(path) == 1 and isinstance(path[0], str):
-            return path[0]
-    return name
-
-
 def _rewrite_model_bytes(schema: Schema, model: type[BaseModel]) -> None:
     """Rewrite a model's bytes fields under their schema property keys."""
     plan = bytes_plan(model)
     if isinstance(plan, FieldsPlan):
         fields = {
-            _schema_field_name(model, name): field_plan
+            field_keys(model, name)[0]: field_plan
             for name, field_plan in plan.fields.items()
         }
         _rewrite_bytes(schema, FieldsPlan(fields))

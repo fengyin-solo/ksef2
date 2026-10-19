@@ -54,7 +54,7 @@ NIP = "5261040828"
 SESSION_REF = "20250625-SO-2C3E6C8000-B675CF5D68-07"
 PRIVATE_KEY_MARKER = "PRIVATE-KEY-MATERIAL-MARKER"
 ACCESS_TOKEN = "access-token-secret"
-ARCHIVE = b"\x00\x01\x02\xfe"
+ARCHIVE = b"\xfb\xff\x00"
 KEY = base64.b64encode(b"0" * 32).decode()
 INITIALIZER = base64.b64encode(b"0" * 16).decode()
 
@@ -184,9 +184,11 @@ def saved_export() -> dict[str, Any]:
     Returns:
         The JSON form of an ``ExportedInvoicesData`` snapshot of a small archive.
     """
-    return ExportedInvoicesData(
-        archive=ARCHIVE, package=None, metadata=None
-    ).model_dump(mode="json")
+    return {
+        "archive": base64.b64encode(ARCHIVE).decode(),
+        "package": None,
+        "metadata": None,
+    }
 
 
 def peppol_page(count: int, has_more: bool) -> dict[str, Any]:
@@ -1312,8 +1314,35 @@ def test_bytes_go_in_and_out_as_base64(recorder: Recorder) -> None:
 
     assert archive["result"] == written
     assert base64.b64decode(archive["result"]) == ARCHIVE
-    assert base64.urlsafe_b64decode(modelled["result"]["archive"]) == ARCHIVE
+    assert modelled["result"]["archive"] == written
+    assert modelled["state"]["handle"]["archive"] == written
     assert modelled["state"]["handle"] == saved_export()
+    assert recorder.requests == []
+
+
+def test_handle_with_urlsafe_archive_is_refused(recorder: Recorder) -> None:
+    """Saved models accept only the Base64 alphabet the manifest promises."""
+    handle = saved_export()
+    handle["archive"] = base64.urlsafe_b64encode(ARCHIVE).decode()
+
+    answer = ask("exported_invoices.archive", {}, envelope(handle=handle))
+
+    assert answer["ok"] is False
+    assert answer["error"]["code"] == "ARGUMENT_ERROR"
+    assert "archive" in answer["error"]["message"]
+    assert recorder.requests == []
+
+
+def test_export_handle_round_trips_as_standard_base64(recorder: Recorder) -> None:
+    """One call's unedited state rebuilds an export with the same bytes."""
+    modelled = ask("exported_invoices.to_model", {}, envelope(handle=saved_export()))
+    assert modelled["ok"] is True, modelled
+
+    answer = ask("exported_invoices.archive", {}, json.dumps(modelled["state"]))
+
+    assert answer["ok"] is True, answer
+    assert answer["result"] == base64.b64encode(ARCHIVE).decode()
+    assert base64.b64decode(answer["result"], validate=True) == ARCHIVE
     assert recorder.requests == []
 
 

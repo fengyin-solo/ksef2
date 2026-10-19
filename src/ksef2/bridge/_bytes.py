@@ -6,10 +6,10 @@ import pathlib
 import types
 import typing
 from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Final, cast
 
-from pydantic import BaseModel, SecretBytes
+from pydantic import AliasChoices, AliasPath, BaseModel, SecretBytes
 
 from ksef2.bridge._errors import ManifestError
 from ksef2.bridge._introspect import (
@@ -34,6 +34,9 @@ class FieldsPlan:
 
     fields: Mapping[str, "Plan"]
     """Only fields whose annotations contain bytes, keyed by Python field name."""
+
+    model: type[BaseModel] | None = field(default=None, compare=False, repr=False)
+    """Model supplying validation and serialization aliases, when discovered."""
 
 
 @dataclass(frozen=True)
@@ -116,7 +119,7 @@ def _plan(annotation: object, active: set[object]) -> Plan | None:
             plan = _plan(cast("object", field.annotation), active | {annotation})
             if plan is not None:
                 fields[name] = plan
-        return FieldsPlan(fields) if fields else None
+        return FieldsPlan(fields, annotation) if fields else None
     if origin is types.UnionType or origin is _UNION:
         alternatives: list[Plan] = []
         for arg in args:
@@ -146,6 +149,34 @@ def _plan(annotation: object, active: set[object]) -> Plan | None:
         plan = _plan(args[1], active)
         return ValuesPlan(plan) if plan is not None else None
     return None
+
+
+def field_keys(
+    model: type[BaseModel] | None, name: str, *, serialization: bool = False
+) -> tuple[str, ...]:
+    """Return a field's JSON keys, with the schema or serialization alias first."""
+    if model is None:
+        return (name,)
+    field = model.model_fields[name]
+    if serialization:
+        return tuple(
+            dict.fromkeys((field.serialization_alias or field.alias or name, name))
+        )
+    alias = field.validation_alias
+    if isinstance(alias, str):
+        aliases = [alias]
+    elif isinstance(alias, AliasChoices):
+        aliases = [
+            path[0]
+            for path in alias.convert_to_aliases()
+            if len(path) == 1 and isinstance(path[0], str)
+        ]
+    elif isinstance(alias, AliasPath):
+        path = alias.convert_to_aliases()
+        aliases = [path[0]] if len(path) == 1 and isinstance(path[0], str) else []
+    else:
+        aliases = [field.alias or name]
+    return tuple(dict.fromkeys((*aliases, name)))
 
 
 def _shape(plan: Plan) -> str:

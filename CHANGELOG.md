@@ -18,7 +18,8 @@
   state_json)`, so a binding of any language drives the SDK over one JSON boundary.
   Arguments, the state of the session (`environment`, `authentication`,
   `online_session`, `batch_session`, `handle`) and the result cross as JSON, bytes go
-  in and out as standard Base64 with `=` padding, and a collection operation takes a
+  in and out as standard Base64 with `=` padding, including inside models. A value
+  spelled otherwise is refused with `ARGUMENT_ERROR`, and a collection operation takes a
   `cursor` and answers with `next_cursor`. Every call returns one document: `{"ok":
   true, "result": ..., "state": ...}`, or `{"ok": false, "error": {...}}` carrying
   `type`, `code`, `message`, `hint` and `context`, plus `status_code`, `ksef_code`,

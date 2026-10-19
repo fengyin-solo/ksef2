@@ -40,6 +40,8 @@ from ksef2._domain.models.invoices import (
 from ksef2._domain.models.permissions import PermissionOperationResumeState
 from ksef2._domain.models.session import OnlineSessionResumeState
 from ksef2._domain.models.tokens import GeneratedTokenResumeState
+from ksef2.bridge._bytes import bytes_plan
+from ksef2.bridge._codec import decode_base64
 from ksef2.bridge._catalog import RESUME_STATE_BY_CLASS
 from ksef2.bridge._json import (
     argument_error,
@@ -393,7 +395,9 @@ def read_state(op: str, slot: str, raw: object, model: type[_StateT]) -> _StateT
         KSeFArgumentError: The value is not that state.
     """
     try:
-        return model.model_validate(raw)
+        return model.model_validate(
+            decode_base64(raw, bytes_plan(model), op=op, where=f"state_json.{slot}")
+        )
     except ValidationError as exc:
         raise describe_validation(
             op, f"state_json.{slot}", exc, expected=model.__name__
@@ -465,7 +469,14 @@ def read_arguments(
         if parameter.name not in document:
             continue
         try:
-            checked = parameter.validator.validate_python(document[parameter.name])
+            checked = parameter.validator.validate_python(
+                decode_base64(
+                    document[parameter.name],
+                    parameter.plan,
+                    op=op,
+                    where=parameter.name,
+                )
+            )
         except ValidationError as exc:
             raise describe_validation(op, parameter.name, exc) from exc
         arguments[parameter.name] = checked

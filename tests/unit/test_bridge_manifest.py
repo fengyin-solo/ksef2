@@ -19,7 +19,7 @@ from ksef2.bridge._catalog import (
 )
 from ksef2.bridge._errors import ManifestError
 from ksef2.bridge._manifest import _forms_of, _operation
-from ksef2.bridge._schemas import SchemaBuilder
+from ksef2.bridge._schemas import SchemaBuilder, without_text_alternative
 
 #: The same table the manifest walks, spelled out here so a class that quietly
 #: disappears from the manifest is a failing test and not a smaller document.
@@ -114,6 +114,45 @@ def test_manifest_is_json_and_names_the_sdk_version() -> None:
         "$defs",
     }
     assert json.dumps(data, sort_keys=True, indent=2)
+
+
+def test_bytes_or_text_is_described_as_base64_bytes() -> None:
+    operations = _operations()
+    invoice_xml = next(
+        parameter
+        for parameter in operations["online.send_invoice"]["parameters"]
+        if parameter["name"] == "invoice_xml"
+    )
+    assert invoice_xml["schema"] == {"type": "string", "contentEncoding": "base64"}
+
+    def check_schema(schema: dict[str, Any]) -> None:
+        alternatives = schema.get("anyOf", [])
+        assert not (
+            {"type": "string"} in alternatives
+            and any(
+                item.get("type") == "string" and "contentEncoding" in item
+                for item in alternatives
+            )
+        ), schema
+        for value in schema.values():
+            if isinstance(value, dict):
+                check_schema(value)
+            elif isinstance(value, list):
+                for item in value:
+                    if isinstance(item, dict):
+                        check_schema(item)
+
+    for operation in operations.values():
+        for parameter in operation["parameters"]:
+            check_schema(parameter["schema"])
+
+    assert without_text_alternative(bytes | str) is bytes
+    assert without_text_alternative(str | bytes | None) == bytes | None
+    text_or_none = str | None
+    assert without_text_alternative(text_or_none) is text_or_none
+    assert without_text_alternative(bytes) is bytes
+    integer_or_text = int | str
+    assert without_text_alternative(integer_or_text) is integer_or_text
 
 
 def test_every_public_sync_method_is_an_operation_or_excluded() -> None:

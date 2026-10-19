@@ -63,6 +63,7 @@ class Flavor:
         environment: Environment,
         http_client: httpx.Client | httpx.AsyncClient,
         transport_config: TransportConfig | None = None,
+        certificate_store: CertificateStore | None = None,
     ) -> Client | AsyncClient:
         """Build the public root client of this flavour over a caller-owned HTTP client."""
         if self.is_async:
@@ -71,12 +72,14 @@ class Flavor:
                 environment,
                 http_client=http_client,
                 transport_config=transport_config,
+                certificate_store=certificate_store,
             )
         assert isinstance(http_client, httpx.Client)
         return Client(
             environment,
             http_client=http_client,
             transport_config=transport_config,
+            certificate_store=certificate_store,
         )
 
     def client(self, sync_cls: type[Any], async_cls: type[Any]) -> Any:

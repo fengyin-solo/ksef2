@@ -18,7 +18,6 @@ from polyfactory import BaseFactory
 from pydantic import SecretBytes
 
 from ksef2._clients.auth import AuthClient
-from ksef2._clients.base import Client
 from ksef2._clients.authenticated import AuthenticatedClient
 from ksef2._clients.session_management import SessionManagementClient
 from ksef2._config import Environment
@@ -41,6 +40,7 @@ from ksef2._infra.schema.api.supp.auth import InitTokenAuthenticationRequest
 from ksef2._infra.schema.api import spec
 from ksef2.xades import XAdESCredentials, XAdESPrivateKey
 from tests.unit.fakes.transport import FakeTransport
+from tests.unit.flavors import Flavor
 from tests.unit.helpers import VALID_BASE64
 from tests.unit.helpers import legacy_api
 from tests.unit.xades_material import (
@@ -832,9 +832,8 @@ class TestSessionManagementClient:
     ],
     ids=["read", "decoding"],
 )
-@patch("ksef2._clients.auth.encrypt_token", return_value=VALID_BASE64)
 def test_redemption_transport_error_keeps_the_redemption_contract(
-    _mock_encrypt_token: MagicMock,
+    flavor: Flavor,
     failure: type[httpx.RequestError],
     message: str,
     domain_public_key_cert: BaseFactory[PublicKeyCertificate],
@@ -868,18 +867,29 @@ def test_redemption_transport_error_keeps_the_redemption_contract(
     store = CertificateStore()
     _ = store.load([domain_public_key_cert.build(usage=["ksef_token_encryption"])])
 
-    with httpx.Client(
+    http_client = (httpx.AsyncClient if flavor.is_async else httpx.Client)(
         base_url=Environment.PRODUCTION.base_url,
         transport=httpx.MockTransport(_handle),
-    ) as http_client:
-        client = Client(http_client=http_client, certificate_store=store)
-        try:
+    )
+    client = flavor.root_client(
+        environment=Environment.PRODUCTION,
+        http_client=http_client,
+        certificate_store=store,
+    )
+    auth_module = "async_auth" if flavor.is_async else "auth"
+    try:
+        with patch(
+            f"ksef2._clients.{auth_module}.encrypt_token", return_value=VALID_BASE64
+        ):
             with pytest.raises(KSeFAuthTokenRedemptionError) as exc_info:
-                _ = client.authentication.with_token(
-                    ksef_token="ksef-token", nip="1234567890"
+                _ = flavor.run(
+                    client.authentication.with_token(
+                        ksef_token="ksef-token", nip="1234567890"
+                    )
                 )
-        finally:
-            client.close()
+    finally:
+        flavor.close(client)
+        flavor.close(http_client)
 
     error = exc_info.value
     assert isinstance(error, KSeFTransportError)

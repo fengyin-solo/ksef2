@@ -102,7 +102,7 @@ def _walked(
 
 
 #: The walked surface. ``TestDataClient`` is reachable from an authenticated
-#: client too and is listed once. Pager and batch classes are walked only so
+#: client too and is listed once. Pager classes are walked only so
 #: each member is reported as excluded; see ``EXCLUDED_CLASSES``.
 WALKED_CLASSES: Final[tuple[WalkedClass, ...]] = (
     _walked(Client, "client", RECEIVER_UNAUTHENTICATED),
@@ -208,10 +208,13 @@ EXCLUDED_PAGER: Final = (
     "pager receiver; call the collection operation again with its cursor"
 )
 
-#: Reason given to the batch surface until a prepared batch has a complete JSON form.
-#: Its encrypted parts and keys are left out of every generic dump on purpose, so the
-#: result of preparing a batch cannot be sent back to upload it.
-EXCLUDED_BATCH: Final = "not bindable yet: a prepared batch has no complete JSON form"
+#: Reason given to the batch session's own upload. The bridge rebuilds a session from
+#: saved state, which never carries the payload, so the upload that takes the payload
+#: explicitly is the one a binding calls.
+EXCLUDED_UPLOAD_WITHOUT_PAYLOAD: Final = (
+    "a rebuilt batch session holds no payload; call batch_service.upload_parts "
+    "with the session state and the prepared batch"
+)
 
 #: Reason given to handle members that only the handle returned by the creating call
 #: holds. The bridge rebuilds every handle from saved state, and that state never
@@ -225,13 +228,11 @@ EXCLUDED_FRESH_ONLY: Final = (
 EXCLUDED_CLASSES: Final[dict[type[object], str]] = {
     Pager: EXCLUDED_PAGER,
     InvoiceSearchPager: EXCLUDED_PAGER,
-    BatchService: EXCLUDED_BATCH,
-    BatchSessionClient: EXCLUDED_BATCH,
 }
 
 #: Single members excluded on a class whose other members are operations.
 EXCLUDED_MEMBERS: Final[dict[tuple[type[object], str], str]] = {
-    (AuthenticatedClient, "batch_session"): EXCLUDED_BATCH,
+    (BatchSessionClient, "upload_parts"): EXCLUDED_UPLOAD_WITHOUT_PAYLOAD,
     (GeneratedToken, "token"): EXCLUDED_FRESH_ONLY,
     (GeneratedToken, "response"): EXCLUDED_FRESH_ONLY,
     (GeneratedToken, "to_sensitive_dict"): EXCLUDED_FRESH_ONLY,

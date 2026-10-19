@@ -12,9 +12,11 @@
   resume-state stand-ins for handles, sessions, pages and exports, and lists every
   exported `KSeFException` subclass with its `code` and parent. A collection
   operation declares an optional `cursor` and returns one `Page`. The methods of a
-  live pager, the batch operations, whose prepared payload has no complete JSON form
-  yet, and the handle members only a freshly created handle holds, such as a
-  generated token's one-time `token`, are listed under `excluded` with that reason.
+  live pager and the handle members only a freshly created handle holds, such as
+  a generated token's one-time `token`, are listed under `excluded` with that reason.
+  Batch operations are published; only `batch.upload_parts` is excluded because
+  a rebuilt session holds no payload. Use `batch_service.upload_parts` with the
+  saved session state and prepared batch instead.
   Every bytes value, including one inside a model, is described as standard
   Base64 (`contentEncoding: base64`), and a union that accepts bytes is described
   without its text and path alternatives, which a JSON string could not be told

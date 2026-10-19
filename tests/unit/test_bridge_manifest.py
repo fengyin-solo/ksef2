@@ -6,11 +6,20 @@ import sys
 from typing import Any, cast
 
 import pytest
+from pydantic import BaseModel
 
 import ksef2
 import ksef2.clients as public_clients
 from ksef2 import KSeFException
 from ksef2.bridge import manifest
+from ksef2.bridge._bytes import (
+    BytesLeaf,
+    ItemsPlan,
+    Plan,
+    UnionPlan,
+    ValuesPlan,
+    bytes_plan,
+)
 from ksef2.bridge._catalog import (
     EXCLUDED_BATCH,
     EXCLUDED_FRESH_ONLY,
@@ -19,7 +28,11 @@ from ksef2.bridge._catalog import (
 )
 from ksef2.bridge._errors import ManifestError
 from ksef2.bridge._manifest import _forms_of, _operation
-from ksef2.bridge._schemas import SchemaBuilder, without_text_alternative
+from ksef2.bridge._schemas import (
+    SchemaBuilder,
+    defining_objects,
+    without_text_alternative,
+)
 
 #: The same table the manifest walks, spelled out here so a class that quietly
 #: disappears from the manifest is a failing test and not a smaller document.
@@ -59,10 +72,6 @@ CURSOR_ENTRY = {
     "required": False,
     "default": None,
     "schema": {"anyOf": [{"type": "string"}, {"type": "null"}]},
-}
-
-ALLOWED_TEXT_BYTES = {
-    "XAdESCredentials.cert_pem": "PEM text, read as UTF-8 by the model"
 }
 
 
@@ -412,43 +421,77 @@ def test_enum_values_are_json_scalars() -> None:
     ]
 
 
-def test_bytes_in_input_models_declare_their_encoding() -> None:
+def test_every_bytes_value_is_standard_base64() -> None:
     data = manifest()
     definitions = cast("dict[str, dict[str, Any]]", data["$defs"])
-    operations = cast("list[dict[str, Any]]", data["operations"])
-    pending = {
-        ref
-        for operation in operations
-        for schema in [
-            operation["state_schema"],
-            *(parameter["schema"] for parameter in operation["parameters"]),
-        ]
-        for ref in _refs(schema)
-    }
-    reachable: set[str] = set()
-    while pending:
-        ref = pending.pop()
-        assert ref.startswith(DEFS), ref
-        name = ref[len(DEFS) :]
-        if name in reachable:
-            continue
-        reachable.add(name)
-        pending.update(_refs(definitions[name]))
 
-    allowed_found: set[str] = set()
-    for name in sorted(reachable):
-        for field, schema in definitions[name].get("properties", {}).items():
-            variants = [schema]
-            while variants:
-                variant = variants.pop()
-                variants.extend(variant.get("anyOf", []))
-                variants.extend(variant.get("oneOf", []))
-                if variant.get("format") != "binary" or "contentEncoding" in variant:
-                    continue
-                identifier = f"{name}.{field}"
-                assert identifier in ALLOWED_TEXT_BYTES, identifier
-                allowed_found.add(identifier)
-    assert allowed_found == set(ALLOWED_TEXT_BYTES)
+    def reject_nonstandard_bytes(value: object) -> None:
+        if isinstance(value, dict):
+            assert value.get("format") not in {"binary", "base64url"}, value
+            for child in value.values():
+                reject_nonstandard_bytes(child)
+        elif isinstance(value, list):
+            for child in value:
+                reject_nonstandard_bytes(child)
+
+    def assert_plan(schema: dict[str, Any], plan: Plan) -> None:
+        if "$ref" in schema:
+            schema = definitions[schema["$ref"][len(DEFS) :]]
+        if isinstance(plan, UnionPlan):
+            for alternative in plan.alternatives:
+                assert_plan(schema, alternative)
+            return
+        variants = schema.get("anyOf", [schema])
+        shape = (
+            "string"
+            if isinstance(plan, BytesLeaf)
+            else "array"
+            if isinstance(plan, ItemsPlan)
+            else "object"
+        )
+        matching = []
+        for variant in variants:
+            if "$ref" in variant:
+                variant = definitions[variant["$ref"][len(DEFS) :]]
+            if variant.get("type") == shape:
+                matching.append(variant)
+        assert matching, (schema, plan)
+        for variant in matching:
+            if isinstance(plan, BytesLeaf):
+                assert variant["contentEncoding"] == "base64", variant
+                assert "format" not in variant
+            elif isinstance(plan, ItemsPlan):
+                for item in variant.get("prefixItems", [variant.get("items")]):
+                    assert_plan(item, plan.item)
+            elif isinstance(plan, ValuesPlan):
+                assert_plan(variant["additionalProperties"], plan.value)
+            else:
+                for name, field_plan in plan.fields.items():
+                    assert_plan(variant["properties"][name], field_plan)
+
+    reject_nonstandard_bytes(data)
+    for model, fields in {
+        "XAdESCredentials": ("cert_pem", "key_pem"),
+        "ExportedInvoicesData": ("archive",),
+    }.items():
+        for field in fields:
+            schema = definitions[model]["properties"][field]
+            assert schema["type"] == "string"
+            assert schema["contentEncoding"] == "base64"
+    assert definitions["XAdESCredentials"]["properties"]["key_pem"]["writeOnly"] is True
+
+    checked: set[str] = set()
+    for name, owners in defining_objects().items():
+        if name not in definitions or len(owners) != 1:
+            continue
+        model = next(iter(owners))
+        if not isinstance(model, type) or not issubclass(model, BaseModel):
+            continue
+        plan = bytes_plan(model)
+        if plan is not None:
+            assert_plan(definitions[name], plan)
+            checked.add(name)
+    assert {"XAdESCredentials", "ExportedInvoicesData"} <= checked
 
 
 def test_cursor_parameter_clash_stops_the_build() -> None:

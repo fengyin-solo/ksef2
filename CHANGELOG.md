@@ -8,8 +8,11 @@
   operation declares an optional `cursor` and returns one `Page`. The methods of a
   live pager, the batch operations, whose prepared payload has no complete JSON form
   yet, and the handle members only a freshly created handle holds, such as a
-  generated token's one-time `token`, are listed under `excluded` with that reason
-  (#270).
+  generated token's one-time `token`, are listed under `excluded` with that reason.
+  Every bytes value, including one inside a model, is described as standard
+  Base64 (`contentEncoding: base64`), and a union that accepts bytes is described
+  without its text and path alternatives, which a JSON string could not be told
+  apart from (#270).
 
 - Save and resume every handle KSeF finishes asynchronously. `resume_state()` on a
   `GeneratedToken`, `CertificateEnrollment`, `PermissionOperation` or

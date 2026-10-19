@@ -7,10 +7,8 @@ caller saves and hands back, so a language binding can drive the SDK without
 holding a Python object.
 """
 
-import ast
 import inspect
 import json
-import textwrap
 import types
 import typing
 from collections.abc import Callable, Mapping, Sequence
@@ -166,185 +164,26 @@ def _document(function: object) -> str:
     return ""
 
 
-def _module_namespace(cls: type[object]) -> Mapping[str, object]:
-    """Return the namespace annotations of *cls* are written in.
-
-    Args:
-        cls: Walked class.
-
-    Returns:
-        The defining module's globals, empty when the module is gone.
-    """
-    module = inspect.getmodule(cls)
-    if module is None:
-        return {}
-    return cast("Mapping[str, object]", vars(module))
-
-
-def _evaluate(source: str, namespace: Mapping[str, object]) -> object:
-    """Evaluate one annotation or default expression.
-
-    Args:
-        source: Unparsed expression from the signature.
-        namespace: Globals the signature is written in.
-
-    Returns:
-        The evaluated object, or the raw text when evaluation fails.
-    """
-    try:
-        return cast("object", eval(source, dict(namespace)))  # noqa: S307
-    except Exception:
-        return source
-
-
-def _annotation(node: ast.expr | None, namespace: Mapping[str, object]) -> object:
-    """Resolve one annotation node, following a quoted annotation.
-
-    Args:
-        node: Annotation node, or ``None`` for an undeclared parameter.
-        namespace: Globals the signature is written in.
-
-    Returns:
-        The annotated type, or ``None`` when the parameter has no annotation.
-    """
-    if node is None:
-        return None
-    if isinstance(node, ast.Constant) and isinstance(node.value, str):
-        return _evaluate(node.value, namespace)
-    return _evaluate(ast.unparse(node), namespace)
-
-
-def _default(node: ast.expr | None, namespace: Mapping[str, object]) -> object:
-    """Resolve one default-value expression.
-
-    Args:
-        node: Default node, or ``None`` when the parameter is required.
-        namespace: Globals the signature is written in.
-
-    Returns:
-        The declared default, or ``inspect.Parameter.empty``.
-    """
-    if node is None:
-        return inspect.Parameter.empty
-    return _evaluate(ast.unparse(node), namespace)
-
-
-def _class_node(cls: type[object]) -> ast.ClassDef | None:
-    """Parse the source of *cls* and return its class node.
-
-    Args:
-        cls: Class to read.
-
-    Returns:
-        The class node, or ``None`` when the source is unavailable.
-    """
-    try:
-        source = inspect.getsource(cls)
-    except (OSError, TypeError):
-        return None
-    tree = ast.parse(textwrap.dedent(source))
-    for node in tree.body:
-        if isinstance(node, ast.ClassDef) and node.name == cls.__name__:
-            return node
-    return None
-
-
-def _is_overload(decorator: ast.expr) -> bool:
-    """Say whether a decorator node spells ``@overload``.
-
-    Args:
-        decorator: Decorator expression from the syntax tree.
-
-    Returns:
-        True for ``overload`` and ``typing.overload``.
-    """
-    if isinstance(decorator, ast.Name):
-        return decorator.id == "overload"
-    if isinstance(decorator, ast.Attribute):
-        return decorator.attr == "overload"
-    return False
-
-
 def _overload_forms(cls: type[object], name: str) -> list[_Form]:
-    """Read the ``@overload`` forms of a member from the class source.
-
-    The overloads are gone from the runtime object, so the source is the only
-    place their distinct signatures survive. Each form is named by its first
-    keyword, which is how the manifest tells ``online_session(form_code=...)``
-    from ``online_session(state=...)``.
-
-    Args:
-        cls: Walked class that declares the member.
-        name: Member name.
-
-    Returns:
-        One form per ``@overload``, empty when there is none.
-    """
-    node = _class_node(cls)
-    if node is None:
+    """Read registered overloads, naming each by its first declared parameter."""
+    fn = _callable_of(cast("object", getattr(cls, name)))
+    if fn is None:
         return []
-    namespace = _module_namespace(cls)
     forms: list[_Form] = []
-    for member in node.body:
-        if not isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        if member.name != name or not any(
-            _is_overload(decorator) for decorator in member.decorator_list
-        ):
-            continue
-        parameters = _declared_parameters(member, namespace)
+    for overload in typing.get_overloads(cast("Callable[..., object]", fn)):
+        form = _implementation_form(overload)
         forms.append(
             _Form(
-                keyword=parameters[0].name if parameters else _NO_KEYWORD,
-                parameters=parameters,
-                returns=_annotation(member.returns, namespace),
+                keyword=form.parameters[0].name if form.parameters else _NO_KEYWORD,
+                parameters=form.parameters,
+                returns=form.returns,
             )
         )
     return forms
 
 
-def _declared_parameters(
-    node: ast.FunctionDef | ast.AsyncFunctionDef, namespace: Mapping[str, object]
-) -> tuple[_Parameter, ...]:
-    """Read the declared parameters of a syntax-tree function.
-
-    Args:
-        node: Function node to read.
-        namespace: Globals the signature is written in.
-
-    Returns:
-        Parameters in signature order, without ``self`` and ``cls``.
-    """
-    arguments = node.args
-    positional = [*arguments.posonlyargs, *arguments.args]
-    defaults: list[ast.expr | None] = [None] * (
-        len(positional) - len(arguments.defaults)
-    ) + list(arguments.defaults)
-    declared = [*positional, *arguments.kwonlyargs]
-    keyword_defaults = list(arguments.kw_defaults)
-    declared_parameters: list[_Parameter] = []
-    for index, argument in enumerate(declared):
-        if argument.arg in ("self", "cls"):
-            continue
-        if index < len(positional):
-            default = defaults[index]
-        else:
-            kwonly = index - len(positional)
-            default = (
-                keyword_defaults[kwonly] if kwonly < len(keyword_defaults) else None
-            )
-        declared_parameters.append(
-            _Parameter(
-                name=argument.arg,
-                annotation=_annotation(argument.annotation, namespace),
-                default=_default(default, namespace),
-            )
-        )
-    return tuple(declared_parameters)
-
-
 def _implementation_form(fn: object) -> _Form:
-    """Build the single form of a member that has no overloads.
+    """Build a form from a callable's runtime signature.
 
     Args:
         fn: Function, property getter, or cached-property function.

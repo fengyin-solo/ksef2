@@ -12,8 +12,9 @@ import json
 import threading
 from collections.abc import Iterator
 from dataclasses import replace
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
+from enum import Enum
 from pathlib import PurePosixPath
 from typing import Any, cast
 from uuid import UUID
@@ -21,7 +22,7 @@ from uuid import UUID
 import httpx
 import pytest
 from polyfactory.factories.pydantic_factory import ModelFactory
-from pydantic import SecretBytes, SecretStr, ValidationError
+from pydantic import BaseModel, SecretBytes, SecretStr, ValidationError
 
 import ksef2.bridge as bridge
 from ksef2 import Client, Environment, FormSchema
@@ -39,7 +40,7 @@ from ksef2._domain.models.permissions import PermissionOperationResumeState
 from ksef2._domain.models.session import OnlineSessionResumeState
 from ksef2._domain.models.tokens import GeneratedTokenResumeState
 from ksef2._infra.schema.api import spec
-from ksef2.bridge import _runtime
+from ksef2.bridge import _operations, _runtime
 from ksef2.bridge._catalog import EXCLUDED_PAGER, EXCLUDED_UPLOAD_WITHOUT_PAYLOAD
 from ksef2.bridge._dispatch import _RESOLVERS, _Scope, _receiver, read_envelope
 from ksef2.bridge._json import dump_state, encode, error_of
@@ -724,11 +725,7 @@ def test_a_handle_of_another_kind_is_refused(recorder: Recorder) -> None:
 
 
 def test_result_values_are_written_as_one_json_form() -> None:
-    """Every kind of value an operation can hand back has one JSON form.
-
-    The kinds are the ones the public API returns bare: bytes, text, numbers,
-    durations, dates, paths and containers of those.
-    """
+    """Scalar leaves and containers use the JSON form of their declared types."""
     assert encode("op", None) is None
     assert encode("op", True) is True
     assert encode("op", b"\xff\x00") == "/wA="
@@ -736,13 +733,15 @@ def test_result_values_are_written_as_one_json_form() -> None:
     assert encode("op", memoryview(b"\xff\x00")) == "/wA="
     assert encode("op", SecretStr("a-secret")) == "a-secret"
     assert encode("op", SecretBytes(b"\xff")) == "/w=="
-    assert encode("op", datetime(2030, 1, 1, tzinfo=UTC)) == "2030-01-01T00:00:00+00:00"
+    assert encode("op", datetime(2030, 1, 1, tzinfo=UTC)) == "2030-01-01T00:00:00Z"
     assert encode("op", date(2030, 1, 1)) == "2030-01-01"
-    assert encode("op", timedelta(minutes=2)) == "0:02:00"
-    assert encode("op", Decimal("1.50")) == 1.5
+    assert encode("op", time(12, 30, tzinfo=UTC)) == "12:30:00Z"
+    assert encode("op", timedelta(minutes=2)) == "PT2M"
+    assert encode("op", Decimal("1.50")) == "1.50"
     assert encode("op", UUID(int=7)) == "00000000-0000-0000-0000-000000000007"
     assert encode("op", PurePosixPath("/tmp/a.zip")) == "/tmp/a.zip"
-    assert encode("op", Environment.TEST) == Environment.TEST.value
+    assert encode("op", FormSchema.FA3) == "FA3"
+    assert encode("op", Environment.TEST) == "https://api-test.ksef.mf.gov.pl/v2"
     assert encode("op", session_state()) == session_state() | {"format_version": 1}
     assert encode("op", spec.StatusInfo(code=200, description="OK")) == {
         "code": 200,
@@ -754,6 +753,32 @@ def test_result_values_are_written_as_one_json_form() -> None:
     assert encode("op", iter([1, 2])) == [1, 2]
     with pytest.raises(TypeError, match="no JSON form"):
         encode("op", object())
+
+
+def test_bare_and_nested_scalars_share_one_form() -> None:
+    """A datetime has the same text bare, in a model, and inside containers."""
+
+    class Timestamp(BaseModel):
+        when: datetime
+
+    when = datetime(2030, 1, 1, tzinfo=UTC)
+    assert encode("op", when) == "2030-01-01T00:00:00Z"
+    assert encode("op", Timestamp(when=when)) == {"when": encode("op", when)}
+    assert encode(
+        "op", {"values": [when, timedelta(minutes=2), Decimal("1.50"), FormSchema.FA3]}
+    ) == {"values": ["2030-01-01T00:00:00Z", "PT2M", "1.50", "FA3"]}
+
+
+def test_a_scalar_without_pydantic_json_form_is_rejected() -> None:
+    """Pydantic serialization failures become the bridge's usual type error."""
+
+    class Unsupported(Enum):
+        VALUE = object()
+
+    with pytest.raises(
+        TypeError, match="op returned a Unsupported, which has no JSON form"
+    ):
+        encode("op", Unsupported.VALUE)
 
 
 def test_failure_context_holds_only_what_a_caller_can_act_on() -> None:
@@ -846,6 +871,55 @@ def test_state_of_another_kind_is_refused(recorder: Recorder) -> None:
     assert "handle" in document["error"]["message"]
     assert "ExportResumeState" in document["error"]["hint"]
     assert recorder.paths == []
+
+
+def test_operation_table_is_built_once_under_concurrent_first_calls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Eight first callers share one table and build each manifest cache once."""
+    monkeypatch.setattr(_operations, "_table_cache", None)
+    monkeypatch.setattr(_operations, "_excluded_reasons_cache", None)
+    build_manifest = _operations.build_manifest
+    builds = 0
+    lock = threading.Lock()
+    barrier = threading.Barrier(8, timeout=5)
+    tables: list[dict[str, _operations.Operation]] = []
+    exclusions: list[dict[str, str]] = []
+    errors: list[Exception] = []
+
+    def counted_manifest() -> dict[str, object]:
+        nonlocal builds
+        with lock:
+            builds += 1
+        return build_manifest()
+
+    monkeypatch.setattr(_operations, "build_manifest", counted_manifest)
+
+    def read_tables() -> None:
+        try:
+            barrier.wait()
+            table = operations()
+            excluded = _operations.excluded_reasons()
+            with lock:
+                tables.append(table)
+                exclusions.append(excluded)
+        except Exception as exc:
+            with lock:
+                errors.append(exc)
+
+    runners = [threading.Thread(target=read_tables, daemon=True) for _ in range(8)]
+    for runner in runners:
+        runner.start()
+    for runner in runners:
+        runner.join(timeout=15)
+    assert all(not runner.is_alive() for runner in runners)
+    assert errors == []
+    assert len(tables) == len(exclusions) == 8
+    assert all(table is tables[0] for table in tables)
+    assert all(excluded is exclusions[0] for excluded in exclusions)
+    assert "peppol.list" in tables[0]
+    assert "batch.upload_parts" in exclusions[0]
+    assert builds == 2  # One manifest for the operation table, one for exclusions.
 
 
 def test_concurrent_calls_share_one_client(

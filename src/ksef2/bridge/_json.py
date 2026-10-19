@@ -22,7 +22,15 @@ import uuid
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Final, cast
 
-from pydantic import BaseModel, SecretBytes, SecretStr, ValidationError
+from pydantic import (
+    BaseModel,
+    PydanticSchemaGenerationError,
+    SecretBytes,
+    SecretStr,
+    TypeAdapter,
+    ValidationError,
+)
+from pydantic_core import PydanticSerializationError
 
 from ksef2._core.exceptions import KSeFApiError, KSeFArgumentError
 from ksef2.bridge._bytes import bytes_plan
@@ -275,6 +283,9 @@ def as_bytes(value: object) -> bytes | None:
     return None
 
 
+_SCALAR_ADAPTERS = dict[type[object], TypeAdapter[object]]()
+
+
 def encode(op: str, value: object) -> object:
     """Turn one Python result into JSON data.
 
@@ -297,22 +308,22 @@ def encode(op: str, value: object) -> object:
         return encode(op, cast("object", value.get_secret_value()))
     if isinstance(value, BaseModel):
         return dump_state(value)
-    if isinstance(value, enum.Enum):
-        return encode(op, cast("object", value.value))
-    if isinstance(value, datetime.datetime | datetime.date | datetime.time):
-        return value.isoformat()
-    if isinstance(value, datetime.timedelta):
-        return str(value)
-    if isinstance(value, decimal.Decimal):
-        return float(value)
-    if isinstance(value, uuid.UUID | pathlib.PurePath):
-        return str(value)
     if isinstance(value, Mapping):
         items = cast("Mapping[object, object]", value).items()
         return {str(key): encode(op, item) for key, item in items}
     if isinstance(value, Sequence | Iterable):
         return [encode(op, item) for item in cast("Iterable[object]", value)]
-    raise TypeError(f"{op} returned a {type(value).__name__}, which has no JSON form")
+    try:
+        cls = type(value)
+        adapter = _SCALAR_ADAPTERS.get(cls)
+        if adapter is None:
+            adapter = TypeAdapter(cls)
+            _SCALAR_ADAPTERS[cls] = adapter
+        return cast("object", adapter.dump_python(value, mode="json"))
+    except (PydanticSchemaGenerationError, PydanticSerializationError):
+        raise TypeError(
+            f"{op} returned a {type(value).__name__}, which has no JSON form"
+        ) from None
 
 
 def state_data(model: BaseModel) -> dict[str, object]:

@@ -14,6 +14,7 @@ keeps it among the accepted names but leaves it out of the member parameters.
 
 import functools
 import inspect
+import threading
 import typing
 from dataclasses import dataclass
 from types import NoneType
@@ -320,16 +321,28 @@ def _operation(entry: dict[str, object]) -> Operation:
     )
 
 
-@functools.cache
+_table_cache: dict[str, Operation] | None = None
+_TABLE_LOCK = threading.Lock()
+_excluded_reasons_cache: dict[str, str] | None = None
+_EXCLUDED_REASONS_LOCK = threading.Lock()
+
+
 def _table() -> dict[str, Operation]:
     """Walk the manifest once per process and index the operations by id.
 
     Returns:
         One row per operation the manifest reports as public and callable.
     """
-    entries = cast("list[dict[str, object]]", build_manifest()["operations"])
-    built = [_operation(entry) for entry in entries]
-    return {operation.id: operation for operation in built}
+    global _table_cache
+    if _table_cache is None:
+        with _TABLE_LOCK:
+            if _table_cache is None:
+                entries = cast(
+                    "list[dict[str, object]]", build_manifest()["operations"]
+                )
+                built = [_operation(entry) for entry in entries]
+                _table_cache = {operation.id: operation for operation in built}
+    return _table_cache
 
 
 def operations() -> dict[str, Operation]:
@@ -353,8 +366,15 @@ def lookup(op: str) -> Operation | None:
     return _table().get(op)
 
 
-@functools.cache
 def excluded_reasons() -> dict[str, str]:
     """Index the manifest's excluded members by id, once per process."""
-    entries = cast("list[dict[str, object]]", build_manifest()["excluded"])
-    return {cast("str", entry["id"]): cast("str", entry["reason"]) for entry in entries}
+    global _excluded_reasons_cache
+    if _excluded_reasons_cache is None:
+        with _EXCLUDED_REASONS_LOCK:
+            if _excluded_reasons_cache is None:
+                entries = cast("list[dict[str, object]]", build_manifest()["excluded"])
+                _excluded_reasons_cache = {
+                    cast("str", entry["id"]): cast("str", entry["reason"])
+                    for entry in entries
+                }
+    return _excluded_reasons_cache

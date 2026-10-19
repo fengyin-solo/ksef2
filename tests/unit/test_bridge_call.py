@@ -40,7 +40,7 @@ from ksef2._domain.models.session import OnlineSessionResumeState
 from ksef2._domain.models.tokens import GeneratedTokenResumeState
 from ksef2._infra.schema.api import spec
 from ksef2.bridge import _runtime
-from ksef2.bridge._catalog import EXCLUDED_BATCH, EXCLUDED_PAGER
+from ksef2.bridge._catalog import EXCLUDED_PAGER, EXCLUDED_UPLOAD_WITHOUT_PAYLOAD
 from ksef2.bridge._dispatch import _RESOLVERS, _Scope, _receiver, read_envelope
 from ksef2.bridge._json import dump_state, encode, error_of
 from ksef2.bridge._operations import operations
@@ -1404,8 +1404,7 @@ def test_excluded_operations_answer_unknown_with_their_reason(
     for op, reason in (
         ("pager.page", EXCLUDED_PAGER),
         ("invoice_search.page", EXCLUDED_PAGER),
-        ("batch_service.submit", EXCLUDED_BATCH),
-        ("authenticated.batch_session", EXCLUDED_BATCH),
+        ("batch.upload_parts", EXCLUDED_UPLOAD_WITHOUT_PAYLOAD),
     ):
         document = ask(op, {}, envelope())
 
@@ -1542,3 +1541,59 @@ def test_close_clients_closes_every_client_even_when_one_fails(
     assert single.value is first
     assert closed == ["first", "second", "third", "single"]
     assert _runtime._CLIENTS == {}
+
+
+def test_a_batch_session_argument_is_rebuilt_with_its_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The bridge validates saved state and attaches the payload before upload."""
+    from unittest.mock import Mock
+
+    from ksef2._clients.authenticated import AuthenticatedClient
+    from ksef2._domain.models.batch import BatchSessionResumeState, PreparedBatch
+    from ksef2._services.batch import BatchService
+
+    state = {
+        "reference_number": SESSION_REF,
+        "aes_key": KEY,
+        "iv": INITIALIZER,
+        "form_code": "FA3",
+        "part_upload_requests": [],
+    }
+    prepared = {
+        "batch_file": {"file_size": 0, "file_hash": "hash", "parts": []},
+        "parts": [],
+        "encryption": {"aes_key": KEY, "iv": INITIALIZER, "encrypted_key": "ZW5j"},
+        "invoices": [],
+    }
+    rebuilt = object()
+    resume = Mock(return_value=rebuilt)
+    upload = Mock(return_value=None)
+    monkeypatch.setattr(AuthenticatedClient, "batch_session", resume)
+    monkeypatch.setattr(BatchService, "upload_parts", upload)
+
+    answer = ask(
+        "batch_service.upload_parts",
+        {"session": state, "prepared_batch": prepared},
+        envelope(authentication=session_state()),
+    )
+
+    assert answer["ok"] is True, answer
+    resume.assert_called_once()
+    assert set(resume.call_args.kwargs) == {"state", "prepared_batch"}
+    assert isinstance(resume.call_args.kwargs["state"], BatchSessionResumeState)
+    assert resume.call_args.kwargs["state"].reference_number == SESSION_REF
+    payload = resume.call_args.kwargs["prepared_batch"]
+    assert isinstance(payload, PreparedBatch)
+    assert payload.encryption.get_aes_key_bytes() == b"0" * 32
+    upload.assert_called_once_with(session=rebuilt, prepared_batch=payload)
+
+
+def test_an_unknown_client_argument_is_a_bridge_bug() -> None:
+    """An unsupported live client class escapes the error-envelope boundary."""
+    scope = _Scope(
+        operations()["peppol.list"], read_envelope("peppol.list", envelope())
+    )
+    with pytest.raises(RuntimeError, match="cannot rebuild client Client") as raised:
+        scope.rebuild(Client, None, {})
+    assert not isinstance(raised.value, exceptions.KSeFException)

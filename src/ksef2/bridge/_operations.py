@@ -22,7 +22,7 @@ from typing import Final, cast
 from pydantic import BaseModel, ConfigDict, TypeAdapter
 
 from ksef2.bridge._bytes import Plan, bytes_plan
-from ksef2.bridge._catalog import WALKED_CLASSES
+from ksef2.bridge._catalog import WALKED_CLASSES, resume_state_for
 from ksef2.bridge._manifest import build_manifest
 from ksef2.bridge._schemas import without_text_alternative
 
@@ -55,12 +55,14 @@ class Parameter:
         required: Whether the operation cannot be called without it.
         validator: Reads the JSON value into the Python the member accepts.
         plan: Locations whose Base64 strings must become bytes before validation.
+        client: The live client class to rebuild from validated state, if any.
     """
 
     name: str
     required: bool
     validator: TypeAdapter[object]
     plan: Plan | None
+    client: type[object] | None
 
 
 @dataclass(frozen=True)
@@ -242,12 +244,17 @@ def _parameters_of(
         declared = without_text_alternative(hints[name])
         required = bool(item["required"])
         annotation = required_type(declared) if required else declared
+        state_model = resume_state_for(annotation)
+        client = cast("type[object]", annotation) if state_model is not None else None
+        if state_model is not None:
+            annotation = state_model
         built.append(
             Parameter(
                 name=name,
                 required=required,
                 validator=validator_of(annotation),
                 plan=bytes_plan(annotation),
+                client=client,
             )
         )
     return tuple(built)

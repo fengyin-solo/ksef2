@@ -41,7 +41,10 @@
   bodies stay out of the error JSON. Calls from several threads run concurrently and
   share one client per environment. `ksef2.bridge.close()` waits for the calls in flight
   and then releases the clients, and the `client.close` operation does the same for its
-  own environment (#271).
+  own environment (#271). Prepare, open, and upload a batch in separate calls to retry
+  a failed upload with the same session state and prepared payload; changed payloads
+  are refused before upload, prepared batches hold keys and encrypted invoices, and
+  failed one-call `batch_service.submit` uploads cannot be resumed through the bridge.
 
 - Save and resume every handle KSeF finishes asynchronously. `resume_state()` on a
   `GeneratedToken`, `CertificateEnrollment`, `PermissionOperation` or

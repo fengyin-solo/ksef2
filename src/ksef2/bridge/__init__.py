@@ -97,6 +97,16 @@ def call(op: str, args_json: str, state_json: str | None = None) -> str:
     declared optional ``cursor`` parameter: omit it or send ``null`` for the first
     page, then send back the ``next_cursor`` of the page just read.
 
+    To send a batch with upload recovery, call ``batch_service.prepare``, then
+    ``authenticated.batch_session.prepared_batch`` with its result, then
+    ``batch_service.upload_parts`` with that session state and prepared batch.
+    To recover a failed upload, call ``batch_service.upload_parts`` again with the
+    same session state and prepared batch. A changed payload is refused before
+    anything is uploaded. Treat the prepared batch as credential material: it holds
+    keys and encrypted invoices. ``batch_service.submit`` sends a batch in one call,
+    but its failed upload cannot be resumed through the bridge because the prepared
+    payload never left the SDK.
+
     Args:
         op: The ``id`` of one operation from ``manifest()``, such as
             ``invoices.download``.

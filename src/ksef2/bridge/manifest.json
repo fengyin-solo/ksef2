@@ -645,26 +645,6 @@
       "title": "CertificateEnrollmentData",
       "type": "object"
     },
-    "CertificateEnrollmentResponse": {
-      "description": "Reference returned after submitting a certificate enrollment request.",
-      "properties": {
-        "reference_number": {
-          "title": "Reference Number",
-          "type": "string"
-        },
-        "timestamp": {
-          "format": "date-time",
-          "title": "Timestamp",
-          "type": "string"
-        }
-      },
-      "required": [
-        "reference_number",
-        "timestamp"
-      ],
-      "title": "CertificateEnrollmentResponse",
-      "type": "object"
-    },
     "CertificateEnrollmentResumeState": {
       "additionalProperties": false,
       "description": "Serializable state needed to resume a certificate enrollment after a restart.\n\n``AsyncCertificateEnrollment.resume_state()`` returns it and\n``auth.certificates.enrollment(state)`` turns it back into a handle. The\nacceptance timestamp KSeF returned at enrollment is not stored: a resumed\nhandle reads the enrollment's status, not its original response.",
@@ -1830,25 +1810,6 @@
         "collective_identifier_number"
       ],
       "title": "GenerateCollectiveIdentifierResponse",
-      "type": "object"
-    },
-    "GenerateTokenResponse": {
-      "description": "Token value returned after a successful generate operation.",
-      "properties": {
-        "reference_number": {
-          "title": "Reference Number",
-          "type": "string"
-        },
-        "token": {
-          "title": "Token",
-          "type": "string"
-        }
-      },
-      "required": [
-        "reference_number",
-        "token"
-      ],
-      "title": "GenerateTokenResponse",
       "type": "object"
     },
     "GeneratedTokenResumeState": {
@@ -5380,6 +5341,14 @@
       "reason": "deprecated"
     },
     {
+      "id": "certificate_enrollment.response",
+      "reason": "only the handle the creating call returns has this value; a handle rebuilt from saved state does not"
+    },
+    {
+      "id": "certificate_enrollment.timestamp",
+      "reason": "only the handle the creating call returns has this value; a handle rebuilt from saved state does not"
+    },
+    {
       "id": "certificates.all",
       "reason": "deprecated"
     },
@@ -5438,6 +5407,18 @@
     {
       "id": "collective_identifiers.query_by_ksef_number",
       "reason": "deprecated"
+    },
+    {
+      "id": "generated_token.response",
+      "reason": "only the handle the creating call returns has this value; a handle rebuilt from saved state does not"
+    },
+    {
+      "id": "generated_token.to_sensitive_dict",
+      "reason": "only the handle the creating call returns has this value; a handle rebuilt from saved state does not"
+    },
+    {
+      "id": "generated_token.token",
+      "reason": "only the handle the creating call returns has this value; a handle rebuilt from saved state does not"
     },
     {
       "id": "invoice_search.first_page",
@@ -6117,19 +6098,6 @@
       "summary": "Get the KSeF reference number of the operation."
     },
     {
-      "id": "certificate_enrollment.response",
-      "parameters": [],
-      "receiver": "handle",
-      "returns": {
-        "$ref": "#/$defs/CertificateEnrollmentResponse"
-      },
-      "sensitive": [],
-      "state_schema": {
-        "$ref": "#/$defs/CertificateEnrollmentResumeState"
-      },
-      "summary": "Get the plain enrollment response."
-    },
-    {
       "id": "certificate_enrollment.resume_state",
       "parameters": [],
       "receiver": "handle",
@@ -6141,20 +6109,6 @@
         "$ref": "#/$defs/CertificateEnrollmentResumeState"
       },
       "summary": "Return the state needed to resume this enrollment after a restart."
-    },
-    {
-      "id": "certificate_enrollment.timestamp",
-      "parameters": [],
-      "receiver": "handle",
-      "returns": {
-        "format": "date-time",
-        "type": "string"
-      },
-      "sensitive": [],
-      "state_schema": {
-        "$ref": "#/$defs/CertificateEnrollmentResumeState"
-      },
-      "summary": "Get when KSeF accepted the enrollment request."
     },
     {
       "id": "certificate_enrollment.wait",
@@ -7077,21 +7031,6 @@
       "summary": "Get the KSeF reference number of the operation."
     },
     {
-      "id": "generated_token.response",
-      "parameters": [],
-      "receiver": "handle",
-      "returns": {
-        "$ref": "#/$defs/GenerateTokenResponse"
-      },
-      "sensitive": [
-        "token"
-      ],
-      "state_schema": {
-        "$ref": "#/$defs/GeneratedTokenResumeState"
-      },
-      "summary": "Get the plain generation response."
-    },
-    {
       "id": "generated_token.resume_state",
       "parameters": [],
       "receiver": "handle",
@@ -7103,37 +7042,6 @@
         "$ref": "#/$defs/GeneratedTokenResumeState"
       },
       "summary": "Return the state needed to resume this token after a restart."
-    },
-    {
-      "id": "generated_token.to_sensitive_dict",
-      "parameters": [],
-      "receiver": "handle",
-      "returns": {
-        "additionalProperties": {
-          "type": "string"
-        },
-        "type": "object"
-      },
-      "sensitive": [],
-      "state_schema": {
-        "$ref": "#/$defs/GeneratedTokenResumeState"
-      },
-      "summary": "Export the one-time token for deliberately protected persistence."
-    },
-    {
-      "id": "generated_token.token",
-      "parameters": [],
-      "receiver": "handle",
-      "returns": {
-        "type": "string"
-      },
-      "sensitive": [
-        "token"
-      ],
-      "state_schema": {
-        "$ref": "#/$defs/GeneratedTokenResumeState"
-      },
-      "summary": "Get the one-time token value."
     },
     {
       "id": "generated_token.wait",

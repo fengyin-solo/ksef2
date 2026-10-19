@@ -1,5 +1,6 @@
 """The machine-readable manifest of the public sync API: shape, coverage, refs."""
 
+import inspect
 import json
 import subprocess
 import sys
@@ -123,6 +124,53 @@ def test_manifest_is_json_and_names_the_sdk_version() -> None:
         "$defs",
     }
     assert json.dumps(data, sort_keys=True, indent=2)
+
+
+def test_overloads_do_not_need_source_files(monkeypatch: pytest.MonkeyPatch) -> None:
+    expected = manifest()
+
+    def unavailable_source(obj: object) -> str:
+        raise OSError("source files are unavailable")
+
+    monkeypatch.setattr(inspect, "getsource", unavailable_source)
+
+    actual = manifest()
+    operations = cast("list[dict[str, Any]]", actual["operations"])
+    identifiers = {operation["id"] for operation in operations}
+    assert {
+        "authenticated.online_session.form_code",
+        "authenticated.online_session.state",
+        "authenticated.batch_session.prepared_batch",
+        "authenticated.batch_session.batch_file",
+        "authenticated.batch_session.state",
+        "invoices.export.filters",
+        "invoices.export.state",
+    } <= identifiers
+    assert actual == expected
+
+
+@pytest.mark.parametrize(
+    ("base", "name", "keywords"),
+    [
+        (public_clients.AuthenticatedClient, "online_session", ["form_code", "state"]),
+        (
+            public_clients.AuthenticatedClient,
+            "batch_session",
+            ["prepared_batch", "batch_file", "state"],
+        ),
+        (public_clients.InvoicesService, "export", ["filters", "state"]),
+    ],
+)
+def test_inherited_overloads(
+    base: type[object], name: str, keywords: list[str]
+) -> None:
+    class Subclass(base):
+        pass
+
+    forms = _forms_of(Subclass, name, inspect.getattr_static(Subclass, name))
+
+    assert [form.keyword for form in forms] == keywords
+    assert forms == _forms_of(base, name, inspect.getattr_static(base, name))
 
 
 def test_bytes_or_text_is_described_as_base64_bytes() -> None:

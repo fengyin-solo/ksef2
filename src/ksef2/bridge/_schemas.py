@@ -10,7 +10,9 @@ import copy
 import datetime
 import decimal
 import enum
+import functools
 import importlib
+import operator
 import pathlib
 import pkgutil
 import types
@@ -390,6 +392,33 @@ def _is_union(annotation: object) -> bool:
         isinstance(annotation, types.UnionType)
         or type_origin(annotation) is _UNION_ORIGIN
     )
+
+
+def without_text_alternative(annotation: object) -> object:
+    """Drop ``str`` from a union that also accepts bytes.
+
+    JSON carries both as a string, so a reader could never tell Base64 bytes from
+    text; the bridge reads such an argument as the Base64 bytes every other bytes
+    argument is.
+
+    Args:
+        annotation: The declared annotation.
+
+    Returns:
+        The annotation without the ambiguous text alternative, or itself when
+        it does not accept both bytes and text.
+    """
+    if not _is_union(annotation):
+        return annotation
+    alternatives = type_args(annotation)
+    if str not in alternatives or not any(
+        item is bytes or item is bytearray for item in alternatives
+    ):
+        return annotation
+    kept = tuple(item for item in alternatives if item is not str)
+    if len(kept) == 1:
+        return kept[0]
+    return cast("object", functools.reduce(operator.or_, kept))
 
 
 def _session_state_of(annotation: type[object]) -> object:
@@ -843,6 +872,9 @@ class SchemaBuilder:
         Raises:
             UnsupportedSignature: The union names no alternative at all.
         """
+        annotation = without_text_alternative(annotation)
+        if not _is_union(annotation):
+            return self.schema_of(annotation, bindings, returns=returns, owner=owner)
         members: list[Schema] = []
         for arg in type_args(annotation):
             member = self.schema_of(arg, bindings, returns=returns, owner=owner)

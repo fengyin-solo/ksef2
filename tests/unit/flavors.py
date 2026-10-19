@@ -7,10 +7,12 @@ from typing import Any
 
 import httpx
 
+from ksef2._clients.async_auth import AsyncAuthClient
 from ksef2._clients.async_base import AsyncClient
 from ksef2._clients.async_authenticated import AsyncAuthenticatedClient
 from ksef2._clients.async_batch import AsyncBatchSessionClient
 from ksef2._clients.async_online import AsyncOnlineSessionClient
+from ksef2._clients.auth import AuthClient
 from ksef2._clients.authenticated import AuthenticatedClient
 from ksef2._clients.base import Client
 from ksef2._clients.batch import BatchSessionClient
@@ -63,6 +65,7 @@ class Flavor:
         environment: Environment,
         http_client: httpx.Client | httpx.AsyncClient,
         transport_config: TransportConfig | None = None,
+        certificate_store: CertificateStore | None = None,
     ) -> Client | AsyncClient:
         """Build the public root client of this flavour over a caller-owned HTTP client."""
         if self.is_async:
@@ -71,18 +74,29 @@ class Flavor:
                 environment,
                 http_client=http_client,
                 transport_config=transport_config,
+                certificate_store=certificate_store,
             )
         assert isinstance(http_client, httpx.Client)
         return Client(
             environment,
             http_client=http_client,
             transport_config=transport_config,
+            certificate_store=certificate_store,
         )
 
     def client(self, sync_cls: type[Any], async_cls: type[Any]) -> Any:
         """Build a branch client of this flavour over the fake transport."""
         cls = async_cls if self.is_async else sync_cls
         return cls(self.transport)  # pyright: ignore[reportArgumentType]
+
+    def auth_client(self, certificate_store: CertificateStore | None = None) -> Any:
+        """Build an auth client of this flavour over the fake transport."""
+        cls = AsyncAuthClient if self.is_async else AuthClient
+        return cls(
+            self.transport,  # pyright: ignore[reportArgumentType]
+            certificate_store or CertificateStore(),
+            environment=Environment.PRODUCTION,
+        )
 
     def close(self, session: Any) -> None:
         """Close a session client."""

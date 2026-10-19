@@ -148,10 +148,6 @@ def session_crypto() -> Iterator[None]:
 
 
 # W1: authenticate, open, send, resume the submission, fetch its UPO, and close.
-@pytest.mark.xfail(
-    strict=True,
-    reason="online.send_invoice encrypts Base64 text instead of decoding invoice_xml bytes",
-)
 def test_token_auth_online_send_and_upo(
     recorder: Recorder,
     authenticated: dict[str, Any],
@@ -179,7 +175,7 @@ def test_token_auth_online_send_and_upo(
     parameter = next(
         op for op in MANIFEST["operations"] if op["id"] == "online.send_invoice"
     )["parameters"][0]
-    assert parameter["schema"]["anyOf"][0]["contentEncoding"] == "base64"
+    assert parameter["schema"] == {"type": "string", "contentEncoding": "base64"}
     recorder.queue(
         inv_send_resp.build(referenceNumber=INVOICE_REF).model_dump(
             mode="json", by_alias=True
@@ -235,6 +231,38 @@ def test_token_auth_online_send_and_upo(
         )
         == xml
     )
+
+
+def test_invoice_text_is_not_accepted_as_bytes(
+    recorder: Recorder,
+    authenticated: dict[str, Any],
+    session_crypto: None,
+    session_open_online_resp: BaseFactory[spec.OpenOnlineSessionResponse],
+) -> None:
+    recorder.queue(
+        session_open_online_resp.build(
+            referenceNumber=SESSION_REF, validUntil=datetime(2030, 1, 1, tzinfo=UTC)
+        ).model_dump(mode="json", by_alias=True)
+    )
+    opened = ask(
+        "authenticated.online_session.form_code",
+        {"form_code": "FA3"},
+        json.dumps(authenticated["state"]),
+    )
+    assert opened["ok"] is True, opened
+
+    answer = ask(
+        "online.send_invoice",
+        {"invoice_xml": "<not base64>"},
+        json.dumps(opened["state"]),
+    )
+    assert answer["ok"] is False, answer
+    assert answer["error"]["code"] == "ARGUMENT_ERROR"
+    assert "invoice_xml" in answer["error"]["message"]
+    assert [(r.method, r.url.path) for r in recorder.requests[5:]] == [
+        ("POST", "/sessions/online"),
+    ]
+    assert not recorder.queued
 
 
 # W2: carry the first search page's cursor and the exact answer state forward.

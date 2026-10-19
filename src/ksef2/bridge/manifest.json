@@ -7920,15 +7920,8 @@
           "name": "invoice_xml",
           "required": true,
           "schema": {
-            "anyOf": [
-              {
-                "contentEncoding": "base64",
-                "type": "string"
-              },
-              {
-                "type": "string"
-              }
-            ]
+            "contentEncoding": "base64",
+            "type": "string"
           }
         }
       ],

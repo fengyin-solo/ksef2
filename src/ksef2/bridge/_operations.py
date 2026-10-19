@@ -21,7 +21,8 @@ from typing import Final, cast
 
 from pydantic import BaseModel, ConfigDict, TypeAdapter
 
-from ksef2.bridge._catalog import WALKED_CLASSES
+from ksef2.bridge._bytes import Plan, bytes_plan
+from ksef2.bridge._catalog import WALKED_CLASSES, resume_state_for
 from ksef2.bridge._manifest import build_manifest
 from ksef2.bridge._schemas import without_text_alternative
 
@@ -53,11 +54,15 @@ class Parameter:
         name: The name the caller spells in ``args_json``.
         required: Whether the operation cannot be called without it.
         validator: Reads the JSON value into the Python the member accepts.
+        plan: Locations whose Base64 strings must become bytes before validation.
+        client: The live client class to rebuild from validated state, if any.
     """
 
     name: str
     required: bool
     validator: TypeAdapter[object]
+    plan: Plan | None
+    client: type[object] | None
 
 
 @dataclass(frozen=True)
@@ -124,10 +129,8 @@ def required_type(annotation: object) -> object:
 def validator_of(annotation: object) -> TypeAdapter[object]:
     """Return the validator of one declared argument, reading JSON semantics.
 
-    A bare ``bytes`` is read as the standard Base64 the manifest declares for it.
-    A model keeps the configuration it carries, because its own schema says how
-    it reads itself: ``ExportedInvoicesData`` asks for Base64, while
-    ``XAdESCredentials`` asks for the text of a PEM document.
+    Bytes positions are decoded before validation, so models receive raw bytes
+    regardless of their own JSON configuration.
 
     Args:
         annotation: The annotation of the argument.
@@ -240,13 +243,18 @@ def _parameters_of(
             )
         declared = without_text_alternative(hints[name])
         required = bool(item["required"])
+        annotation = required_type(declared) if required else declared
+        state_model = resume_state_for(annotation)
+        client = cast("type[object]", annotation) if state_model is not None else None
+        if state_model is not None:
+            annotation = state_model
         built.append(
             Parameter(
                 name=name,
                 required=required,
-                validator=validator_of(
-                    required_type(declared) if required else declared
-                ),
+                validator=validator_of(annotation),
+                plan=bytes_plan(annotation),
+                client=client,
             )
         )
     return tuple(built)

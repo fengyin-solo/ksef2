@@ -95,6 +95,11 @@ Stan zapisuj i odtwarzaj jawnymi metodami:
 - `to_sensitive_dict()` w modelach odpowiedzi z sekretami, takich jak `UpoPage`,
   `GenerateTokenResponse` i `ExportHandle`, eksportuje pola sekretne do
   świadomego, chronionego użycia.
+- `to_sensitive_dict()` i `to_sensitive_json()` w `PreparedBatch` eksportują pełne
+  zaszyfrowane części i materiał AES do chronionego magazynu. Odtwórz paczkę przez
+  `PreparedBatch.model_validate()` lub `model_validate_json()` i przekaż ją razem
+  z zapisanym stanem sesji, aby wznowić upload po restarcie. Ogólne dumpy i repr
+  ukrywają bajty paczki i klucze.
 - `to_sensitive_dict()` i `to_sensitive_json()` w snapshotcie zakończonego eksportu
   (`ExportedInvoicesData`, z `ExportedInvoices.to_model()`) zachowują podpisane
   adresy części paczki, które `model_dump()` i `repr()` odrzucają. Tylko ten wynik

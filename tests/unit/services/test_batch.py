@@ -1,17 +1,22 @@
+import base64
+import json
 from collections.abc import Callable
 from io import BytesIO
 from zipfile import ZipFile
 
+import httpx
 import pytest
 from polyfactory import BaseFactory
 
 from ksef2._clients.batch import BatchSessionClient
 from ksef2._core.crypto import decrypt_aes_cbc, sha256_b64
 from ksef2._core.exceptions import (
+    KSeFBatchUploadError,
     KSeFBatchSessionTimeoutError,
     KSeFSessionError,
     KSeFValidationError,
 )
+from ksef2.models import AuthTokens
 from ksef2._domain.models.batch import (
     BatchEncryptionData,
     BatchFileInfo,
@@ -26,6 +31,7 @@ from ksef2._domain.models.session import FormSchema, SessionEncryptionMaterial
 from ksef2._infra.schema.api import spec
 from ksef2._services.batch import BatchService, BatchSessionOpener
 from tests.unit.fakes.transport import FakeTransport
+from tests.unit.flavors import Flavor
 from tests.unit.helpers import VALID_PUBLIC_KEY_ID, legacy_api
 
 
@@ -73,6 +79,128 @@ def _unused_open_batch_session(
         prepared_batch,
     )
     raise AssertionError("not used")
+
+
+@pytest.fixture
+def prepared_batch(fake_transport: FakeTransport) -> PreparedBatch:
+    return _build_service(
+        fake_transport, open_batch_session=_unused_open_batch_session
+    ).prepare([b"<Invoice>1</Invoice>", b"<Invoice>2</Invoice>"], offline_mode=True)
+
+
+def test_prepared_batch_sensitive_export_round_trips(
+    prepared_batch: PreparedBatch,
+) -> None:
+    restored_batches = [
+        PreparedBatch.model_validate_json(prepared_batch.to_sensitive_json()),
+        PreparedBatch.model_validate_json(prepared_batch.to_sensitive_json(indent=2)),
+        PreparedBatch.model_validate(prepared_batch.to_sensitive_dict()),
+        PreparedBatch.model_validate(prepared_batch.to_sensitive_dict(mode="python")),
+    ]
+    for restored in restored_batches:
+        assert restored == prepared_batch
+        assert restored.recovery_digest() == prepared_batch.recovery_digest()
+
+
+@pytest.mark.parametrize(
+    ("content", "encoded"),
+    [(b"\xfb", "-w=="), (b"\xfb\xff", "-_8="), (b"\xfb\xff\xff", "-___")],
+)
+def test_prepared_batch_sensitive_export_is_url_safe_base64(
+    prepared_batch: PreparedBatch, content: bytes, encoded: str
+) -> None:
+    part = BatchPreparedPart(
+        ordinal_number=1,
+        content=content,
+        file_size=len(content),
+        file_hash=sha256_b64(content),
+    )
+    prepared_batch.parts = [part]
+    exported = json.loads(prepared_batch.to_sensitive_json())
+    assert exported["parts"][0]["content"] == encoded
+    assert base64.urlsafe_b64decode(exported["parts"][0]["content"]) == content
+    assert part.content == content
+    assert PreparedBatch.model_validate(exported).parts[0].content == content
+    python_parts = prepared_batch.to_sensitive_dict(mode="python")["parts"]
+    assert isinstance(python_parts, list)
+    assert python_parts[0]["content"] == content
+    assert (
+        BatchPreparedPart.model_validate(
+            {**part.model_dump(), "content": b"-_8="}
+        ).content
+        == b"-_8="
+    )
+
+
+def test_prepared_batch_generic_dump_still_hides_payload_and_keys(
+    prepared_batch: PreparedBatch,
+) -> None:
+    assert "parts" not in prepared_batch.model_dump()
+    assert "encryption" not in prepared_batch.model_dump()
+    assert "content" not in prepared_batch.parts[0].model_dump()
+    assert prepared_batch.encryption.model_dump() == {
+        "public_key_id": VALID_PUBLIC_KEY_ID
+    }
+    secrets = [
+        prepared_batch.encryption.aes_key,
+        prepared_batch.encryption.iv,
+        prepared_batch.encryption.encrypted_key,
+    ]
+    for part in prepared_batch.parts:
+        secrets.extend(
+            [repr(part.content), base64.urlsafe_b64encode(part.content).decode()]
+        )
+    for model in [prepared_batch, *prepared_batch.parts, prepared_batch.encryption]:
+        for output in [str(model.model_dump()), model.model_dump_json(), repr(model)]:
+            assert all(secret not in output for secret in secrets)
+
+
+def test_restored_prepared_batch_resumes_its_session(
+    prepared_batch: PreparedBatch,
+    flavor: Flavor,
+    domain_auth_tokens: BaseFactory[AuthTokens],
+) -> None:
+    auth = flavor.authenticated(domain_auth_tokens.build())
+    upload_url = "https://storage.example/upload?sig=secret"
+    flavor.transport.enqueue(
+        status_code=201,
+        json_body={
+            "referenceNumber": "B" * 36,
+            "partUploadRequests": [
+                {"ordinalNumber": 1, "method": "PUT", "url": upload_url, "headers": {}}
+            ],
+        },
+    )
+    session = flavor.run(auth.batch_session(prepared_batch=prepared_batch))
+    flavor.transport.enqueue_error(
+        httpx.ConnectTimeout(
+            "local storage failure", request=httpx.Request("PUT", upload_url)
+        )
+    )
+    with pytest.raises(KSeFBatchUploadError) as caught:
+        flavor.run(session.upload_parts())
+    saved_state = caught.value.recovery_state().to_json()
+    restored = PreparedBatch.model_validate_json(
+        caught.value.recovery_prepared_batch().to_sensitive_json()
+    )
+    resumed = flavor.run(auth.batch_session(state=saved_state, prepared_batch=restored))
+    assert resumed.reference_number == session.reference_number
+    flavor.transport.enqueue(status_code=201, json_body={})
+    flavor.run(resumed.upload_parts())
+    assert [
+        call.content for call in flavor.transport.calls if call.method == "PUT"
+    ] == [
+        prepared_batch.parts[0].content,
+        prepared_batch.parts[0].content,
+    ]
+
+    changed = restored.model_copy(deep=True)
+    changed.parts[0].content += b"changed"
+    changed = PreparedBatch.model_validate_json(changed.to_sensitive_json())
+    calls_before = len(flavor.transport.calls)
+    with pytest.raises(KSeFValidationError, match="original prepared batch"):
+        flavor.run(auth.batch_session(state=saved_state, prepared_batch=changed))
+    assert len(flavor.transport.calls) == calls_before
 
 
 class TestBatchService:

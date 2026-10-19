@@ -10,9 +10,7 @@ import copy
 import datetime
 import decimal
 import enum
-import functools
 import importlib
-import operator
 import pathlib
 import pkgutil
 import types
@@ -29,6 +27,17 @@ from pydantic import (
     SecretBytes,
     SecretStr,
     TypeAdapter,
+)
+from ksef2.bridge._bytes import (
+    BytesLeaf,
+    FieldsPlan,
+    ItemsPlan,
+    Plan,
+    UnionPlan,
+    ValuesPlan,
+    bytes_plan,
+    field_keys,
+    without_text_alternative as without_text_alternative,
 )
 from ksef2.bridge._catalog import (
     GENERATED_TOKEN_CLASS,
@@ -60,9 +69,8 @@ Schema = dict[str, object]
 
 REF_PREFIX: Final = "#/$defs/"
 
-#: ``bytes`` crosses the boundary as standard Base64 with ``=`` padding. This is
-#: deliberately not the URL-safe spelling the export archive uses for its own
-#: archive field, which stays described by its own model.
+#: Every bytes value crosses the bridge as standard Base64 with ``=`` padding,
+#: including model fields whose own JSON encoding uses a different spelling.
 BASE64_STRING: Final[Schema] = {"type": "string", "contentEncoding": "base64"}
 
 #: An unbound type variable: the item type belongs to the caller, so any JSON
@@ -394,33 +402,6 @@ def _is_union(annotation: object) -> bool:
     )
 
 
-def without_text_alternative(annotation: object) -> object:
-    """Drop ``str`` from a union that also accepts bytes.
-
-    JSON carries both as a string, so a reader could never tell Base64 bytes from
-    text; the bridge reads such an argument as the Base64 bytes every other bytes
-    argument is.
-
-    Args:
-        annotation: The declared annotation.
-
-    Returns:
-        The annotation without the ambiguous text alternative, or itself when
-        it does not accept both bytes and text.
-    """
-    if not _is_union(annotation):
-        return annotation
-    alternatives = type_args(annotation)
-    if str not in alternatives or not any(
-        item is bytes or item is bytearray for item in alternatives
-    ):
-        return annotation
-    kept = tuple(item for item in alternatives if item is not str)
-    if len(kept) == 1:
-        return kept[0]
-    return cast("object", functools.reduce(operator.or_, kept))
-
-
 def _session_state_of(annotation: type[object]) -> object:
     """Return the saved state that names a client object in a parameter.
 
@@ -506,6 +487,62 @@ def _model_closure(model: type[BaseModel]) -> Iterator[type[BaseModel]]:
         pending.extend(type_args(cast("object", annotation)))
 
 
+def _rewrite_model_bytes(schema: Schema, model: type[BaseModel]) -> None:
+    """Rewrite a model's bytes fields under their schema property keys."""
+    plan = bytes_plan(model)
+    if isinstance(plan, FieldsPlan):
+        fields = {
+            field_keys(model, name)[0]: field_plan
+            for name, field_plan in plan.fields.items()
+        }
+        _rewrite_bytes(schema, FieldsPlan(fields))
+
+
+def _rewrite_bytes(schema: Schema, plan: Plan) -> None:
+    """Follow a bytes plan within a schema, leaving model references alone."""
+    if "$ref" in schema:
+        return
+    alternatives = schema.get("anyOf")
+    if isinstance(alternatives, list):
+        for alternative in cast("list[object]", alternatives):
+            if isinstance(alternative, dict):
+                _rewrite_bytes(cast("Schema", alternative), plan)
+        return
+    if isinstance(plan, UnionPlan):
+        for alternative in plan.alternatives:
+            _rewrite_bytes(schema, alternative)
+    elif isinstance(plan, BytesLeaf):
+        if schema.get("type") == "string":
+            metadata = {
+                key: value
+                for key, value in schema.items()
+                if key in {"title", "description", "writeOnly", "default"}
+            }
+            schema.clear()
+            schema.update(BASE64_STRING)
+            schema.update(metadata)
+    elif isinstance(plan, ItemsPlan):
+        items = schema.get("items")
+        if isinstance(items, dict):
+            _rewrite_bytes(cast("Schema", items), plan.item)
+        prefix = schema.get("prefixItems")
+        if isinstance(prefix, list):
+            for item in cast("list[object]", prefix):
+                if isinstance(item, dict):
+                    _rewrite_bytes(cast("Schema", item), plan.item)
+    elif isinstance(plan, ValuesPlan):
+        values = schema.get("additionalProperties")
+        if isinstance(values, dict):
+            _rewrite_bytes(cast("Schema", values), plan.value)
+    else:
+        properties = schema.get("properties")
+        if isinstance(properties, dict):
+            for name, field_plan in plan.fields.items():
+                field_schema = cast("dict[str, object]", properties).get(name)
+                if isinstance(field_schema, dict):
+                    _rewrite_bytes(cast("Schema", field_schema), field_plan)
+
+
 class SchemaBuilder:
     """Collect the named schemas a manifest needs, once each.
 
@@ -519,6 +556,7 @@ class SchemaBuilder:
         self._defs: dict[str, Schema] = {}
         self._owners: dict[str, str] = {}
         self._sensitive: dict[str, set[str]] = {}
+        self._models: dict[str, type[BaseModel]] = {}
         self._index = defining_objects()
         for name, alias in sorted(literal_aliases().items()):
             document = _literal_document(alias)
@@ -549,9 +587,13 @@ class SchemaBuilder:
         Raises:
             ManifestError: If a different schema already holds *name*.
         """
+        schema = copy.deepcopy(schema)
+        model = self._models.get(owner)
+        if model is not None:
+            _rewrite_model_bytes(schema, model)
         existing = self._defs.get(name)
         if existing is None:
-            self._defs[name] = copy.deepcopy(schema)
+            self._defs[name] = schema
             self._owners[name] = owner
         elif existing == schema or self._owners[name] == owner:
             pass
@@ -990,12 +1032,15 @@ class SchemaBuilder:
         return cast("Schema", schema)
 
     def _note_models(self, model: type[BaseModel]) -> None:
-        """Record which fields of a model graph hold secrets.
+        """Record the model graph and which fields hold secrets.
 
         Args:
             model: Model reachable from a signature.
         """
         for entry in _model_closure(model):
+            name = name_of(entry)
+            self._models[_direct_owner(entry, name)] = entry
+            self._index.setdefault(name, set()).add(entry)
             names = _sensitive_field_names(entry)
             if names:
                 self._sensitive.setdefault(name_of(entry), set()).update(names)

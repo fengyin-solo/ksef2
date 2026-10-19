@@ -16,6 +16,8 @@ from polyfactory import BaseFactory
 from pydantic import SecretStr
 
 import ksef2.bridge as bridge
+from ksef2 import FormSchema
+from ksef2._domain.models.batch import BatchSessionResumeState
 from ksef2._core.crypto import decrypt_aes_cbc, encrypt_invoice, sha256_b64
 from ksef2._domain.models.certificates import CertificateEnrollmentResumeState
 from ksef2._domain.models.invoices import (
@@ -26,6 +28,7 @@ from ksef2._domain.models.invoices import (
 from ksef2._domain.models.permissions import PermissionOperationResumeState
 from ksef2._domain.models.tokens import GeneratedTokenResumeState
 from ksef2._infra.schema.api import spec
+from ksef2.bridge._json import dump_state
 from ksef2.bridge._operations import operations
 from tests.unit.payloads import (
     INVOICE_REF,
@@ -36,6 +39,7 @@ from tests.unit.payloads import (
     metadata_page,
     package_status,
     session_status,
+    upo,
 )
 from tests.unit.test_bridge_call import (
     NIP,
@@ -379,7 +383,7 @@ def test_export_runs_to_its_archive(
     assert not recorder.queued
 
 
-# W5: PEM literals cross JSON and produce a real XAdES signature at KSeF.
+# W5: Base64 PEM bytes cross JSON and produce a real XAdES signature at KSeF.
 def test_xades_auth_with_pem_credentials(
     recorder: Recorder, auth_answers: list[dict[str, Any]]
 ) -> None:
@@ -395,8 +399,8 @@ def test_xades_auth_with_pem_credentials(
         {
             "nip": NIP,
             "credentials": {
-                "cert_pem": cert.public_bytes(Encoding.PEM).decode(),
-                "key_pem": key_pem(key).decode(),
+                "cert_pem": base64.b64encode(cert.public_bytes(Encoding.PEM)).decode(),
+                "key_pem": base64.b64encode(key_pem(key)).decode(),
             },
         },
         INITIAL_STATE,
@@ -419,6 +423,31 @@ def test_xades_auth_with_pem_credentials(
         is not None
     )
     assert not recorder.queued
+
+
+@pytest.mark.parametrize("raw_field", ["cert_pem", "key_pem"])
+def test_xades_pem_text_is_refused(recorder: Recorder, raw_field: str) -> None:
+    """Raw PEM never reaches KSeF or appears in the error document."""
+    key = ec.generate_private_key(ec.SECP256R1())
+    cert_bytes = self_signed(key).public_bytes(Encoding.PEM)
+    private_bytes = key_pem(key)
+    credentials = {
+        "cert_pem": base64.b64encode(cert_bytes).decode(),
+        "key_pem": base64.b64encode(private_bytes).decode(),
+    }
+    credentials[raw_field] = (
+        cert_bytes if raw_field == "cert_pem" else private_bytes
+    ).decode()
+
+    answer = ask(
+        "auth.with_xades", {"nip": NIP, "credentials": credentials}, INITIAL_STATE
+    )
+
+    assert answer["ok"] is False
+    assert answer["error"]["code"] == "ARGUMENT_ERROR"
+    assert f"credentials.{raw_field}" in answer["error"]["message"]
+    assert private_bytes.decode().splitlines()[1][10:30] not in json.dumps(answer)
+    assert recorder.requests == []
 
 
 # W6: retain a generated token's resume state while reading status and reference.
@@ -495,9 +524,7 @@ def test_every_argument_free_handle_operation_answers_json(
             aes_key=SecretStr(base64.b64encode(KEY).decode()),
             iv=SecretStr(base64.b64encode(IV).decode()),
         ).to_dict(mode="json"),
-        "exported_invoices": ExportedInvoicesData(archive=archive()).model_dump(
-            mode="json"
-        ),
+        "exported_invoices": dump_state(ExportedInvoicesData(archive=archive())),
     }
     recorder.fail_with(httpx.ConnectError("offline"))
     answer = ask(
@@ -525,3 +552,244 @@ def test_unrelated_handle_is_not_validated(recorder: Recorder) -> None:
         ("GET", "/peppol/query")
     ]
     assert recorder.requests[0].url.params["pageOffset"] == "0"
+
+
+@pytest.fixture
+def prepared_batch(
+    authenticated: dict[str, Any], session_crypto: None
+) -> dict[str, Any]:
+    answer = ask(
+        "batch_service.prepare",
+        {
+            "invoices": [
+                base64.b64encode(b"<Invoice>a</Invoice>").decode(),
+                {
+                    "file_name": "b.xml",
+                    "content": base64.b64encode(b"<Invoice>b</Invoice>").decode(),
+                },
+            ],
+            "max_part_size": 160,
+        },
+        json.dumps(authenticated["state"]),
+    )
+    assert answer["ok"] is True, answer
+    assert len(answer["result"]["parts"]) > 1
+    for part in answer["result"]["parts"]:
+        raw = base64.b64decode(part["content"], validate=True)
+        assert base64.b64encode(raw).decode() == part["content"]
+        assert len(raw) == part["file_size"]
+    assert answer["result"]["encryption"]["aes_key"] == base64.b64encode(KEY).decode()
+    assert answer["result"]["encryption"]["iv"] == base64.b64encode(IV).decode()
+    assert (
+        answer["result"]["encryption"]["encrypted_key"]
+        == base64.b64encode(b"enc-key").decode()
+    )
+    return answer
+
+
+@pytest.fixture
+def opened_batch(
+    recorder: Recorder,
+    prepared_batch: dict[str, Any],
+    session_open_batch_resp: BaseFactory[spec.OpenBatchSessionResponse],
+) -> dict[str, Any]:
+    recorder.queue(
+        session_open_batch_resp.build(
+            referenceNumber=SESSION_REF,
+            partUploadRequests=[
+                {
+                    "ordinalNumber": part["ordinal_number"],
+                    "method": "PUT",
+                    "url": f"https://storage.mock/part-{part['ordinal_number']}?sig=secret",
+                    "headers": {"x-ms-blob-type": "BlockBlob"},
+                }
+                for part in prepared_batch["result"]["parts"]
+            ],
+        ).model_dump(mode="json", by_alias=True),
+        status_code=201,
+    )
+    answer = ask(
+        "authenticated.batch_session.prepared_batch",
+        {"prepared_batch": prepared_batch["result"]},
+        json.dumps(prepared_batch["state"]),
+    )
+    assert answer["ok"] is True, answer
+    assert answer["state"]["batch_session"] == answer["result"]
+    assert answer["result"]["prepared_batch_digest"]
+    return answer
+
+
+# W8: keep the exact payload and session after storage rejects the first upload.
+def test_batch_prepare_open_upload_recover_close_and_upo(
+    recorder: Recorder,
+    prepared_batch: dict[str, Any],
+    opened_batch: dict[str, Any],
+    inv_session_status_resp: BaseFactory[spec.SessionStatusResponse],
+) -> None:
+    payload = prepared_batch["result"]
+    session = opened_batch["state"]["batch_session"]
+    arguments = {"session": session, "prepared_batch": payload}
+    state = json.dumps(opened_batch["state"])
+    recorder.queue(None, status_code=500)
+    failed = ask("batch_service.upload_parts", arguments, state)
+    assert failed["ok"] is False, failed
+    assert failed["error"]["type"] == "KSeFBatchUploadError"
+    assert failed["error"]["code"] == "BATCH_UPLOAD_ERROR"
+    error_json = json.dumps(failed)
+    secrets = [
+        payload["encryption"]["aes_key"],
+        payload["encryption"]["iv"],
+        payload["encryption"]["encrypted_key"],
+        *(part["content"] for part in payload["parts"]),
+        *(request["url"] for request in session["part_upload_requests"]),
+    ]
+    for secret in secrets:
+        assert secret not in error_json
+    assert "sig=secret" not in error_json
+
+    for _ in payload["parts"]:
+        recorder.queue(None, status_code=201)
+    recovered = ask("batch_service.upload_parts", arguments, state)
+    assert recovered["ok"] is True, recovered
+    assert recovered["state"] == opened_batch["state"]
+    uploads = [r for r in recorder.requests if r.url.host == "storage.mock"]
+    expected = [
+        base64.b64decode(part["content"], validate=True) for part in payload["parts"]
+    ]
+    assert [r.content for r in uploads] == [expected[0], *expected]
+    assert [str(r.url) for r in uploads[1:]] == [
+        request["url"] for request in session["part_upload_requests"]
+    ]
+    assert all(r.method == "PUT" for r in uploads)
+
+    recorder.queue(session_status(inv_session_status_resp, 100))
+    recorder.queue(None, status_code=204)
+    closed = ask("batch.close", {}, json.dumps(recovered["state"]))
+    assert closed["ok"] is True, closed
+    recorder.queue(session_status(inv_session_status_resp, 200))
+    waited = ask("batch.wait", {}, json.dumps(closed["state"]))
+    assert waited["ok"] is True, waited
+    assert waited["result"]["status"]["code"] == 200
+    recorder.queue(session_status(inv_session_status_resp, 200, upo("u" * 36)))
+    upo_xml = b"<UPO>batch accepted</UPO>"
+    recorder.queued.append(httpx.Response(200, content=upo_xml))
+    downloaded = ask("batch.download_upo", {}, json.dumps(waited["state"]))
+    assert downloaded["ok"] is True, downloaded
+    assert downloaded["result"] == [base64.b64encode(upo_xml).decode()]
+    assert not recorder.queued
+
+
+# W9: the original digest rejects changed encrypted bytes before storage is used.
+def test_batch_upload_refuses_a_changed_payload(
+    recorder: Recorder,
+    prepared_batch: dict[str, Any],
+    opened_batch: dict[str, Any],
+) -> None:
+    # Deliberately mutate a copy of an earlier answer for this negative test only.
+    changed = json.loads(json.dumps(prepared_batch["result"]))
+    part = changed["parts"][0]
+    content = bytearray(base64.b64decode(part["content"], validate=True))
+    content[0] ^= 1
+    part["content"] = base64.b64encode(content).decode()
+    before = len(recorder.requests)
+    answer = ask(
+        "batch_service.upload_parts",
+        {"session": opened_batch["state"]["batch_session"], "prepared_batch": changed},
+        json.dumps(opened_batch["state"]),
+    )
+    assert answer["ok"] is False, answer
+    assert answer["error"]["type"] == "KSeFValidationError"
+    assert answer["error"]["code"] == "VALIDATION_ERROR"
+    assert "original prepared batch" in answer["error"]["message"]
+    assert len(recorder.requests) == before
+    assert not any(r.url.host == "storage.mock" for r in recorder.requests)
+    assert not recorder.queued
+
+
+# W10: convenience submission leaves a session the binding can poll.
+def test_batch_submit_in_one_call(
+    recorder: Recorder,
+    authenticated: dict[str, Any],
+    session_crypto: None,
+    session_open_batch_resp: BaseFactory[spec.OpenBatchSessionResponse],
+    inv_session_status_resp: BaseFactory[spec.SessionStatusResponse],
+) -> None:
+    recorder.queue(
+        session_open_batch_resp.build(
+            referenceNumber=SESSION_REF,
+            partUploadRequests=[
+                {
+                    "ordinalNumber": 1,
+                    "method": "PUT",
+                    "url": "https://storage.mock/submit?sig=secret",
+                    "headers": {},
+                }
+            ],
+        ).model_dump(mode="json", by_alias=True),
+        status_code=201,
+    )
+    recorder.queue(None, status_code=201)
+    recorder.queue(None, status_code=204)
+    submitted = ask(
+        "batch_service.submit",
+        {"batch": [base64.b64encode(b"<Invoice>one call</Invoice>").decode()]},
+        json.dumps(authenticated["state"]),
+    )
+    assert submitted["ok"] is True, submitted
+    assert submitted["state"]["batch_session"] == submitted["result"]
+    assert submitted["result"]["reference_number"] == SESSION_REF
+    recorder.queue(session_status(inv_session_status_resp, 200))
+    waited = ask("batch.wait", {}, json.dumps(submitted["state"]))
+    assert waited["ok"] is True, waited
+    assert waited["result"]["status"]["code"] == 200
+    assert [(r.method, r.url.path) for r in recorder.requests[5:]] == [
+        ("POST", "/sessions/batch"),
+        ("PUT", "/submit"),
+        ("POST", f"/sessions/batch/{SESSION_REF}/close"),
+        ("GET", f"/sessions/{SESSION_REF}"),
+    ]
+    assert not recorder.queued
+
+
+SESSION_IDS = {
+    op["id"]
+    for op in MANIFEST["operations"]
+    if op["receiver"] in {"online_session", "batch_session"}
+}
+ARGUMENT_FREE_SESSIONS = [
+    op.id for op in operations().values() if op.id in SESSION_IDS and not op.required
+]
+
+
+# W11: even offline, every argument-free session operation answers with JSON.
+@pytest.mark.filterwarnings(
+    "ignore:`BatchSessionClient.access_token` is deprecated:DeprecationWarning"
+)
+@pytest.mark.parametrize("op", ARGUMENT_FREE_SESSIONS)
+def test_every_argument_free_session_operation_answers_json(
+    op: str, recorder: Recorder
+) -> None:
+    batch = BatchSessionResumeState(
+        reference_number=SESSION_REF,
+        aes_key=SecretStr(base64.b64encode(KEY).decode()),
+        iv=SecretStr(base64.b64encode(IV).decode()),
+        form_code=FormSchema.FA3,
+        part_upload_requests=[],
+    ).to_dict(mode="json")
+    recorder.fail_with(httpx.ConnectError("offline"))
+    answer = ask(
+        op,
+        {},
+        envelope(
+            authentication=session_state(),
+            online_session=online_state(),
+            batch_session=batch,
+        ),
+    )
+    assert answer["ok"] is True or answer["ok"] is False
+    if not answer["ok"]:
+        expected = {
+            "online.submission": "ARGUMENT_ERROR",
+            "online.download_invoice_upo": "VALIDATION_ERROR",
+        }.get(op, "TRANSPORT_ERROR")
+        assert answer["error"]["code"] == expected, answer

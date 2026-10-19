@@ -24,13 +24,14 @@ from pydantic import BaseModel, ValidationError
 from ksef2._clients._pager import Pager
 from ksef2._clients.authenticated import AuthenticatedClient
 from ksef2._clients.base import Client
+from ksef2._clients.batch import BatchSessionClient
 from ksef2._clients.exported_invoices import ExportedInvoices
 from ksef2._clients.online import OnlineSessionClient
 from ksef2._clients.tokens import GeneratedToken
 from ksef2._config import Environment
 from ksef2._core.exceptions import KSeFException
 from ksef2._domain.models.auth import AuthenticationResumeState
-from ksef2._domain.models.batch import BatchSessionResumeState
+from ksef2._domain.models.batch import BatchSessionResumeState, PreparedBatch
 from ksef2._domain.models.certificates import CertificateEnrollmentResumeState
 from ksef2._domain.models.invoices import (
     ExportedInvoicesData,
@@ -40,6 +41,8 @@ from ksef2._domain.models.invoices import (
 from ksef2._domain.models.permissions import PermissionOperationResumeState
 from ksef2._domain.models.session import OnlineSessionResumeState
 from ksef2._domain.models.tokens import GeneratedTokenResumeState
+from ksef2.bridge._bytes import bytes_plan
+from ksef2.bridge._codec import decode_base64
 from ksef2.bridge._catalog import RESUME_STATE_BY_CLASS
 from ksef2.bridge._json import (
     argument_error,
@@ -109,6 +112,7 @@ _UNAUTHENTICATED: Final[dict[str, str]] = {
 """Prefixes reachable without credentials, and the accessor that reaches them."""
 
 _AUTHENTICATED: Final[dict[str, str]] = {
+    "batch_service": "batch",
     "tokens": "tokens",
     "certificates": "certificates",
     "permissions": "permissions",
@@ -200,6 +204,11 @@ def _call(op: str, args_json: str | None, state_json: str | None) -> Outcome:
     scope = _Scope(operation, envelope)
     try:
         arguments, cursor = read_arguments(operation, args_json)
+        for parameter in operation.parameters:
+            if parameter.client is not None and parameter.name in arguments:
+                arguments[parameter.name] = scope.rebuild(
+                    parameter.client, arguments[parameter.name], arguments
+                )
         if operation.id == _CLOSE:
             close_environment(scope.environment)
             value = None
@@ -276,6 +285,42 @@ class _Scope:
         """
         state = self.session("online_session", OnlineSessionResumeState)
         return self.authenticated().online_session(state=state)
+
+    def batch(self) -> BatchSessionClient:
+        """Return the batch session rebuilt from its saved state.
+
+        Returns:
+            The session without an attached upload payload.
+        """
+        return self.authenticated().batch_session(
+            state=self.session("batch_session", BatchSessionResumeState)
+        )
+
+    def rebuild(
+        self, client: type[object], state: object, arguments: dict[str, object]
+    ) -> object:
+        """Rebuild a client argument from its validated state and optional payload.
+
+        Args:
+            client: The declared live client class.
+            state: Its validated resume state.
+            arguments: The validated arguments of this call.
+
+        Returns:
+            The client the SDK member accepts.
+
+        Raises:
+            RuntimeError: The bridge cannot rebuild the declared client class.
+        """
+        if client is BatchSessionClient:
+            resume = cast("BatchSessionResumeState", state)
+            if "prepared_batch" in arguments:
+                return self.authenticated().batch_session(
+                    state=resume,
+                    prepared_batch=cast("PreparedBatch", arguments["prepared_batch"]),
+                )
+            return self.authenticated().batch_session(state=resume)
+        raise RuntimeError(f"the dispatcher cannot rebuild client {client.__name__}")
 
     def handle(self, expected: type[_StateT]) -> _StateT:
         """Return the handle the state names, as the state this operation continues.
@@ -393,7 +438,9 @@ def read_state(op: str, slot: str, raw: object, model: type[_StateT]) -> _StateT
         KSeFArgumentError: The value is not that state.
     """
     try:
-        return model.model_validate(raw)
+        return model.model_validate(
+            decode_base64(raw, bytes_plan(model), op=op, where=f"state_json.{slot}")
+        )
     except ValidationError as exc:
         raise describe_validation(
             op, f"state_json.{slot}", exc, expected=model.__name__
@@ -465,7 +512,14 @@ def read_arguments(
         if parameter.name not in document:
             continue
         try:
-            checked = parameter.validator.validate_python(document[parameter.name])
+            checked = parameter.validator.validate_python(
+                decode_base64(
+                    document[parameter.name],
+                    parameter.plan,
+                    op=op,
+                    where=parameter.name,
+                )
+            )
         except ValidationError as exc:
             raise describe_validation(op, parameter.name, exc) from exc
         arguments[parameter.name] = checked
@@ -665,6 +719,7 @@ _RESOLVERS: Final[dict[str, Callable[[_Scope], object]]] = {
         for prefix, accessor in _AUTHENTICATED.items()
     },
     "online": lambda scope: scope.online(),
+    "batch": lambda scope: scope.batch(),
     "generated_token": lambda scope: scope.authenticated().tokens.generation(
         state=scope.handle(GeneratedTokenResumeState)
     ),

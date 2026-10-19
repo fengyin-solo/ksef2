@@ -2,14 +2,25 @@
 
 ### Added
 
+- `PreparedBatch.to_sensitive_dict()` and `to_sensitive_json()` export a prepared
+  batch in full, including encrypted parts as URL-safe Base64 with `=` padding
+  and the AES material. Save the output in protected storage and restore it with
+  `PreparedBatch.model_validate_json()` for upload recovery after a restart.
+  Generic model dumps and repr still hide payload bytes and keys (#270).
+
 - `ksef2.bridge.manifest()` describes the public sync API as JSON Schema, including
   resume-state stand-ins for handles, sessions, pages and exports, and lists every
   exported `KSeFException` subclass with its `code` and parent. A collection
   operation declares an optional `cursor` and returns one `Page`. The methods of a
-  live pager, the batch operations, whose prepared payload has no complete JSON form
-  yet, and the handle members only a freshly created handle holds, such as a
-  generated token's one-time `token`, are listed under `excluded` with that reason
-  (#270).
+  live pager and the handle members only a freshly created handle holds, such as
+  a generated token's one-time `token`, are listed under `excluded` with that reason.
+  Batch operations are published; only `batch.upload_parts` is excluded because
+  a rebuilt session holds no payload. Use `batch_service.upload_parts` with the
+  saved session state and prepared batch instead.
+  Every bytes value, including one inside a model, is described as standard
+  Base64 (`contentEncoding: base64`), and a union that accepts bytes is described
+  without its text and path alternatives, which a JSON string could not be told
+  apart from (#270).
 
 - The bridge manifest is committed at `src/ksef2/bridge/manifest.json`, so a binding
   can read the public sync surface without running Python. `just gen-manifest`
@@ -20,7 +31,8 @@
   state_json)`, so a binding of any language drives the SDK over one JSON boundary.
   Arguments, the state of the session (`environment`, `authentication`,
   `online_session`, `batch_session`, `handle`) and the result cross as JSON, bytes go
-  in and out as standard Base64 with `=` padding, and a collection operation takes a
+  in and out as standard Base64 with `=` padding, including inside models. A value
+  spelled otherwise is refused with `ARGUMENT_ERROR`, and a collection operation takes a
   `cursor` and answers with `next_cursor`. Every call returns one document: `{"ok":
   true, "result": ..., "state": ...}`, or `{"ok": false, "error": {...}}` carrying
   `type`, `code`, `message`, `hint` and `context`, plus `status_code`, `ksef_code`,
@@ -34,7 +46,10 @@
   bodies stay out of the error JSON. Calls from several threads run concurrently and
   share one client per environment. `ksef2.bridge.close()` waits for the calls in flight
   and then releases the clients, and the `client.close` operation does the same for its
-  own environment (#271).
+  own environment (#271). Prepare, open, and upload a batch in separate calls to retry
+  a failed upload with the same session state and prepared payload; changed payloads
+  are refused before upload, prepared batches hold keys and encrypted invoices, and
+  failed one-call `batch_service.submit` uploads cannot be resumed through the bridge.
 
 - Save and resume every handle KSeF finishes asynchronously. `resume_state()` on a
   `GeneratedToken`, `CertificateEnrollment`, `PermissionOperation` or

@@ -6,8 +6,10 @@
   resume-state stand-ins for handles, sessions, pages and exports, and lists every
   exported `KSeFException` subclass with its `code` and parent. A collection
   operation declares an optional `cursor` and returns one `Page`. The methods of a
-  live pager, and the batch operations, whose prepared payload has no complete JSON
-  form yet, are listed under `excluded` with that reason (#270).
+  live pager, the batch operations, whose prepared payload has no complete JSON form
+  yet, and the handle members only a freshly created handle holds, such as a
+  generated token's one-time `token`, are listed under `excluded` with that reason
+  (#270).
 
 - Run any operation the manifest reports through `ksef2.bridge.call(op, args_json,
   state_json)`, so a binding of any language drives the SDK over one JSON boundary.

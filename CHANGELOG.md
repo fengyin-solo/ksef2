@@ -2,6 +2,11 @@
 
 ### Added
 
+- `PreparedBatch.to_sensitive_dict()` and `to_sensitive_json()` export a prepared
+  batch in full, including encrypted parts as URL-safe Base64 with `=` padding
+  and the AES material. Save the output in protected storage and restore it with
+  `PreparedBatch.model_validate_json()` for upload recovery after a restart.
+  Generic model dumps and repr still hide payload bytes and keys (#270).
 - Save and resume every handle KSeF finishes asynchronously. `resume_state()` on a
   `GeneratedToken`, `CertificateEnrollment`, `PermissionOperation` or
   `InvoiceSubmission` returns a versioned state model with `to_dict()`,

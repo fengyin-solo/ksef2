@@ -93,6 +93,11 @@ Persist and restore state with the explicit methods instead:
 - `to_sensitive_dict()` on secret-bearing response models such as `UpoPage`,
   `GenerateTokenResponse` and `ExportHandle` exports the secret fields for
   deliberate, protected handling.
+- `to_sensitive_dict()` and `to_sensitive_json()` on `PreparedBatch` export the
+  encrypted parts and AES material in full for protected storage. Restore the
+  batch with `PreparedBatch.model_validate()` or `model_validate_json()` and pass
+  it with the saved session state to recover an upload after a restart. Generic
+  dumps and repr keep the payload and keys hidden.
 - `to_sensitive_dict()` and `to_sensitive_json()` on a completed export snapshot
   (`ExportedInvoicesData`, from `ExportedInvoices.to_model()`) keep the presigned
   package part URLs, which `model_dump()` and `repr()` drop. Only that output

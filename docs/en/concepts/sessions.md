@@ -157,6 +157,25 @@ bytes and keys. State JSON deliberately includes secrets and upload URLs, but
 not the prepared bytes. Older states without a payload digest still support
 status and UPO access; they cannot reattach an upload payload.
 
+To keep a prepared batch across a restart, save `prepared.to_sensitive_json()`
+in protected storage. Restore it with `PreparedBatch.model_validate_json(saved)`
+and pass it as `prepared_batch=` together with the saved session state. The export
+is credential material: it contains the AES key and encrypted invoices. Generic
+model dumps and repr never contain them.
+
+```python
+from ksef2.models import PreparedBatch
+
+# Save both strings in protected storage before restarting.
+saved = prepared.to_sensitive_json()
+saved_state = session.resume_state().to_json()
+
+# After restarting, read both strings from protected storage.
+restored = PreparedBatch.model_validate_json(saved)
+with auth.batch_session(state=saved_state, prepared_batch=restored) as session:
+    session.upload_parts()
+```
+
 ## State, status, and history
 
 These three concepts are easy to mix up:

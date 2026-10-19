@@ -2,6 +2,12 @@
 
 ### Added
 
+- `PreparedBatch.to_sensitive_dict()` and `to_sensitive_json()` export a prepared
+  batch in full, including encrypted parts as URL-safe Base64 with `=` padding
+  and the AES material. Save the output in protected storage and restore it with
+  `PreparedBatch.model_validate_json()` for upload recovery after a restart.
+  Generic model dumps and repr still hide payload bytes and keys (#270).
+
 - `ksef2.bridge.manifest()` describes the public sync API as JSON Schema, including
   resume-state stand-ins for handles, sessions, pages and exports, and lists every
   exported `KSeFException` subclass with its `code` and parent. A collection

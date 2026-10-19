@@ -30,6 +30,9 @@ class TestTokensResponseMapper:
     def test_map_status_failed(self):
         assert from_spec(spec.AuthenticationTokenStatus.Failed) == "failed"
 
+    def test_map_permission_introspection(self):
+        assert from_spec(spec.TokenPermissionType.Introspection) == "introspection"
+
     def test_map_permission_invoice_read(self):
         assert from_spec(spec.TokenPermissionType.InvoiceRead) == "invoice_read"
 

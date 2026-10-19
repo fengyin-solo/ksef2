@@ -1,4 +1,5 @@
 import datetime
+import json
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -18,6 +19,7 @@ from ksef2._core.exceptions import (
     KSeFAuthError,
     KSeFAuthPollingTimeoutError,
     KSeFAuthTokenRedemptionError,
+    KSeFTransportError,
     KSeFUnsupportedEnvironmentError,
     KSeFValidationError,
     NoCertificateAvailableError,
@@ -29,6 +31,7 @@ from ksef2._domain.models.encryption import PublicKeyCertificate
 from ksef2._infra.schema.api.supp.auth import InitTokenAuthenticationRequest
 from ksef2._infra.schema.api import spec
 from tests.unit.fakes.transport import FakeTransport
+from tests.unit.flavors import Flavor
 from tests.unit.helpers import VALID_BASE64
 from tests.unit.helpers import legacy_api
 
@@ -145,10 +148,20 @@ class TestAuthClient:
             "Authorization": f"Bearer {init_response.authenticationToken.token}"
         }
 
+    @pytest.mark.parametrize(
+        ("failure", "message"),
+        [
+            (httpx.ReadError, "redemption response lost"),
+            (httpx.DecodingError, "redemption body undecodable"),
+        ],
+        ids=["read", "decoding"],
+    )
     @patch("ksef2._clients.auth.encrypt_token", return_value=VALID_BASE64)
     def test_with_token_reports_ambiguous_lost_redemption_response(
         self,
         _mock_encrypt_token: MagicMock,
+        failure: type[httpx.RequestError],
+        message: str,
         fake_transport: FakeTransport,
         domain_public_key_cert: BaseFactory[PublicKeyCertificate],
         auth_challenge_resp: BaseFactory[spec.AuthenticationChallengeResponse],
@@ -161,7 +174,7 @@ class TestAuthClient:
         status_response = auth_status_resp.build(
             status=spec.StatusInfo(code=200, description="Authenticated")
         )
-        transport_error = httpx.ReadError("redemption response lost")
+        transport_error = failure(message)
         fake_transport.enqueue(
             auth_challenge_resp.build(timestampMs=1735689600000).model_dump(mode="json")
         )
@@ -666,3 +679,86 @@ class TestSessionManagementClient:
         assert call.path == AuthRoutes.TERMINATE_AUTH_SESSION.format(
             referenceNumber="ref-123"
         )
+
+
+@pytest.mark.parametrize(
+    ("failure", "message"),
+    [
+        (httpx.ReadError, "redemption response lost"),
+        (httpx.DecodingError, "redemption body undecodable"),
+    ],
+    ids=["read", "decoding"],
+)
+def test_redemption_transport_error_keeps_the_redemption_contract(
+    flavor: Flavor,
+    failure: type[httpx.RequestError],
+    message: str,
+    domain_public_key_cert: BaseFactory[PublicKeyCertificate],
+    auth_challenge_resp: BaseFactory[spec.AuthenticationChallengeResponse],
+    auth_init_resp: BaseFactory[spec.AuthenticationInitResponse],
+    auth_status_resp: BaseFactory[spec.AuthenticationOperationStatusResponse],
+) -> None:
+    """The wrapped request failure still ends as the one-shot redemption error."""
+    requests: list[httpx.Request] = []
+    challenge = auth_challenge_resp.build(timestampMs=1735689600000).model_dump(
+        mode="json"
+    )
+    init = auth_init_resp.build().model_dump(mode="json")
+    status = auth_status_resp.build(
+        status=spec.StatusInfo(code=200, description="Authenticated")
+    ).model_dump(mode="json")
+
+    def _handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        path = request.url.path
+        if path.endswith(AuthRoutes.REDEEM_TOKEN.path):
+            raise failure(message, request=request)
+        if path.endswith(AuthRoutes.CHALLENGE.path):
+            return httpx.Response(200, json=challenge, request=request)
+        if path.endswith(AuthRoutes.TOKEN_AUTH.path):
+            return httpx.Response(200, json=init, request=request)
+        if request.method == "GET":
+            return httpx.Response(200, json=status, request=request)
+        raise AssertionError(f"unexpected request {request.method} {path}")
+
+    store = CertificateStore()
+    _ = store.load([domain_public_key_cert.build(usage=["ksef_token_encryption"])])
+
+    http_client = (httpx.AsyncClient if flavor.is_async else httpx.Client)(
+        base_url=Environment.PRODUCTION.base_url,
+        transport=httpx.MockTransport(_handle),
+    )
+    client = flavor.root_client(
+        environment=Environment.PRODUCTION,
+        http_client=http_client,
+        certificate_store=store,
+    )
+    auth_module = "async_auth" if flavor.is_async else "auth"
+    try:
+        with patch(
+            f"ksef2._clients.{auth_module}.encrypt_token", return_value=VALID_BASE64
+        ):
+            with pytest.raises(KSeFAuthTokenRedemptionError) as exc_info:
+                _ = flavor.run(
+                    client.authentication.with_token(
+                        ksef_token="ksef-token", nip="1234567890"
+                    )
+                )
+    finally:
+        flavor.close(client)
+        flavor.close(http_client)
+
+    error = exc_info.value
+    assert isinstance(error, KSeFTransportError)
+    assert isinstance(error.__cause__, failure)
+    assert error.outcome_ambiguous is True
+    assert error.method == "POST"
+    assert error.path == AuthRoutes.REDEEM_TOKEN.path
+    redemption_requests = [
+        request
+        for request in requests
+        if request.url.path.endswith(AuthRoutes.REDEEM_TOKEN.path)
+    ]
+    assert len(redemption_requests) == 1
+    assert "ksef-token" not in str(error)
+    assert "ksef-token" not in json.dumps(error.context, default=str)

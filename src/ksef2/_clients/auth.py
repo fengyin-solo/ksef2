@@ -56,14 +56,14 @@ class AuthClient:
     """Entry point for creating authenticated SDK clients.
 
     Catch ``KSeFException`` for SDK-classified failures raised by this branch,
-    and ``httpx.HTTPError`` for transport failures.
+    including ``KSeFTransportError`` for transport failures.
 
     Raises:
         KSeFApiError: If KSeF returns an API error response. Catch
             ``KSeFAuthError`` for authentication or authorization failures and
             ``KSeFRateLimitError`` for throttling.
         KSeFValidationError: If a KSeF response cannot be parsed into SDK models.
-        httpx.HTTPError: If the HTTP transport fails before KSeF returns a response.
+        KSeFTransportError: If the HTTP request fails to produce a usable response.
     """
 
     def __init__(
@@ -414,7 +414,10 @@ class AuthClient:
         """Redeem the temporary authentication token for access and refresh tokens."""
         try:
             response = self._auth_ep.redeem_token(bearer_token=auth_token)
-        except httpx.TransportError as exc:
+        except exceptions.KSeFTransportError as exc:
+            cause: BaseException = exc.__cause__ or exc
+            raise exceptions.KSeFAuthTokenRedemptionError() from cause
+        except httpx.RequestError as exc:
             raise exceptions.KSeFAuthTokenRedemptionError() from exc
         return from_spec(response)
 

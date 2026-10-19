@@ -5,12 +5,17 @@ import inspect
 from collections.abc import Iterable
 from typing import Any
 
+import httpx
+
+from ksef2._clients.async_base import AsyncClient
 from ksef2._clients.async_authenticated import AsyncAuthenticatedClient
 from ksef2._clients.async_batch import AsyncBatchSessionClient
 from ksef2._clients.async_online import AsyncOnlineSessionClient
 from ksef2._clients.authenticated import AuthenticatedClient
+from ksef2._clients.base import Client
 from ksef2._clients.batch import BatchSessionClient
 from ksef2._clients.online import OnlineSessionClient
+from ksef2._config import Environment, TransportConfig
 from ksef2._core.stores import CertificateStore
 from ksef2._domain.models.auth import AuthTokens
 from ksef2._domain.models.batch import BatchSessionResumeState, PreparedBatch
@@ -51,6 +56,31 @@ class Flavor:
         if self.is_async:
             return asyncio.run(_collect(iterable))
         return list(iterable)
+
+    def root_client(
+        self,
+        *,
+        environment: Environment,
+        http_client: httpx.Client | httpx.AsyncClient,
+        transport_config: TransportConfig | None = None,
+        certificate_store: CertificateStore | None = None,
+    ) -> Client | AsyncClient:
+        """Build the public root client of this flavour over a caller-owned HTTP client."""
+        if self.is_async:
+            assert isinstance(http_client, httpx.AsyncClient)
+            return AsyncClient(
+                environment,
+                http_client=http_client,
+                transport_config=transport_config,
+                certificate_store=certificate_store,
+            )
+        assert isinstance(http_client, httpx.Client)
+        return Client(
+            environment,
+            http_client=http_client,
+            transport_config=transport_config,
+            certificate_store=certificate_store,
+        )
 
     def client(self, sync_cls: type[Any], async_cls: type[Any]) -> Any:
         """Build a branch client of this flavour over the fake transport."""

@@ -133,6 +133,47 @@ innego procesu, a wyszukiwanie wznowi się na stronie po niej: kursor
 wyszukiwania faktur zawiera filtry, parametry i granicę obcięcia żądania, które
 wznawia.
 
+## Błędy transportu
+
+Wcześniej każde nieudane żądanie HTTP docierało do wywołującego jako wyjątek
+`httpx`, więc obsługa błędów musiała znać klienta HTTP użytego przez SDK:
+
+```python
+import httpx
+
+try:
+    page = auth.invoices.search(filters).first_page()
+except httpx.HTTPError as exc:
+    retry_later()
+```
+
+Teraz ten sam błąd to `KSeFTransportError`, a `KSeFException` już go obejmuje:
+
+```python
+from ksef2 import KSeFException, KSeFTransportError
+
+try:
+    page = auth.invoices.search(filters).first_page()
+except KSeFTransportError as exc:
+    if exc.outcome_ambiguous:
+        check_what_ksef_recorded()
+    else:
+        retry_later()
+except KSeFException as exc:
+    report(exc)
+```
+
+`KSeFTransportError` nie dziedziczy po `httpx.HTTPError`, więc istniejący blok
+`except httpx.HTTPError` już się nie uruchomi i musi wskazać klasę SDK. Obejmuje
+każdy `httpx.RequestError`: błędy połączenia i timeouty, odpowiedź, której klient
+HTTP nie odkodował, oraz porzucony łańcuch przekierowań. Oryginalny wyjątek
+`httpx` pozostaje dostępny jako `__cause__`; liczba prób, powtarzalne statusy i
+lista żądań bezpiecznych do ponowienia pozostają bez zmian.
+`KSeFExternalTransferError`, `KSeFBatchUploadError` i
+`KSeFAuthTokenRedemptionError` są teraz podklasami `KSeFTransportError` i zachowują
+własne kody, więc jedno `except KSeFTransportError` obejmuje każdy błąd, po którym
+wywołujący nie dostał użytecznej odpowiedzi.
+
 ## Wykrywanie wycofywanego API
 
 Python zwykle ukrywa `DeprecationWarning` w importowanych modułach aplikacji.

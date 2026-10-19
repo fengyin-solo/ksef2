@@ -21,8 +21,8 @@ class OperationHandle(ABC, Generic[_TStatus, _TResult]):
     to read the operation's status, when it is still pending and how to turn the
     finished status into the result returned by ``wait()``.
 
-    Catch ``KSeFException`` for SDK-classified failures raised while waiting, and
-    ``httpx.HTTPError`` for transport failures.
+    Catch ``KSeFException`` for SDK-classified failures raised while waiting,
+    including ``KSeFTransportError`` for transport failures.
     """
 
     def __init__(self, reference_number: str) -> None:

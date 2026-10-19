@@ -58,14 +58,14 @@ class BatchService:
     """High-level workflow for preparing and sending invoice batches.
 
     Catch ``KSeFException`` for SDK-classified failures raised by this service,
-    and ``httpx.HTTPError`` for transport failures.
+    including ``KSeFTransportError`` for transport failures.
 
     Raises:
         KSeFApiError: If KSeF returns an API error response. Catch
             ``KSeFAuthError`` for authentication or authorization failures and
             ``KSeFRateLimitError`` for throttling.
         KSeFValidationError: If a KSeF response cannot be parsed into SDK models.
-        httpx.HTTPError: If the HTTP transport fails before KSeF returns a response.
+        KSeFTransportError: If the HTTP request fails to produce a usable response.
     """
 
     def __init__(

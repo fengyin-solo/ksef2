@@ -312,14 +312,7 @@ def is_pager(annotation: object) -> bool:
 
 
 def _pager_origin(annotation: object) -> type[object] | None:
-    """Return the pager class an annotation stands for, if it names one.
-
-    Args:
-        annotation: Annotation read from a public signature.
-
-    Returns:
-        The pager class itself, or the class a parameterised form stands for.
-    """
+    """Return the pager class an annotation stands for, if it names one."""
     candidate = annotation if isinstance(annotation, type) else type_origin(annotation)
     if not isinstance(candidate, type):
         return None
@@ -352,12 +345,6 @@ def _item_type_from_bases(cls: type[object]) -> object | None:
     ``InvoiceSearchPager`` reaches ``InvoiceMetadata`` through
     ``Pager[InvoiceMetadata]``, which ``__orig_bases__`` keeps even though the
     inherited method annotations mention only the class' own type variable.
-
-    Args:
-        cls: Pager class to inspect.
-
-    Returns:
-        The bound item type, or ``None`` when the base leaves it open.
     """
     for candidate in cls.__mro__:
         for base in original_bases(candidate):

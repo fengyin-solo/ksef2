@@ -111,27 +111,12 @@ class _Form:
 
 
 def _public_names(cls: type[object]) -> list[str]:
-    """List the member names a manifest reader can reach on *cls*.
-
-    Args:
-        cls: Walked class.
-
-    Returns:
-        Public, non-dunder names in declaration order of ``dir()``.
-    """
+    """List the member names a manifest reader can reach on the class."""
     return [name for name in dir(cls) if not name.startswith("_")]
 
 
 def _callable_of(member: object) -> object | None:
-    """Return the function whose signature describes a member.
-
-    Args:
-        member: Value read from the class.
-
-    Returns:
-        The function, its wrapped getter for a property or cached property, or
-        ``None`` when the member is not callable.
-    """
+    """Return the function whose signature describes a member."""
     if isinstance(member, property):
         return cast("object | None", member.fget)
     if isinstance(member, cached_property):
@@ -144,14 +129,7 @@ def _callable_of(member: object) -> object | None:
 
 
 def _document(function: object) -> str:
-    """Return the first line of a member's docstring.
-
-    Args:
-        function: Function, property getter, or ``None`` for a plain attribute.
-
-    Returns:
-        The summary line, or an empty string when there is no docstring.
-    """
+    """Return the first line of a member's docstring."""
     if function is None:
         return ""
     doc = cast("object | None", getattr(function, "__doc__", None))
@@ -183,14 +161,7 @@ def _overload_forms(cls: type[object], name: str) -> list[_Form]:
 
 
 def _implementation_form(fn: object) -> _Form:
-    """Build a form from a callable's runtime signature.
-
-    Args:
-        fn: Function, property getter, or cached-property function.
-
-    Returns:
-        The form built from the runtime signature.
-    """
+    """Build a form from a callable's runtime signature."""
     signature = inspect.signature(cast("Callable[..., object]", fn))
     hints = cast(
         "dict[str, object]",
@@ -220,16 +191,8 @@ def _implementation_form(fn: object) -> _Form:
 def _without_none(annotation: object) -> object:
     """Return the type a parameter the caller must supply accepts.
 
-    A parameter the data form always sends is not optional, so the ``None`` the
-    Python signature allows for the sake of the other form is not a value a binding
-    may send and leaves the schema.
-
-    Args:
-        annotation: Annotation of a required parameter of one form.
-
-    Returns:
-        The annotation without its ``None`` alternative, or itself when it allows
-        no ``None``.
+    Required data-form parameters exclude ``None``, which the Python signature
+    allows only to support the other form.
     """
     alternatives: tuple[object, ...] = typing.get_args(annotation)
     kept: tuple[object, ...] = tuple(
@@ -245,25 +208,10 @@ def _without_none(annotation: object) -> object:
 def _as_data_form(cls: type[object], name: str, form: _Form) -> _Form:
     """Rewrite a member's form into the one a caller sends as data.
 
-    A member that takes either live cryptography objects or the model holding the
-    same material is described by that model: the live parameters are dropped and it
-    becomes required, because its ``None`` default only says "the other form was
-    used", and a binding cannot choose between two forms. A member whose every
-    parameter is already data is returned as it stands.
-
-    Args:
-        cls: Walked class that declares the member.
-        name: Member name.
-        form: Form read from the signature.
-
-    Returns:
-        The form without its live parameters, each parameter the data form needs
-        reported as required and described without the ``None`` the signature allows
-        for the other form's sake.
-
-    Raises:
-        ManifestError: The declared data form names a parameter the member does not
-            have, so the declaration and the signature disagree.
+    Live cryptography parameters give way to the required data model, because its
+    ``None`` default only indicates that the other form was used.
+    Forms already using only data remain unchanged.
+    A declared data-form parameter absent from the signature raises ``ManifestError``.
     """
     declared = DATA_FORMS.get((cls, name))
     if declared is None:
@@ -306,15 +254,8 @@ def _as_data_form(cls: type[object], name: str, form: _Form) -> _Form:
 def _forms_of(cls: type[object], name: str, member: object) -> list[_Form]:
     """Collect every callable form of a member.
 
-    Args:
-        cls: Walked class.
-        name: Member name.
-        member: Value read from the class.
-
-    Returns:
-        The ``@overload`` forms when there are any, otherwise the single form read
-        from the runtime signature, each narrowed to the form a caller sends as
-        data. Empty for a member with no signature.
+    Registered overloads take precedence over the runtime signature, and all forms
+    are narrowed to the data a caller can send.
     """
     fn = _callable_of(member)
     if fn is None:
@@ -330,12 +271,6 @@ def _is_json_scalar(value: object) -> bool:
 
     Callables and object instances are left out: they describe what Python would
     do, not what a caller would send.
-
-    Args:
-        value: Declared default value.
-
-    Returns:
-        True for the JSON scalars, including ``None``.
     """
     return value is None or type(value) in (bool, int, float, str)
 
@@ -348,18 +283,8 @@ def _parameter_entries(
 ) -> list[Schema]:
     """Describe the parameters of one form.
 
-    Args:
-        builder: Schema builder that collects the named schemas.
-        form: Form to describe.
-        bindings: Type variables the walked class already filled in.
-        owner: Class the member belongs to, used to resolve ``Self``.
-
-    Returns:
-        One entry per parameter, in signature order.
-
-    Raises:
-        UnsupportedSignature: A parameter has no JSON Schema.
-        HandsBackAnotherClient: A parameter is a live object with no saved form.
+    A parameter without JSON Schema raises ``UnsupportedSignature``, while a live
+    object without a saved form raises ``HandsBackAnotherClient``.
     """
     entries: list[Schema] = []
     for parameter in form.parameters:
@@ -380,15 +305,7 @@ def _parameter_entries(
 
 
 def _reachable_definitions(builder: SchemaBuilder, names: set[str]) -> set[str]:
-    """Close a set of schema names over the references they make.
-
-    Args:
-        builder: Schema builder holding the named schemas.
-        names: Schema names a signature refers to directly.
-
-    Returns:
-        Those names plus every name they reach transitively.
-    """
+    """Close a set of schema names over the references they make."""
     seen: set[str] = set()
     pending = list(names)
     while pending:
@@ -416,16 +333,6 @@ def _sensitive_names(
     a secret the receiver holds, when a parameter or the result is authentication
     state as a whole, when the result is a one-time token, or when a schema the
     operation touches keeps that field out of ``repr()``.
-
-    Args:
-        builder: Schema builder holding the named schemas.
-        member: Member name, which is itself a secret for a few properties.
-        entries: Parameter entries of the operation.
-        returns: Schema of the result.
-        hands_back_token: Whether the result carries a one-time token.
-
-    Returns:
-        Sorted parameter and result field names.
     """
     names: set[str] = set()
     returned_refs = ref_names(returns)
@@ -461,22 +368,9 @@ def _operation(
 ) -> dict[str, object]:
     """Build one operation entry.
 
-    Args:
-        builder: Schema builder that collects the named schemas.
-        target: Walked class the member belongs to.
-        name: Member name.
-        form: The form this operation describes.
-        summary: First line of the member's docstring.
-        bindings: Type variables the walked class already filled in.
-        state: Schema of the state that rebuilds the receiver, or ``None``.
-
-    Returns:
-        An operation object ready for the manifest.
-
-    Raises:
-        UnsupportedSignature: Part of the signature has no JSON Schema.
-        HandsBackAnotherClient: The result is another walked client.
-        ManifestError: A collection member already declares a cursor parameter.
+    A signature without JSON Schema raises ``UnsupportedSignature``, a client result
+    raises ``HandsBackAnotherClient``, and a collection member that already declares
+    a cursor parameter raises ``ManifestError``.
     """
     entries = _parameter_entries(builder, form, bindings, target.cls)
     if is_pager(form.returns):
@@ -516,15 +410,7 @@ def _operation(
 def _walk_class(
     builder: SchemaBuilder, target: WalkedClass
 ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
-    """Turn one walked class into operations and exclusions.
-
-    Args:
-        builder: Schema builder that collects the named schemas.
-        target: Class to walk once.
-
-    Returns:
-        The operations and exclusions found on that class.
-    """
+    """Turn one walked class into operations and exclusions."""
     operations: list[dict[str, object]] = []
     excluded: list[dict[str, object]] = []
     bindings = typevar_bindings(target.cls)
@@ -577,16 +463,7 @@ def _walk_class(
 
 
 def _excluded(target: WalkedClass, name: str, reason: str) -> dict[str, object]:
-    """Build one exclusion entry.
-
-    Args:
-        target: Walked class the member belongs to.
-        name: Member name.
-        reason: Rule that keeps the member out of the operations.
-
-    Returns:
-        An exclusion object naming the member and the reason.
-    """
+    """Build one exclusion entry."""
     return {"id": f"{target.prefix}.{name}", "reason": reason}
 
 
@@ -627,12 +504,7 @@ def exception_catalogue() -> list[dict[str, object]]:
 def _reject_non_json(value: object, path: str) -> None:
     """Refuse a manifest value that ``json.dumps`` could not write faithfully.
 
-    Args:
-        value: Value to check.
-        path: Location of that value in the manifest, for the message.
-
-    Raises:
-        ManifestError: The value is not plain JSON data.
+    Non-JSON data raises ``ManifestError``.
     """
     if value is None or type(value) in (str, bool, int, float):
         return
@@ -701,12 +573,7 @@ def _check_unique(
 ) -> None:
     """Refuse an id that two entries claim.
 
-    Args:
-        operations: Built operations.
-        excluded: Built exclusions.
-
-    Raises:
-        ManifestError: An id appears more than once, in one list or in both.
+    An id repeated within or across the two lists raises ``ManifestError``.
     """
     seen: dict[str, str] = {}
     for kind, entries in (("operation", operations), ("exclusion", excluded)):
@@ -723,11 +590,7 @@ def _check_unique(
 def _check_refs(data: Mapping[str, object]) -> None:
     """Refuse a reference that points at no schema.
 
-    Args:
-        data: Built manifest.
-
-    Raises:
-        ManifestError: A ``$ref`` names something ``$defs`` does not hold.
+    A ``$ref`` absent from ``$defs`` raises ``ManifestError``.
     """
     definitions = cast("Mapping[str, object]", data["$defs"])
     missing = sorted(ref_names(data) - set(definitions))

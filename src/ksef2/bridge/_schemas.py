@@ -171,14 +171,7 @@ _UNION_ORIGIN: Final = cast(object, typing.Union)  # pyright: ignore[reportDepre
 
 
 def _import_optional(module: str) -> ModuleType | None:
-    """Import *module*, or return ``None`` when its extras are not installed.
-
-    Args:
-        module: Dotted module name to import.
-
-    Returns:
-        The imported module, or ``None`` when importing it failed.
-    """
+    """Import an optional module, or return ``None`` when its extras are not installed."""
     try:
         return importlib.import_module(module)
     except ImportError:
@@ -188,15 +181,7 @@ def _import_optional(module: str) -> ModuleType | None:
 def _scanned_modules(
     names: tuple[str, ...], *, with_submodules: bool
 ) -> Iterator[ModuleType]:
-    """Yield the modules whose members describe the public API.
-
-    Args:
-        names: Dotted module names to scan.
-        with_submodules: Also scan the submodules of each package.
-
-    Yields:
-        Each importable module in the scan.
-    """
+    """Yield the modules whose members describe the public API."""
     for name in names:
         module = _import_optional(name)
         if module is None:
@@ -211,14 +196,7 @@ def _scanned_modules(
 
 
 def _is_literal_alias(member: object) -> bool:
-    """Say whether a module member is a public ``Literal`` alias.
-
-    Args:
-        member: Value read from a model module.
-
-    Returns:
-        True for a ``TypeAliasType`` whose value is a ``Literal``.
-    """
+    """Say whether a module member is a public ``Literal`` alias."""
     if not isinstance(member, typing.TypeAliasType):
         return False
     return type_origin(alias_value(member)) is typing.Literal
@@ -272,12 +250,7 @@ def defining_objects() -> dict[str, set[object]]:
 def _owner_of(name: str, index: Mapping[str, set[object]]) -> str:
     """Name the object a schema key stands for.
 
-    Args:
-        name: Schema key to resolve.
-        index: Index built by ``defining_objects``.
-
-    Returns:
-        A stable label used to tell an honest repeat from a name clash.
+    Stable labels distinguish repeated definitions from name clashes.
     """
     owners = index.get(name)
     if owners is None or len(owners) != 1:
@@ -288,25 +261,13 @@ def _owner_of(name: str, index: Mapping[str, set[object]]) -> str:
 def _direct_owner(obj: object, name: str) -> str:
     """Name the object a schema was built from.
 
-    Args:
-        obj: Model, enum or alias the schema came from.
-        name: Name the schema is filed under.
-
-    Returns:
-        A label that matches what ``_owner_of`` reports for the same object.
+    The label matches what ``_owner_of`` reports for the same object.
     """
     return f"{module_of(obj)}.{name}"
 
 
 def _is_annotated(annotation: object) -> bool:
-    """Say whether an annotation carries field metadata.
-
-    Args:
-        annotation: Annotation read from a public signature.
-
-    Returns:
-        True for ``Annotated[...]`` forms.
-    """
+    """Say whether an annotation carries field metadata."""
     return attribute_of(annotation, "__metadata__") is not None
 
 
@@ -316,12 +277,6 @@ def _is_data_leaf(annotation: object) -> bool:
     A class the SDK does not treat as data, a callable, and an unannotated
     ``object`` are refused here, so they reach the caller as an excluded
     signature instead of a permissive schema.
-
-    Args:
-        annotation: Annotation read from a public signature.
-
-    Returns:
-        True when Pydantic should be asked for the schema.
     """
     if annotation is typing.Any or annotation is object:
         return False
@@ -336,24 +291,13 @@ def _is_data_leaf(annotation: object) -> bool:
 def _is_json_document(schema: Schema) -> bool:
     """Say whether a schema document says something about the JSON it allows.
 
-    Args:
-        schema: Schema built for an annotation.
-
-    Returns:
-        False for the empty document Pydantic gives ``object`` and ``Any``.
+    The empty document Pydantic gives ``object`` and ``Any`` returns ``False``.
     """
     return any(key in schema for key in _SCHEMA_KEYS)
 
 
 def _string_enum_values(schema: Schema) -> tuple[str, ...] | None:
-    """Return the values of a string enum schema, or ``None`` for other shapes.
-
-    Args:
-        schema: Schema to inspect.
-
-    Returns:
-        The declared values when the schema is a string enum.
-    """
+    """Return the values of a string enum schema, or ``None`` for other shapes."""
     if schema.get("type") not in (None, "string"):
         return None
     values = schema.get("enum")
@@ -369,13 +313,6 @@ def _page_item_type(annotation: object) -> object | None:
 
     Pydantic builds a real class for ``Page[TokenInfo]``, so the item type lives
     in the generic metadata rather than in ``__args__``.
-
-    Args:
-        annotation: Annotation read from a public signature.
-
-    Returns:
-        The item type the page carries, or ``None`` when the annotation is not a
-        page or names no item type.
     """
     if not isinstance(annotation, type) or not issubclass(annotation, Page):
         return None
@@ -389,14 +326,7 @@ def _page_item_type(annotation: object) -> object | None:
 
 
 def _is_union(annotation: object) -> bool:
-    """Say whether an annotation is a union of alternatives.
-
-    Args:
-        annotation: Annotation read from a public signature.
-
-    Returns:
-        True for ``X | Y`` and for the ``typing.Optional`` form.
-    """
+    """Say whether an annotation is a union of alternatives."""
     return (
         isinstance(annotation, types.UnionType)
         or type_origin(annotation) is _UNION_ORIGIN
@@ -406,17 +336,8 @@ def _is_union(annotation: object) -> bool:
 def _session_state_of(annotation: type[object]) -> object:
     """Return the saved state that names a client object in a parameter.
 
-    A parameter that accepts a live session accepts the state a caller saved for
-    it, so the state is what the schema can describe.
-
-    Args:
-        annotation: Client class used as an annotation.
-
-    Returns:
-        The resume-state model of that class.
-
-    Raises:
-        UnsupportedSignature: The class has no saved form to describe.
+    A live session is described by its saved state, and a class without a saved
+    form raises ``UnsupportedSignature``.
     """
     state = resume_state_for(annotation)
     if state is None:
@@ -425,30 +346,17 @@ def _session_state_of(annotation: type[object]) -> object:
 
 
 def _is_secret_annotation(annotation: object) -> bool:
-    """Say whether an annotation is, or carries, a ``SecretStr`` or ``SecretBytes``.
-
-    Args:
-        annotation: Field annotation to inspect.
-
-    Returns:
-        True when a secret type appears anywhere inside the annotation.
-    """
+    """Say whether an annotation is, or carries, a ``SecretStr`` or ``SecretBytes``."""
     if annotation in _SECRET_ANNOTATIONS:
         return True
     return any(_is_secret_annotation(arg) for arg in type_args(annotation))
 
 
 def _sensitive_field_names(model: type[BaseModel]) -> set[str]:
-    """Return the fields of *model* that hold secrets.
+    """Return the fields of a model that hold secrets.
 
     A field is sensitive when it stays out of ``repr()``, stays out of a generic
     dump, or is typed as a ``SecretStr`` or ``SecretBytes``.
-
-    Args:
-        model: Model class to inspect.
-
-    Returns:
-        Field names that carry credentials, keys or presigned URLs.
     """
     names: set[str] = set()
     for name, field in model.model_fields.items():
@@ -461,13 +369,9 @@ def _sensitive_field_names(model: type[BaseModel]) -> set[str]:
 
 
 def _model_closure(model: type[BaseModel]) -> Iterator[type[BaseModel]]:
-    """Yield *model* and every model reachable through its fields.
+    """Yield a model and every model reachable through its fields.
 
-    Args:
-        model: Model to start from.
-
-    Yields:
-        Each model class in the graph, visited once.
+    Each model is visited once.
     """
     seen: set[type[BaseModel]] = set()
     pending: list[object] = [model]
@@ -861,14 +765,7 @@ class SchemaBuilder:
     ) -> Schema:
         """Describe the items of a pager annotation.
 
-        Args:
-            annotation: Pager annotation, bare or parameterised.
-            bindings: Type variables the walked class already filled in.
-            owner: Class the signature belongs to, used to resolve ``Self``.
-
-        Returns:
-            The item schema, or any JSON value when the item type is the caller's
-            to choose.
+        Any JSON value is allowed when the item type is the caller's to choose.
         """
         item = pager_item_type(annotation)
         if item is None:
@@ -888,15 +785,6 @@ class SchemaBuilder:
         The underlying type still goes through the rules above, so a validated
         session or a constrained serial number keeps the shape this module gives
         it and only picks up the constraint keywords from Pydantic.
-
-        Args:
-            annotation: ``Annotated[...]`` form to describe.
-            bindings: Type variables the walked class already filled in.
-            returns: Whether the annotation describes the result.
-            owner: Class the signature belongs to, used to resolve ``Self``.
-
-        Returns:
-            The schema of the underlying type plus its declared constraints.
         """
         underlying = type_args(annotation)[0]
         schema = dict(
@@ -921,17 +809,8 @@ class SchemaBuilder:
     ) -> Schema:
         """Describe a union as ``anyOf``, without duplicate alternatives.
 
-        Args:
-            annotation: Union annotation to describe.
-            bindings: Type variables the walked class already filled in.
-            returns: Whether the annotation describes the result.
-            owner: Class the signature belongs to, used to resolve ``Self``.
-
-        Returns:
-            An ``anyOf`` schema, or the single distinct alternative.
-
-        Raises:
-            UnsupportedSignature: The union names no alternative at all.
+        A single distinct alternative uses its schema directly, while an empty union
+        raises ``UnsupportedSignature``.
         """
         annotation = without_text_alternative(annotation)
         if not _is_union(annotation):
@@ -955,18 +834,7 @@ class SchemaBuilder:
         returns: bool,
         owner: type[object] | None,
     ) -> Schema | None:
-        """Describe a sequence or mapping annotation, or decline.
-
-        Args:
-            annotation: Annotation to describe.
-            bindings: Type variables the walked class already filled in.
-            returns: Whether the annotation describes the result.
-            owner: Class the signature belongs to, used to resolve ``Self``.
-
-        Returns:
-            An array or object schema, or ``None`` when the annotation is not a
-            container.
-        """
+        """Describe a sequence or mapping annotation, or decline."""
         origin = type_origin(annotation)
         if origin is None and annotation in _SEQUENCE_ORIGINS | _MAPPING_ORIGINS:
             origin = annotation
@@ -1010,14 +878,7 @@ class SchemaBuilder:
     def _absorb(self, annotation: object) -> Schema:
         """Ask Pydantic for a schema and file every nested definition it names.
 
-        Args:
-            annotation: Type Pydantic can describe.
-
-        Returns:
-            The schema for *annotation*, with nested models referenced by name.
-
-        Raises:
-            UnsupportedSignature: Pydantic cannot describe the annotation.
+        An annotation Pydantic cannot describe raises ``UnsupportedSignature``.
         """
         document = dict(self._pydantic(annotation))
         nested = document.pop("$defs", None)
@@ -1032,16 +893,9 @@ class SchemaBuilder:
         return document
 
     def _pydantic(self, annotation: object) -> Schema:
-        """Return the standalone JSON Schema Pydantic builds for *annotation*.
+        """Return the standalone JSON Schema Pydantic builds for an annotation.
 
-        Args:
-            annotation: Type to describe.
-
-        Returns:
-            The schema, with nested models left in ``$defs``.
-
-        Raises:
-            UnsupportedSignature: Pydantic cannot describe the annotation.
+        An annotation Pydantic cannot describe raises ``UnsupportedSignature``.
         """
         adapter = TypeAdapter(cast("type[object]", annotation))
         try:
@@ -1051,11 +905,7 @@ class SchemaBuilder:
         return cast("Schema", schema)
 
     def _note_models(self, model: type[BaseModel]) -> None:
-        """Record the model graph and which fields hold secrets.
-
-        Args:
-            model: Model reachable from a signature.
-        """
+        """Record the model graph and which fields hold secrets."""
         for entry in _model_closure(model):
             name = name_of(entry)
             self._models[_direct_owner(entry, name)] = entry
@@ -1068,12 +918,7 @@ class SchemaBuilder:
 def _literal_document(alias: typing.TypeAliasType) -> Schema | None:
     """Describe a string ``Literal`` alias as a named enum schema.
 
-    Args:
-        alias: Public ``TypeAliasType`` to inspect.
-
-    Returns:
-        A string enum document, or ``None`` when the alias stands for anything
-        else and has to be described through its value.
+    Other aliases return ``None`` and must be described through their value.
     """
     value = alias_value(alias)
     if type_origin(value) is not typing.Literal:

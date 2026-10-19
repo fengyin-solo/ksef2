@@ -17,6 +17,7 @@ from cryptography.x509.oid import NameOID, ObjectIdentifier
 from polyfactory import BaseFactory
 from pydantic import SecretBytes
 
+from ksef2._clients.async_authenticated import AsyncAuthenticatedClient
 from ksef2._clients.auth import AuthClient
 from ksef2._clients.authenticated import AuthenticatedClient
 from ksef2._clients.session_management import SessionManagementClient
@@ -395,15 +396,14 @@ class TestAuthClient:
         mock_sign_xades: MagicMock,
         credential_format: CredentialFormat,
         encrypted: bool,
-        fake_transport: FakeTransport,
+        flavor: Flavor,
         domain_public_key_cert: BaseFactory[PublicKeyCertificate],
         auth_challenge_resp: BaseFactory[spec.AuthenticationChallengeResponse],
         auth_init_resp: BaseFactory[spec.AuthenticationInitResponse],
         auth_status_resp: BaseFactory[spec.AuthenticationOperationStatusResponse],
         auth_tokens_resp: BaseFactory[spec.AuthenticationTokensResponse],
     ) -> None:
-        client = _build_auth_client(
-            fake_transport,
+        client = flavor.auth_client(
             _token_store(domain_public_key_cert.build(usage=["ksef_token_encryption"])),
         )
         challenge = auth_challenge_resp.build()
@@ -413,7 +413,7 @@ class TestAuthClient:
         )
         tokens_response = auth_tokens_resp.build()
         for response in (challenge, init_response, status_response, tokens_response):
-            fake_transport.enqueue(response.model_dump(mode="json"))
+            flavor.transport.enqueue(response.model_dump(mode="json"))
         cert, private_key = generate_test_certificate("1234567890")
         password = b"data-credentials-password" if encrypted else None
         credentials = build_credentials(
@@ -429,19 +429,23 @@ class TestAuthClient:
 
         mock_sign_xades.side_effect = record_and_sign
 
-        result = client.with_xades(
-            nip="1234567890",
-            credentials=credentials,
-            verify_chain=True,
+        result = flavor.run(
+            client.with_xades(
+                nip="1234567890",
+                credentials=credentials,
+                verify_chain=True,
+            )
         )
 
-        assert isinstance(result, AuthenticatedClient)
-        assert len(fake_transport.calls) == 4
+        assert isinstance(
+            result, AsyncAuthenticatedClient if flavor.is_async else AuthenticatedClient
+        )
+        assert len(flavor.transport.calls) == 4
         assert len(signed_with) == 1
         used_cert, used_key = signed_with[0]
         assert used_cert.public_bytes(Encoding.DER) == cert.public_bytes(Encoding.DER)
         assert public_key_der(used_key) == public_key_der(private_key)
-        xades_call = fake_transport.calls[1]
+        xades_call = flavor.transport.calls[1]
         assert xades_call.path == AuthRoutes.XADES_SIGNATURE
         assert xades_call.content == b"<SignedXML />"
         assert xades_call.params is not None
@@ -449,9 +453,9 @@ class TestAuthClient:
 
     def test_with_xades_rejects_mixed_or_incomplete_credentials(
         self,
-        fake_transport: FakeTransport,
+        flavor: Flavor,
     ) -> None:
-        client = _build_auth_client(fake_transport)
+        client = flavor.auth_client()
         cert, private_key = generate_test_certificate("1234567890")
         credentials = XAdESCredentials.from_pem(
             cert.public_bytes(Encoding.PEM),
@@ -462,34 +466,40 @@ class TestAuthClient:
 
         # Both forms, one form with a leftover half of the other, and neither form.
         with pytest.raises(KSeFArgumentError):
-            _ = client.with_xades(
-                nip="1234567890",
-                credentials=credentials,
-                cert=cert,
-                private_key=private_key,
+            _ = flavor.run(
+                client.with_xades(
+                    nip="1234567890",
+                    credentials=credentials,
+                    cert=cert,
+                    private_key=private_key,
+                )
             )
         with pytest.raises(KSeFArgumentError):
-            _ = client.with_xades(nip="1234567890", credentials=credentials, cert=cert)
-        with pytest.raises(KSeFArgumentError):
-            _ = client.with_xades(
-                nip="1234567890", credentials=credentials, private_key=private_key
+            _ = flavor.run(
+                client.with_xades(nip="1234567890", credentials=credentials, cert=cert)
             )
         with pytest.raises(KSeFArgumentError):
-            _ = client.with_xades(nip="1234567890")
+            _ = flavor.run(
+                client.with_xades(
+                    nip="1234567890", credentials=credentials, private_key=private_key
+                )
+            )
         with pytest.raises(KSeFArgumentError):
-            _ = client.with_xades(nip="1234567890", cert=cert)
+            _ = flavor.run(client.with_xades(nip="1234567890"))
         with pytest.raises(KSeFArgumentError):
-            _ = client.with_xades(nip="1234567890", private_key=private_key)
+            _ = flavor.run(client.with_xades(nip="1234567890", cert=cert))
+        with pytest.raises(KSeFArgumentError):
+            _ = flavor.run(client.with_xades(nip="1234567890", private_key=private_key))
 
-        assert fake_transport.calls == []
+        assert flavor.transport.calls == []
 
     @pytest.mark.parametrize("invalid", ["unreadable", "mismatched"])
     def test_with_xades_rejects_invalid_data_before_challenge(
         self,
         invalid: str,
-        fake_transport: FakeTransport,
+        flavor: Flavor,
     ) -> None:
-        client = _build_auth_client(fake_transport)
+        client = flavor.auth_client()
         cert, _ = generate_test_certificate("1234567890")
         _other_cert, other_key = generate_test_certificate("1234567890")
         if invalid == "unreadable":
@@ -507,9 +517,9 @@ class TestAuthClient:
             )
 
         with pytest.raises(KSeFArgumentError):
-            _ = client.with_xades(nip="1234567890", credentials=credentials)
+            _ = flavor.run(client.with_xades(nip="1234567890", credentials=credentials))
 
-        assert fake_transport.calls == []
+        assert flavor.transport.calls == []
 
     def test_refresh(
         self,

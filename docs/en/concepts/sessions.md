@@ -158,7 +158,7 @@ not the prepared bytes. Older states without a payload digest still support
 status and UPO access; they cannot reattach an upload payload.
 
 To keep a prepared batch across a restart, save `prepared.to_sensitive_json()`
-in protected storage. Restore it with `PreparedBatch.model_validate_json(saved)`
+in protected storage. Restore it with `PreparedBatch.from_sensitive_json(saved)`
 and pass it as `prepared_batch=` together with the saved session state. The export
 is credential material: it contains the AES key and encrypted invoices. Generic
 model dumps and repr never contain them.
@@ -171,10 +171,19 @@ saved = prepared.to_sensitive_json()
 saved_state = session.resume_state().to_json()
 
 # After restarting, read both strings from protected storage.
-restored = PreparedBatch.model_validate_json(saved)
+restored = PreparedBatch.from_sensitive_json(saved)
 with auth.batch_session(state=saved_state, prepared_batch=restored) as session:
     session.upload_parts()
 ```
+
+The persistence envelope is `{"version": 1, "payload": {...}}`. Both sensitive export
+methods produce the same JSON-safe shape, with encrypted parts as URL-safe
+Base64 with padding. Use `from_sensitive_dict()` for the dictionary form.
+Readers reject missing or unsupported versions and unknown fields with
+`KSeFValidationError` without exposing stored values. Unversioned development
+exports are not supported. Readers in 1.x retain support for released persistence versions. Incompatible
+formats require a new version and a documented migration. Generic Pydantic validation does not read this
+envelope. Session resume states retain their existing format.
 
 ## State, status, and history
 

@@ -95,7 +95,7 @@ Persist and restore state with the explicit methods instead:
   deliberate, protected handling.
 - `to_sensitive_dict()` and `to_sensitive_json()` on `PreparedBatch` export the
   encrypted parts and AES material in full for protected storage. Restore the
-  batch with `PreparedBatch.model_validate()` or `model_validate_json()` and pass
+  batch with `PreparedBatch.from_sensitive_dict()` or `from_sensitive_json()` and pass
   it with the saved session state to recover an upload after a restart. Generic
   dumps and repr keep the payload and keys hidden.
 - `to_sensitive_dict()` and `to_sensitive_json()` on a completed export snapshot

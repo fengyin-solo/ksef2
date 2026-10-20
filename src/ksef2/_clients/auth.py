@@ -195,10 +195,9 @@ class AuthClient:
     ) -> AuthenticatedClient:
         """Authenticate with an XAdES-signed challenge response.
 
-        Pass the signing material either as an ``XAdESCredentials`` model built from
-        PEM, DER or PKCS#12 bytes, or as a loaded certificate and key object. Exactly
-        one form is accepted, so the data form can be described by a schema and sent
-        across a language boundary.
+        Pass the signing material either as an ``XAdESCredentials`` holder loaded
+        from PEM, DER or PKCS#12 bytes, or as a loaded certificate and key pair.
+        Exactly one form is accepted.
 
         Args:
             nip: Taxpayer identifier embedded in the authentication request.
@@ -206,7 +205,7 @@ class AuthClient:
                 ``private_key`` and cannot be combined with ``credentials``.
             private_key: RSA or EC private key used to sign the XAdES payload; needs
                 ``cert`` and cannot be combined with ``credentials``.
-            credentials: Certificate and private key as data, from
+            credentials: Loaded certificate and private-key holder, from
                 :meth:`~ksef2._domain.models.xades.XAdESCredentials.from_pem`,
                 :meth:`~ksef2._domain.models.xades.XAdESCredentials.from_der` or
                 :meth:`~ksef2._domain.models.xades.XAdESCredentials.from_pkcs12`.
@@ -221,7 +220,7 @@ class AuthClient:
             KSeFAuthError: If authentication fails.
             KSeFAuthPollingTimeoutError: If polling exceeds ``timeout``.
             KSeFArgumentError: If both credential forms, or neither usable form, is
-                supplied; or if ``credentials`` cannot be turned into a signing pair.
+                supplied.
 
         Example:
             ```python
@@ -245,7 +244,8 @@ class AuthClient:
                     "with_xades() takes credentials or the cert and private_key pair, "
                     "not a mix of both.",
                 )
-            signing_cert, signing_key = credentials.to_crypto_material()
+            signing_cert = credentials.certificate
+            signing_key = credentials.private_key
         else:
             if cert is None or private_key is None:
                 raise exceptions.KSeFArgumentError(

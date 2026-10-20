@@ -110,7 +110,9 @@ auth = client.authentication.with_xades(
 The password decrypts the key while the credentials are built and is not kept
 after that. The decrypted key lives in memory inside `credentials`, so treat the
 object as a secret: do not log it, cache it or persist it, and drop the reference
-once authentication is done. `repr()` and `model_dump()` never show the key.
+once authentication is done. `repr()` hides the certificate and key objects.
+The holder has no Pydantic schema or JSON serialization API. It retains the loaded objects, validates the key
+type and certificate/key match once, and reuses them for signing.
 
 The object form stays supported. Load the material yourself and pass the certificate
 and key you get back.

@@ -1,15 +1,17 @@
-"""Unit tests for XAdESCredentials, the data-based credentials of with_xades()."""
+"""Unit tests for XAdESCredentials, the loaded credentials of with_xades()."""
 
 import base64
 import json
 from typing import Literal
+from unittest.mock import patch
 
 import pytest
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import dsa, ec, ed25519, rsa
 from cryptography.hazmat.primitives.asymmetric.types import PrivateKeyTypes
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-from pydantic import BaseModel, SecretBytes, ValidationError
+from pydantic import BaseModel
+from signxml.xades import XAdESVerifier
 
 from ksef2._core.exceptions import KSeFArgumentError
 from ksef2._core.xades import build_auth_token_request_xml, sign_xades
@@ -61,13 +63,12 @@ def test_credentials_support_all_formats(
     credentials = build_credentials(
         certificate, key, credential_format, password=password
     )
-    signing_cert, signing_key = credentials.to_crypto_material()
+    signing_cert, signing_key = credentials.certificate, credentials.private_key
 
     assert signing_cert.public_bytes(Encoding.DER) == certificate.public_bytes(
         Encoding.DER
     )
     assert public_key_der(signing_key) == public_key_der(key)
-    assert key_pem(signing_key) == credentials.key_pem.get_secret_value()
 
 
 @pytest.mark.parametrize("credential_format", ["pem", "der", "pkcs12"])
@@ -78,19 +79,25 @@ def test_resolved_material_signs_a_real_xades_payload(
     rsa_key: rsa.RSAPrivateKey,
     ec_key: ec.EllipticCurvePrivateKey,
 ) -> None:
-    """The key the model hands the signer is the one KSeF can verify on the cert."""
+    """The key the holder hands the signer is the one KSeF can verify on the cert."""
     key: PrivateKeyTypes = rsa_key if key_kind == "rsa" else ec_key
     certificate = self_signed(key)
     credentials = build_credentials(certificate, key, credential_format, password=None)
 
-    signing_cert, signing_key = credentials.to_crypto_material()
+    signing_cert, signing_key = credentials.certificate, credentials.private_key
     signed = sign_xades(
         build_auth_token_request_xml("challenge-value", "1234567890"),
         signing_cert,
         signing_key,
     )
 
-    assert b"SignatureValue" in signed
+    verified = XAdESVerifier().verify(signed, x509_cert=signing_cert)
+    assert verified[0].signed_xml is not None
+    challenge = verified[0].signed_xml.find(
+        "{http://ksef.mf.gov.pl/auth/token/2.0}Challenge"
+    )
+    assert challenge is not None
+    assert challenge.text == "challenge-value"
     assert b"X509Data" in signed
     assert certificate.public_key().public_bytes(
         Encoding.DER, PublicFormat.SubjectPublicKeyInfo
@@ -100,7 +107,7 @@ def test_resolved_material_signs_a_real_xades_payload(
     )
 
 
-def test_encrypted_input_is_decrypted_once_and_nothing_secret_is_kept(
+def test_encrypted_input_keeps_loaded_key_without_password_or_input_bytes(
     rsa_key: rsa.RSAPrivateKey,
 ) -> None:
     """Neither the password nor the ciphertext survives the constructor."""
@@ -113,11 +120,10 @@ def test_encrypted_input_is_decrypted_once_and_nothing_secret_is_kept(
         key_password=SENTINEL_PASSWORD,
     )
 
-    stored = credentials.key_pem.get_secret_value()
-    assert stored != encrypted_pem
-    assert SENTINEL_PASSWORD not in stored
-    assert b"ENCRYPTED" not in stored
-    assert set(type(credentials).model_fields) == {"cert_pem", "key_pem"}
+    assert public_key_der(credentials.private_key) == public_key_der(rsa_key)
+    assert not hasattr(credentials, "__dict__")
+    assert not hasattr(credentials, "key_password")
+    assert not hasattr(credentials, "key_pem")
 
 
 def test_credentials_reject_invalid_material(
@@ -328,114 +334,79 @@ def test_rejections_never_carry_secret_material(
 
 
 def test_credentials_redact_private_material(rsa_key: rsa.RSAPrivateKey) -> None:
-    """Neither the input key nor the normalized key appears in any generic output."""
     certificate = self_signed(rsa_key)
-    original_pem = key_pem(rsa_key, password=SENTINEL_PASSWORD)
-
     credentials = XAdESCredentials.from_pem(
         certificate.public_bytes(Encoding.PEM),
-        original_pem,
+        key_pem(rsa_key, password=SENTINEL_PASSWORD),
         key_password=SENTINEL_PASSWORD,
     )
-    normalized_pem = credentials.key_pem.get_secret_value()
-    secrets = [
-        SENTINEL_PASSWORD.decode(),
-        original_pem.decode(),
-        normalized_pem.decode(),
-        base64.b64encode(normalized_pem).decode(),
-    ]
-    outputs = [
-        repr(credentials),
-        str(credentials),
-        str(credentials.model_dump()),
-        credentials.model_dump_json(),
-        str(credentials.model_dump(mode="json")),
-        repr(credentials.model_dump()),
-    ]
-    for output in outputs:
-        for secret in secrets:
-            assert secret not in output, output[:120]
-
-    class Holder(BaseModel):
-        credentials: XAdESCredentials
-
-    holder = Holder(credentials=credentials)
-    for output in (
-        repr(holder),
-        holder.model_dump_json(),
-        str(holder.model_dump()),
-        str(holder.model_dump(mode="json")),
-    ):
-        for secret in secrets:
-            assert secret not in output, output[:120]
-
-    assert credentials.model_dump() == {"cert_pem": credentials.cert_pem}
-    assert holder.model_dump() == {"credentials": {"cert_pem": credentials.cert_pem}}
+    assert repr(credentials) == "XAdESCredentials(<redacted>)"
+    assert str(credentials) == "XAdESCredentials(<redacted>)"
+    with pytest.raises(TypeError):
+        json.dumps(credentials)
+    assert not issubclass(XAdESCredentials, BaseModel)
+    assert not hasattr(credentials, "model_dump")
+    assert not hasattr(credentials, "model_json_schema")
+    assert type(credentials) is XAdESCredentials is FacadeXAdESCredentials
 
 
-def test_credentials_schema_and_json_input(rsa_key: rsa.RSAPrivateKey) -> None:
-    """The validation schema describes two data fields and JSON input reloads."""
-    schema = json.loads(json.dumps(XAdESCredentials.model_json_schema()))
+def test_loaded_objects_are_retained_and_validated_once(
+    rsa_key: rsa.RSAPrivateKey,
+) -> None:
+    certificate = self_signed(rsa_key)
+    from ksef2._domain.models import xades
 
-    assert set(schema["properties"]) == {"cert_pem", "key_pem"}
-    assert schema["properties"]["key_pem"]["writeOnly"] is True
-    assert schema["properties"]["cert_pem"]["type"] == "string"
-    assert schema["required"] == ["cert_pem", "key_pem"]
+    with patch.object(xades, "_usable_pair", wraps=xades._usable_pair) as validate:
+        credentials = XAdESCredentials(certificate, rsa_key)
+        assert credentials.certificate is certificate
+        assert credentials.private_key is rsa_key
+        assert credentials.private_key is credentials.private_key
+        validate.assert_called_once_with(certificate, rsa_key)
+
+    with pytest.raises(AttributeError):
+        credentials.private_key = rsa_key  # pyright: ignore[reportAttributeAccessIssue]
+    with pytest.raises(AttributeError):
+        credentials.certificate = certificate  # pyright: ignore[reportAttributeAccessIssue]
+
+
+@pytest.mark.parametrize("credential_format", ["pem", "der", "pkcs12"])
+def test_loaded_material_is_not_reparsed_for_signing(
+    credential_format: CredentialFormat, rsa_key: rsa.RSAPrivateKey
+) -> None:
+    from ksef2._domain.models import xades
 
     certificate = self_signed(rsa_key)
-    credentials = XAdESCredentials.from_pem(
-        certificate.public_bytes(Encoding.PEM), key_pem(rsa_key)
-    )
-    supplied = json.dumps(
-        {
-            "cert_pem": credentials.cert_pem.decode(),
-            "key_pem": credentials.key_pem.get_secret_value().decode(),
-        }
-    )
+    with patch.object(xades, "_usable_pair", wraps=xades._usable_pair) as validate:
+        credentials = build_credentials(
+            certificate, rsa_key, credential_format, password=None
+        )
+        validate.assert_called_once()
+    with (
+        patch.object(xades, "_usable_pair", side_effect=AssertionError("revalidated")),
+        patch.object(
+            xades.x509,
+            "load_pem_x509_certificate",
+            side_effect=AssertionError("reparsed certificate"),
+        ),
+        patch.object(
+            xades.serialization,
+            "load_pem_private_key",
+            side_effect=AssertionError("reparsed key"),
+        ),
+    ):
+        signed = sign_xades(
+            build_auth_token_request_xml("challenge-value", "1234567890"),
+            credentials.certificate,
+            credentials.private_key,
+        )
+    assert b"SignatureValue" in signed
 
-    reloaded = XAdESCredentials.model_validate_json(supplied)
-    signing_cert, signing_key = reloaded.to_crypto_material()
 
-    assert signing_cert.public_bytes(Encoding.DER) == certificate.public_bytes(
-        Encoding.DER
-    )
-    assert public_key_der(signing_key) == public_key_der(rsa_key)
-    assert "PRIVATE KEY" not in reloaded.model_dump_json()
-    assert type(reloaded) is XAdESCredentials is FacadeXAdESCredentials
-
-
-def test_direct_model_invalid_material_is_rejected(
+def test_direct_constructor_rejects_unusable_pairs(
     rsa_key: rsa.RSAPrivateKey, other_rsa_key: rsa.RSAPrivateKey
 ) -> None:
-    """A model built without a constructor still cannot hand out unusable material."""
-    certificate = self_signed(rsa_key)
-    mismatched = XAdESCredentials(
-        cert_pem=certificate.public_bytes(Encoding.PEM),
-        key_pem=SecretBytes(key_pem(other_rsa_key)),
-    )
     with pytest.raises(KSeFArgumentError, match="does not belong"):
-        _ = mismatched.to_crypto_material()
-
-    with pytest.raises(KSeFArgumentError) as exc_info:
-        _ = XAdESCredentials(
-            cert_pem=b"junk", key_pem=SecretBytes(b"junk")
-        ).to_crypto_material()
-    assert "certificate" in str(exc_info.value)
-    assert exc_info.value.context["certificate_encoding"] == "pem"
-
-    ed25519_key = ed25519.Ed25519PrivateKey.generate()
-    unsupported = XAdESCredentials(
-        cert_pem=self_signed(ed25519_key).public_bytes(Encoding.PEM),
-        key_pem=SecretBytes(key_pem(ed25519_key)),
-    )
+        XAdESCredentials(self_signed(rsa_key), other_rsa_key)
+    unsupported_key = ed25519.Ed25519PrivateKey.generate()
     with pytest.raises(KSeFArgumentError, match="Ed25519PrivateKey"):
-        _ = unsupported.to_crypto_material()
-
-    sentinel = b"SENTINEL-NOT-LEAK"
-    supplied: dict[str, object] = {
-        "cert_pem": sentinel,
-        "key_pem": {"leak": sentinel.decode()},
-    }
-    with pytest.raises(ValidationError) as validation_error:
-        _ = XAdESCredentials.model_validate(supplied)
-    assert sentinel.decode() not in str(validation_error.value)
+        XAdESCredentials(self_signed(unsupported_key), unsupported_key)

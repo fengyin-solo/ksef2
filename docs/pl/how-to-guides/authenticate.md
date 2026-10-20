@@ -109,8 +109,10 @@ auth = client.authentication.with_xades(
 Hasło odszyfrowuje klucz tylko podczas tworzenia poświadczeń i nie jest potem
 przechowywane. Odszyfrowany klucz istnieje w pamięci wewnątrz `credentials`, więc
 traktuj ten obiekt jak sekret: nie loguj go, nie zapisuj w cache ani na dysku, a po
-uwierzytelnieniu usuń do niego odwołanie. `repr()` ani `model_dump()` nie pokazują
-klucza.
+uwierzytelnieniu usuń do niego odwołanie. `repr()` ukrywa obiekty certyfikatu i klucza.
+Obiekt poświadczeń nie ma schematu Pydantic ani API serializacji JSON. Przechowuje załadowane obiekty,
+sprawdza typ klucza i zgodność z certyfikatem tylko raz, a następnie używa ich do
+podpisywania.
 
 Forma z obiektami pozostaje wspierana. Załaduj materiał samodzielnie i przekaż
 zwrócone certyfikat oraz klucz.

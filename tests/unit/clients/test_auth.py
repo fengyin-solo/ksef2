@@ -15,7 +15,6 @@ from cryptography.hazmat.primitives.serialization import (
 from cryptography.x509 import Certificate
 from cryptography.x509.oid import NameOID, ObjectIdentifier
 from polyfactory import BaseFactory
-from pydantic import SecretBytes
 
 from ksef2._clients.async_authenticated import AsyncAuthenticatedClient
 from ksef2._clients.auth import AuthClient
@@ -429,13 +428,17 @@ class TestAuthClient:
 
         mock_sign_xades.side_effect = record_and_sign
 
-        result = flavor.run(
-            client.with_xades(
-                nip="1234567890",
-                credentials=credentials,
-                verify_chain=True,
+        with patch(
+            "ksef2._domain.models.xades._usable_pair",
+            side_effect=AssertionError("credentials were validated again"),
+        ):
+            result = flavor.run(
+                client.with_xades(
+                    nip="1234567890",
+                    credentials=credentials,
+                    verify_chain=True,
+                )
             )
-        )
 
         assert isinstance(
             result, AsyncAuthenticatedClient if flavor.is_async else AuthenticatedClient
@@ -443,6 +446,8 @@ class TestAuthClient:
         assert len(flavor.transport.calls) == 4
         assert len(signed_with) == 1
         used_cert, used_key = signed_with[0]
+        assert used_cert is credentials.certificate
+        assert used_key is credentials.private_key
         assert used_cert.public_bytes(Encoding.DER) == cert.public_bytes(Encoding.DER)
         assert public_key_der(used_key) == public_key_der(private_key)
         xades_call = flavor.transport.calls[1]
@@ -494,31 +499,25 @@ class TestAuthClient:
         assert flavor.transport.calls == []
 
     @pytest.mark.parametrize("invalid", ["unreadable", "mismatched"])
-    def test_with_xades_rejects_invalid_data_before_challenge(
-        self,
-        invalid: str,
-        flavor: Flavor,
+    def test_with_xades_rejects_invalid_credentials_before_challenge(
+        self, invalid: str, flavor: Flavor
     ) -> None:
         client = flavor.auth_client()
         cert, _ = generate_test_certificate("1234567890")
-        _other_cert, other_key = generate_test_certificate("1234567890")
-        if invalid == "unreadable":
-            credentials = XAdESCredentials(
-                cert_pem=b"junk", key_pem=SecretBytes(b"junk")
-            )
-        else:
-            credentials = XAdESCredentials(
-                cert_pem=cert.public_bytes(Encoding.PEM),
-                key_pem=SecretBytes(
-                    other_key.private_bytes(
-                        Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()
-                    )
-                ),
-            )
-
+        _, other_key = generate_test_certificate("1234567890")
+        cert_pem = (
+            b"junk" if invalid == "unreadable" else cert.public_bytes(Encoding.PEM)
+        )
+        key_pem = other_key.private_bytes(
+            Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()
+        )
         with pytest.raises(KSeFArgumentError):
-            _ = flavor.run(client.with_xades(nip="1234567890", credentials=credentials))
-
+            flavor.run(
+                client.with_xades(
+                    nip="1234567890",
+                    credentials=XAdESCredentials.from_pem(cert_pem, key_pem),
+                )
+            )
         assert flavor.transport.calls == []
 
     def test_refresh(

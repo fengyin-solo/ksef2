@@ -9,17 +9,15 @@
   persisted. Invoice iteration and safe extraction work for both formats, and
   async `wait()` returns the same result type (#276).
 
-- Authenticate with `with_xades(nip=..., credentials=XAdESCredentials...)`, where
-  `XAdESCredentials.from_pem`, `.from_der` and `.from_pkcs12` take raw certificate,
-  private-key or archive bytes plus an optional password. Whatever the input format,
-  the model holds a PEM certificate and an unencrypted PKCS#8 PEM key, keeps no
-  password, and excludes the key from `repr()`, `model_dump()` and
-  `model_dump_json()`, so a generic dump is display output and never a credential
-  export. A key that cannot sign for XAdES, and a certificate that does not belong to
-  its key, are rejected before any request. The existing `cert=`/`private_key=` object
-  form is unchanged, and passing both forms or neither raises `KSeFArgumentError`.
-  Because the credentials are one data model with a Pydantic schema, a language
-  binding can call XAdES authentication without special-casing it (#267).
+- Authenticate with `with_xades(nip=..., credentials=XAdESCredentials...)`.
+  `XAdESCredentials.from_pem`, `.from_der` and `.from_pkcs12` load certificate,
+  private-key or archive bytes with an optional password. The holder stores loaded
+  cryptography objects, retains no password or input bytes, and hides both objects
+  in `repr()`. It has no Pydantic schema or JSON serialization API. Construction
+  rejects unsupported keys and mismatched certificate/key pairs once, before any
+  request. Authentication and signing reuse the loaded objects without private-key
+  serialization or reparsing. The existing `cert=`/`private_key=` form is unchanged.
+  Passing both forms or neither raises `KSeFArgumentError` (#267, #277).
 
 - Read complete invoice search responses with `responses()` and `first_response()`,
   including the permanent-storage checkpoint on empty pages. Correct the English

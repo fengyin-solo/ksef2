@@ -28,7 +28,7 @@ private_key = load_private_key_from_pem(
 ### With DER
 
 `XAdESCredentials.from_der` reads DER certificate and key bytes and keeps them as
-one bindable value instead of two live objects.
+one holder containing the loaded cryptography objects.
 
 ```python
 import os
@@ -86,8 +86,7 @@ auth = client.authentication.with_xades(
 )
 ```
 
-Or pass the credential model, which is the form a JSON schema or an FFI boundary
-can describe. The async branch awaits the same call.
+Or pass the credential holder. The async branch awaits the same call.
 
 ```python
 auth = await client.authentication.with_xades(
@@ -137,11 +136,12 @@ signed_xml = sign_xades(xml, cert, private_key)
 
 :::caution[Protect private keys]
 Keep private-key files and passwords outside source control. Load passwords from
-environment variables or a secret manager. `XAdESCredentials` normalizes whatever
-format it was given into a PEM certificate plus an unencrypted PKCS#8 PEM key held
-in memory, and keeps no password at all: the key is excluded from `repr()`,
-`model_dump()` and `model_dump_json()`, so a generic dump is for display and never
-a credential export. Treat the model itself as a secret while it is alive.
+environment variables or a secret manager. `XAdESCredentials` keeps the loaded
+certificate and decrypted private-key objects in memory, with no retained password
+or input bytes. Its `repr()` hides both objects. It has no Pydantic schema or JSON
+serialization API. Treat the holder as a secret while it is alive. Construction
+checks the key type and certificate/key match once. Authentication and signing
+reuse the loaded objects without serializing or reparsing the private key.
 :::
 
 ## Recommended flow

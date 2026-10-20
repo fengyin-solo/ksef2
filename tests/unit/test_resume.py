@@ -284,7 +284,7 @@ class TestExportResumeState:
         assert state.to_handle() == ExportHandle(
             reference_number="export-ref", aes_key=KEY, iv=IV
         )
-        assert state.format_version == 1
+        assert state.format_version == "1"
 
     def test_secrets_are_redacted_outside_to_json_and_to_dict(self) -> None:
         state = self._state()

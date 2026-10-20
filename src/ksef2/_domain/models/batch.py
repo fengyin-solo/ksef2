@@ -10,7 +10,11 @@ from typing import TYPE_CHECKING, Literal, Self, cast, override
 
 from pydantic import ConfigDict, Field, SecretStr, field_validator
 
-from ksef2._domain.models.base import KSeFBaseModel
+from ksef2._domain.models.base import (
+    CURRENT_FORMAT_VERSION,
+    KSeFBaseModel,
+    parse_format_version,
+)
 from ksef2._domain.models.compression import (
     CompressionType,
     normalize_compression_type,
@@ -230,7 +234,7 @@ class PreparedBatch(KSeFBaseModel):
     """Hash of each invoice in the package, keyed by ZIP entry name."""
 
     def to_sensitive_dict(self) -> dict[str, object]:
-        """Export a version 1 envelope for protected JSON persistence.
+        """Export a version ``"1"`` envelope for protected JSON persistence.
 
         This contains the AES key and encrypted invoices. Store it as credential
         material. Generic model dumps and repr exclude these fields.
@@ -248,10 +252,10 @@ class PreparedBatch(KSeFBaseModel):
             for part in self.parts
         ]
         data["encryption"] = self.encryption.to_sensitive_dict()
-        return {"version": 1, "payload": data}
+        return {"version": CURRENT_FORMAT_VERSION, "payload": data}
 
     def to_sensitive_json(self, *, indent: int | None = None) -> str:
-        """Export the sensitive version 1 envelope as JSON.
+        """Export the sensitive version ``"1"`` envelope as JSON.
 
         Args:
             indent: Indentation width; ``None`` for compact output.
@@ -265,7 +269,8 @@ class PreparedBatch(KSeFBaseModel):
     def from_sensitive_dict(cls, state: Mapping[str, object]) -> Self:
         """Restore a prepared batch from its sensitive persistence envelope.
 
-        Only integer version 1 is supported. Missing versions, unversioned
+        Any dotted version string with major ``1`` is supported, such as ``"1"``
+        or ``"1.2"``. Missing, malformed or higher-major versions, unversioned
         development exports and unknown fields are rejected. Future readers must
         retain support for released formats throughout 1.x. Incompatible formats
         require a new version and a documented migration. Generic model validation
@@ -281,8 +286,17 @@ class PreparedBatch(KSeFBaseModel):
             ValueError: If the envelope is unsupported or malformed.
                 Errors never include stored values or validation exception chains.
         """
-        if type(state.get("version")) is not int or state.get("version") != 1:
-            raise ValueError("Unsupported prepared batch persistence version.")
+        try:
+            _ = parse_format_version(state.get("version"))
+        except ValueError:
+            pass
+        else:
+            return cls._from_supported_envelope(state)
+        # Raise outside the handler so even __context__ cannot expose stored data.
+        raise ValueError("Unsupported prepared batch persistence version.")
+
+    @classmethod
+    def _from_supported_envelope(cls, state: Mapping[str, object]) -> Self:
         try:
             if set(state) != {"version", "payload"}:
                 raise ValueError

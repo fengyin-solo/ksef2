@@ -13,9 +13,11 @@ from pydantic import ConfigDict, Field as PydanticField, SecretStr
 from pydantic import field_validator, model_validator
 
 from ksef2._domain.models.base import (
+    CURRENT_FORMAT_VERSION,
     KSeFBaseModel,
     KSeFPersistedModel,
     KSeFResumeState,
+    PersistedFormatVersion,
 )
 from ksef2._domain.models.compression import (
     CompressionType,
@@ -479,8 +481,8 @@ class ExportResumeState(KSeFPersistedModel):
     persistence format.
     """
 
-    format_version: Literal[1] = 1
-    """Version of the serialized state format; currently always ``1``."""
+    format_version: PersistedFormatVersion = CURRENT_FORMAT_VERSION
+    """Version of the serialized state format, a dotted number; currently ``"1"``."""
     reference_number: str
     """KSeF reference number of the export operation."""
     aes_key: SecretStr

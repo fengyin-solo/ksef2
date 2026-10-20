@@ -8,7 +8,12 @@ from typing import Literal, Self
 
 from pydantic import Field, SecretStr, field_validator
 
-from ksef2._domain.models.base import KSeFBaseModel, KSeFPersistedModel
+from ksef2._domain.models.base import (
+    CURRENT_FORMAT_VERSION,
+    KSeFBaseModel,
+    KSeFPersistedModel,
+    PersistedFormatVersion,
+)
 
 type ContextIdentifierType = Literal["nip", "internal_id", "nip_vat_ue", "peppol_id"]
 
@@ -192,8 +197,8 @@ class AuthenticationResumeState(KSeFPersistedModel):
     redacted.
     """
 
-    format_version: Literal[1] = 1
-    """Version of the serialized state format; currently always ``1``."""
+    format_version: PersistedFormatVersion = CURRENT_FORMAT_VERSION
+    """Version of the serialized state format, a dotted number; currently ``"1"``."""
     access_token: SecretStr
     """Access token value."""
     access_token_valid_until: datetime

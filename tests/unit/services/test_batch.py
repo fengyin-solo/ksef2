@@ -93,8 +93,8 @@ def test_prepared_batch_sensitive_export_round_trips(
 ) -> None:
     envelope = prepared_batch.to_sensitive_dict()
     assert set(envelope) == {"version", "payload"}
-    assert type(envelope["version"]) is int
-    assert envelope["version"] == 1
+    assert type(envelope["version"]) is str
+    assert envelope["version"] == "1"
     assert json.loads(prepared_batch.to_sensitive_json()) == envelope
     restored_batches = [
         PreparedBatch.from_sensitive_json(prepared_batch.to_sensitive_json()),
@@ -200,7 +200,21 @@ def test_restored_prepared_batch_resumes_its_session(
     assert len(flavor.transport.calls) == calls_before
 
 
-@pytest.mark.parametrize("version", [None, 0, 2, True, 1.0, "1", "secret-version"])
+@pytest.mark.parametrize("version", [1, "1", "1.2", "1.0.1"])
+def test_prepared_batch_reads_supported_versions(
+    prepared_batch: PreparedBatch, version: object
+) -> None:
+    exported = prepared_batch.to_sensitive_dict()
+    exported["version"] = version
+
+    restored = PreparedBatch.from_sensitive_json(json.dumps(exported))
+
+    assert restored.recovery_digest() == prepared_batch.recovery_digest()
+
+
+@pytest.mark.parametrize(
+    "version", [None, 0, 2, "2", True, 1.0, "1.", "v1", "01", "", "secret-version"]
+)
 def test_prepared_batch_rejects_unsupported_versions(
     prepared_batch: PreparedBatch,
     version: object,

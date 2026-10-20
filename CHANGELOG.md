@@ -6,13 +6,17 @@
   batch in full, including encrypted parts as URL-safe Base64 with `=` padding
   and the AES material. Save the output in protected storage and restore it with
   `PreparedBatch.from_sensitive_json()` for upload recovery after a restart.
-  The JSON-only envelope is `{"version": 1, "payload": {...}}`; dictionary export
+  The JSON-only envelope is `{"version": "1", "payload": {...}}`; dictionary export
   uses the same shape and has a matching `from_sensitive_dict()` reader. Readers
   reject unsupported or missing versions, unversioned development exports and
   unknown fields with sanitized `KSeFValidationError` messages. Readers in 1.x
   retain support for released persistence versions. Incompatible formats require
-  a new version and a documented migration. Existing
-  session and operation resume-state formats and cursors are unchanged.
+  a new version and a documented migration. Every
+  persisted state (`format_version`) and this envelope now write the version as a
+  dotted string such as `"1"`. Readers accept any version with major `1`, such as
+  `"1.2"` or `"1.0.1"`, and still read the integer `1` that earlier releases wrote;
+  `true`, `1.0` and malformed strings are rejected. Pagination cursors are
+  unchanged.
   Generic model dumps and repr still hide payload bytes and keys (#270).
 - Save and resume every handle KSeF finishes asynchronously. `resume_state()` on a
   `GeneratedToken`, `CertificateEnrollment`, `PermissionOperation` or

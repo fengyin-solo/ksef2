@@ -1,14 +1,16 @@
 """Shared Pydantic base classes for SDK models and query parameter models."""
 
 import json
+import re
 from collections.abc import Mapping
-from typing import Any, Literal, Self, cast
+from typing import Annotated, Any, Literal, Self, cast
 
 from pydantic import (
     AliasChoices,
     AliasGenerator,
     AliasPath,
     BaseModel,
+    BeforeValidator,
     ConfigDict,
     model_validator,
 )
@@ -88,6 +90,49 @@ class KSeFBaseModel(BaseModel):
         return data
 
 
+SUPPORTED_FORMAT_MAJOR = 1
+"""Major version of the persisted-state format this SDK reads."""
+
+CURRENT_FORMAT_VERSION = "1"
+"""Persisted-state format version this SDK writes."""
+
+_FORMAT_VERSION = re.compile(r"(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*)){0,2}")
+
+
+def parse_format_version(value: object) -> str:
+    """Read a persisted format version and accept the supported major version.
+
+    Versions are dotted numbers such as ``"1"``, ``"1.2"`` or ``"1.0.1"``. The
+    integer ``1`` that earlier releases wrote is read as ``"1"``. Any version with
+    major ``1`` is accepted; a higher major, a malformed string, a boolean or a
+    float is rejected.
+
+    Args:
+        value: Stored version, a string or the integer written by earlier releases.
+
+    Returns:
+        The version as a string.
+
+    Raises:
+        ValueError: If the version is malformed or its major is unsupported.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        raise ValueError("format version must be a dotted number string such as '1'")
+    text = str(value)
+    if _FORMAT_VERSION.fullmatch(text) is None:
+        raise ValueError("format version must be a dotted number string such as '1'")
+    if int(text.split(".", 1)[0]) != SUPPORTED_FORMAT_MAJOR:
+        raise ValueError(
+            f"unsupported format version; this SDK reads major version "
+            f"{SUPPORTED_FORMAT_MAJOR}"
+        )
+    return text
+
+
+type PersistedFormatVersion = Annotated[str, BeforeValidator(parse_format_version)]
+"""Persisted-state version field: a dotted number string with a supported major."""
+
+
 class KSeFPersistedModel(KSeFBaseModel):
     """Base for versioned state whose stored shape must fail closed."""
 
@@ -105,13 +150,13 @@ class KSeFResumeState(KSeFPersistedModel):
 
     A subclass names the operation and adds whatever else the resume call needs
     to rebuild its handle. Stored state fails closed: any ``format_version``
-    other than ``1`` is rejected, and so is a field this SDK does not know.
+    whose major is not ``1`` is rejected, and so is a field this SDK does not know.
     These states hold no secrets, so ``to_dict()`` and ``to_json()`` are the
     persistence format and show the same fields as ``model_dump()``.
     """
 
-    format_version: Literal[1] = 1
-    """Version of the serialized state format; currently always ``1``."""
+    format_version: PersistedFormatVersion = CURRENT_FORMAT_VERSION
+    """Version of the serialized state format, a dotted number; currently ``"1"``."""
     reference_number: str
     """KSeF reference number of the operation."""
 

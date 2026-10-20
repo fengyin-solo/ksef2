@@ -176,10 +176,10 @@ with auth.batch_session(state=saved_state, prepared_batch=restored) as session:
     session.upload_parts()
 ```
 
-The persistence envelope is `{"version": 1, "payload": {...}}`. Both sensitive export
+The persistence envelope is `{"version": "1", "payload": {...}}`. Both sensitive export
 methods produce the same JSON-safe shape, with encrypted parts as URL-safe
 Base64 with padding. Use `from_sensitive_dict()` for the dictionary form.
-Readers reject missing or unsupported versions and unknown fields with
+Versions are dotted number strings such as `"1"` or `"1.2"`; readers accept major version 1 and the integer `1`. Readers reject missing, malformed or higher-major versions and unknown fields with
 `ValueError` without exposing stored values. Unversioned development
 exports are not supported. Readers in 1.x retain support for released persistence versions. Incompatible
 formats require a new version and a documented migration. Generic Pydantic validation does not read this

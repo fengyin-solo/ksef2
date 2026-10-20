@@ -42,7 +42,7 @@ Dokładną granicę kompatybilności opisuje strona interfejsu publicznego.
 
 
 `PreparedBatch.to_sensitive_dict()` i `to_sensitive_json()` zapisują pełną
-przygotowaną paczkę jako `{"version": 1, "payload": {...}}`, z zaszyfrowanymi
+przygotowaną paczkę jako `{"version": "1", "payload": {...}}`, z zaszyfrowanymi
 częściami jako Base64 bezpieczne dla URL z dopełnieniem. Odtwórz ją przez
 `from_sensitive_dict()` lub `from_sensitive_json()` wraz z zapisanym stanem sesji
 batch. Czytniki odrzucają brak wersji, nieobsługiwane wersje, niewersjonowane

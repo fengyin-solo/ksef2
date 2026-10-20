@@ -80,6 +80,7 @@ class DomainPartUploadRequestFactory(ModelFactory[domain_batch.PartUploadRequest
 class DomainOnlineSessionResumeStateFactory(
     ModelFactory[domain_session.OnlineSessionResumeState]
 ):
+    format_version: str = "1"
     reference_number: str = "20250625-SO-2C3E6C8000-B675CF5D68-07"
     aes_key: str = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
     iv: str = "MDEyMzQ1Njc4OWFiY2RlZg=="
@@ -90,6 +91,7 @@ class DomainOnlineSessionResumeStateFactory(
 class DomainBatchSessionResumeStateFactory(
     ModelFactory[domain_batch.BatchSessionResumeState]
 ):
+    format_version: str = "1"
     reference_number: str = "20250625-BS-2C3E6C8000-B675CF5D68-07"
     aes_key: str = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
     iv: str = "MDEyMzQ1Njc4OWFiY2RlZg=="

@@ -177,10 +177,10 @@ with auth.batch_session(state=saved_state, prepared_batch=restored) as session:
     session.upload_parts()
 ```
 
-Format zapisu to `{"version": 1, "payload": {...}}`. Obie metody eksportu sekretów
+Format zapisu to `{"version": "1", "payload": {...}}`. Obie metody eksportu sekretów
 zwracają tę samą strukturę zgodną z JSON, z zaszyfrowanymi częściami jako Base64
 bezpieczne dla URL z dopełnieniem. Dla słownika użyj `from_sensitive_dict()`.
-Czytniki odrzucają brak wersji, nieobsługiwane wersje i nieznane pola przez
+Wersje to łańcuchy liczb rozdzielonych kropkami, np. `"1"` lub `"1.2"`; czytniki przyjmują wersję główną 1 oraz liczbę `1`. Czytniki odrzucają brak wersji, błędne wersje, wyższe wersje główne i nieznane pola przez
 `ValueError` bez ujawniania zapisanych wartości. Niewersjonowane eksporty
 z wersji rozwojowej nie są obsługiwane. Czytniki w serii 1.x zachowują obsługę wydanych wersji zapisu. Niezgodne
 formaty wymagają nowej wersji i udokumentowanej migracji. Ogólna walidacja Pydantic nie

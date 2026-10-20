@@ -42,7 +42,7 @@ For the exact compatibility boundary, use the public API contract page.
 
 
 `PreparedBatch.to_sensitive_dict()` and `to_sensitive_json()` persist the full
-prepared batch as `{"version": 1, "payload": {...}}`, with encrypted parts as
+prepared batch as `{"version": "1", "payload": {...}}`, with encrypted parts as
 URL-safe padded Base64. Restore it with `from_sensitive_dict()` or
 `from_sensitive_json()` and the saved batch session state. These readers reject
 missing or unsupported versions, unversioned development exports and unknown

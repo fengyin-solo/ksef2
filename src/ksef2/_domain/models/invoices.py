@@ -413,60 +413,6 @@ class InvoicePackage(KSeFBaseModel):
     """High-water mark of permanent storage covered by the package."""
 
 
-class ExportedInvoicesData(KSeFBaseModel):
-    """Portable snapshot of a completed invoice export.
-
-    ``ExportedInvoices.to_model()`` returns it and ``ExportedInvoices.from_model()``
-    turns it back into a result, so a finished export can be handed to another
-    process or language binding. ``archive`` holds the joined ZIP or TarGz bytes and
-    is URL-safe Base64 in JSON, carrying the standard ``=`` padding whenever the
-    archive length is not a multiple of three; ``package`` and ``metadata`` carry
-    the package metadata and the parsed ``_metadata.json`` records.
-
-    ``model_dump()``, ``model_dump_json()`` and ``repr()`` keep ``PackagePart.url``
-    redacted, so for a package that still has parts they are a view and not a
-    persistence format: a presigned URL is a capability, and the generic dump drops
-    it. Use ``to_sensitive_dict()`` and ``to_sensitive_json()`` when the whole
-    package must travel, and protect that output like a credential. Restoring a
-    result needs no network access and no keys: the archive is already decrypted.
-    """
-
-    model_config = ConfigDict(ser_json_bytes="base64", val_json_bytes="base64")
-
-    archive: bytes = PydanticField(repr=False)
-    """Decrypted ZIP or TarGz archive; URL-safe padded Base64 in JSON, left out of ``repr()``."""
-    package: InvoicePackage | None = None
-    """Package metadata from the export status, if known."""
-    metadata: list[InvoiceMetadata] | None = None
-    """Parsed ``_metadata.json`` records; ``None`` when the snapshot has none."""
-
-    def to_sensitive_dict(self) -> dict[str, object]:
-        """Export the snapshot with every package part download URL included.
-
-        Returns:
-            A JSON-safe dictionary whose ``archive`` is URL-safe Base64 with ``=`` padding where required, and whose package parts carry their plain presigned URLs.
-        """
-        data: dict[str, object] = self.model_dump(mode="json")
-        if self.package is not None:
-            package: dict[str, object] = self.package.model_dump(mode="json")
-            package["parts"] = [
-                part.to_sensitive_dict(mode="json") for part in self.package.parts
-            ]
-            data["package"] = package
-        return data
-
-    def to_sensitive_json(self, *, indent: int | None = None) -> str:
-        """Export the snapshot as JSON with every package part download URL included.
-
-        Args:
-            indent: Number of spaces to indent nested values; ``None`` for compact output.
-
-        Returns:
-            JSON text that ``ExportedInvoicesData.model_validate_json()`` reads back in full, including the presigned part URLs.
-        """
-        return json.dumps(self.to_sensitive_dict(), indent=indent)
-
-
 class InvoiceExportStatusResponse(KSeFBaseModel):
     """Status response for a scheduled invoice export."""
 

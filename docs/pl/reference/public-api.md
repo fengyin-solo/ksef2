@@ -12,7 +12,7 @@ stabilne w linii 1.x.
 | --- | --- |
 | `ksef2` | Klienci root, konfiguracja środowiska i transportu, `FormSchema`, `__version__` oraz publiczne wyjątki. |
 | `ksef2.clients` | Konkretne klasy klientów sync/async, stabilne typy workflow `InvoicesService` / `BatchService` oraz typy uchwytów, stronicowania i wyniku eksportu (`InvoiceSubmission`, `ExportJob`, `GeneratedToken`, `PermissionOperation`, `CertificateEnrollment`, `ExportedInvoices`, `Pager`, `OperationHandle`) wraz z odpowiednikami async, do adnotacji typów. |
-| `ksef2.models` | Modele żądań, odpowiedzi, filtrów, paginacji (w tym `Page`), tokenów, uprawnień, sesji, batchy, snapshotu eksportu (`ExportedInvoicesData`) i poświadczeń XAdES (`XAdESCredentials`). |
+| `ksef2.models` | Modele żądań, odpowiedzi, filtrów, paginacji (w tym `Page`), tokenów, uprawnień, sesji, batchy, i poświadczeń XAdES (`XAdESCredentials`). |
 | `ksef2.fa3` | Publiczny builder faktur FA(3), drafty buildera oraz typy modelu faktury używane przez aplikacje. |
 | `ksef2.xades` | Ładowanie certyfikatów, generowanie certyfikatów TEST, lokalne podpisy XAdES, `LocalSigner` oraz model `XAdESCredentials` przyjmowany przez `with_xades()`. |
 | `ksef2.testdata` | Pomocniki tylko dla TEST, które generują poprawne numery NIP i PESEL (`generate_nip`, `generate_pesel`). |
@@ -94,10 +94,6 @@ Stan zapisuj i odtwarzaj jawnymi metodami:
 - `to_sensitive_dict()` w modelach odpowiedzi z sekretami, takich jak `UpoPage`,
   `GenerateTokenResponse` i `ExportHandle`, eksportuje pola sekretne do
   świadomego, chronionego użycia.
-- `to_sensitive_dict()` i `to_sensitive_json()` w snapshotcie zakończonego eksportu
-  (`ExportedInvoicesData`, z `ExportedInvoices.to_model()`) zachowują podpisane
-  adresy części paczki, które `model_dump()` i `repr()` odrzucają. Tylko ten wynik
-  odtwarza paczkę, która ma części.
 
 `XAdESCredentials` celowo nie ma metody eksportu. Jego klucz prywatny jest
 odszyfrowywany do pamięci tylko po to, żeby `with_xades()` mógł podpisać, hasło nie
@@ -106,6 +102,12 @@ wejściowych.
 
 Wynik tych metod traktuj jak poświadczenie: przechowuj go zaszyfrowany, nigdy
 nie loguj i nie commituj.
+
+Zakończone eksporty faktur zapisuj jako zwykłe bajty `ExportedInvoices.archive`.
+Odtwórz je przez `ExportedInvoices.from_archive(archive, compression="zip")` lub
+użyj `compression="tar_gz"` dla TarGz. Metadane są odczytywane leniwie z archiwum;
+status paczki i adresy pobierania nie są odtwarzane. Chroń odszyfrowane dane faktur
+w magazynie. Zobacz [Pobieranie faktur](../how-to-guides/download-invoices.md).
 
 ## Reguła kompatybilności
 

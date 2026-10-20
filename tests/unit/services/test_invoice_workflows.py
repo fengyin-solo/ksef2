@@ -258,9 +258,12 @@ class TestExport:
         assert exported.package is not None
         assert exported.package.invoice_count == 2
         assert job.reference_number == "export-ref"
-        # Both flavours hand back the same class, and it snapshots for serialization.
+        # Both flavours return the same class and support restoring archive bytes.
         assert type(exported) is ExportedInvoices
-        assert exported.to_model().archive == payload
+        restored = ExportedInvoices.from_archive(exported.archive)
+        assert list(restored.invoices()) == [(KSEF_1, b"<one />"), (KSEF_2, b"<two />")]
+        assert restored.metadata == []
+        assert restored.package is None
 
     def test_wait_raises_when_ksef_fails_the_export(
         self,

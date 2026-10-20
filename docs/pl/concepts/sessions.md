@@ -181,7 +181,7 @@ Format zapisu to `{"version": 1, "payload": {...}}`. Obie metody eksportu sekret
 zwracają tę samą strukturę zgodną z JSON, z zaszyfrowanymi częściami jako Base64
 bezpieczne dla URL z dopełnieniem. Dla słownika użyj `from_sensitive_dict()`.
 Czytniki odrzucają brak wersji, nieobsługiwane wersje i nieznane pola przez
-`KSeFValidationError` bez ujawniania zapisanych wartości. Niewersjonowane eksporty
+`ValueError` bez ujawniania zapisanych wartości. Niewersjonowane eksporty
 z wersji rozwojowej nie są obsługiwane. Czytniki w serii 1.x zachowują obsługę wydanych wersji zapisu. Niezgodne
 formaty wymagają nowej wersji i udokumentowanej migracji. Ogólna walidacja Pydantic nie
 odczytuje tego formatu. Stany wznowienia sesji zachowują dotychczasowy format.

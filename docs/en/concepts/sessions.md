@@ -180,7 +180,7 @@ The persistence envelope is `{"version": 1, "payload": {...}}`. Both sensitive e
 methods produce the same JSON-safe shape, with encrypted parts as URL-safe
 Base64 with padding. Use `from_sensitive_dict()` for the dictionary form.
 Readers reject missing or unsupported versions and unknown fields with
-`KSeFValidationError` without exposing stored values. Unversioned development
+`ValueError` without exposing stored values. Unversioned development
 exports are not supported. Readers in 1.x retain support for released persistence versions. Incompatible
 formats require a new version and a documented migration. Generic Pydantic validation does not read this
 envelope. Session resume states retain their existing format.

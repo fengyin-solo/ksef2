@@ -212,13 +212,13 @@ def test_prepared_batch_rejects_unsupported_versions(
         lambda: PreparedBatch.from_sensitive_json(json.dumps(exported)),
     ]:
         with pytest.raises(
-            KSeFValidationError, match="Unsupported prepared batch persistence version"
+            ValueError, match="Unsupported prepared batch persistence version"
         ) as caught:
             reader()
         assert "secret-version" not in repr(caught.value)
         assert caught.value.__context__ is None
         assert caught.value.__cause__ is None
-    with pytest.raises(KSeFValidationError, match="Unsupported"):
+    with pytest.raises(ValueError, match="Unsupported"):
         PreparedBatch.from_sensitive_dict(prepared_batch.model_dump())
 
 
@@ -245,7 +245,7 @@ def test_prepared_batch_invalid_persistence_hides_values(
     else:
         exported["payload"]["parts"][0]["content"] = secret.encode()
     with pytest.raises(
-        KSeFValidationError, match="Invalid prepared batch persistence payload"
+        ValueError, match="Invalid prepared batch persistence payload"
     ) as caught:
         PreparedBatch.from_sensitive_dict(exported)
     assert secret not in str(caught.value)
@@ -261,7 +261,7 @@ def test_prepared_batch_invalid_persistence_hides_values(
 )
 def test_prepared_batch_malformed_json_is_safe(stored: str | bytes) -> None:
     with pytest.raises(
-        KSeFValidationError, match="Invalid prepared batch persistence envelope"
+        ValueError, match="Invalid prepared batch persistence envelope"
     ) as caught:
         PreparedBatch.from_sensitive_json(stored)
     assert "secret" not in repr(caught.value)

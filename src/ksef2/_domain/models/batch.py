@@ -6,7 +6,7 @@ import hashlib
 import json
 import warnings
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Literal, Self, override
+from typing import TYPE_CHECKING, Literal, Self, cast, override
 
 from pydantic import ConfigDict, Field, SecretStr, field_validator
 
@@ -278,36 +278,32 @@ class PreparedBatch(KSeFBaseModel):
             The complete original prepared batch.
 
         Raises:
-            KSeFValidationError: If the envelope is unsupported or malformed.
+            ValueError: If the envelope is unsupported or malformed.
                 Errors never include stored values or validation exception chains.
         """
-        from ksef2._core.exceptions import KSeFValidationError
-
         if type(state.get("version")) is not int or state.get("version") != 1:
-            raise KSeFValidationError("Unsupported prepared batch persistence version.")
+            raise ValueError("Unsupported prepared batch persistence version.")
         try:
             if set(state) != {"version", "payload"}:
                 raise ValueError
-            payload = state["payload"]
-            _check_persisted_batch_fields(payload, cls)
-            if isinstance(payload, dict):
-                _check_persisted_batch_fields(payload.get("batch_file"), BatchFileInfo)
-                batch_file = payload.get("batch_file")
-                if isinstance(batch_file, dict):
-                    for part in batch_file.get("parts", []):
-                        _check_persisted_batch_fields(part, BatchFilePart)
-                _check_persisted_batch_fields(
-                    payload.get("encryption"), BatchEncryptionData
-                )
-                for part in payload.get("parts", []):
-                    _check_persisted_batch_fields(part, BatchPreparedPart)
-                for invoice in payload.get("invoices", []):
-                    _check_persisted_batch_fields(invoice, BatchInvoiceHash)
+            payload = _check_persisted_batch_fields(state["payload"], cls)
+            batch_file = _check_persisted_batch_fields(
+                payload.get("batch_file"), BatchFileInfo
+            )
+            for part in _persisted_list(batch_file.get("parts")):
+                _ = _check_persisted_batch_fields(part, BatchFilePart)
+            _ = _check_persisted_batch_fields(
+                payload.get("encryption"), BatchEncryptionData
+            )
+            for part in _persisted_list(payload.get("parts")):
+                _ = _check_persisted_batch_fields(part, BatchPreparedPart)
+            for invoice in _persisted_list(payload.get("invoices")):
+                _ = _check_persisted_batch_fields(invoice, BatchInvoiceHash)
             return cls.model_validate_json(json.dumps(payload))
         except (ValueError, TypeError, OverflowError):
             pass
         # Raise outside the handler so even __context__ cannot expose stored data.
-        raise KSeFValidationError("Invalid prepared batch persistence payload.")
+        raise ValueError("Invalid prepared batch persistence payload.")
 
     @classmethod
     def from_sensitive_json(cls, state: str | bytes | bytearray) -> Self:
@@ -320,18 +316,16 @@ class PreparedBatch(KSeFBaseModel):
             The complete original prepared batch.
 
         Raises:
-            KSeFValidationError: If JSON, version or payload is invalid, without
+            ValueError: If JSON, version or payload is invalid, without
                 including stored values or validation exception chains.
         """
-        from ksef2._core.exceptions import KSeFValidationError
-
         try:
-            parsed: object = json.loads(state)
+            parsed = cast(object, json.loads(state))
         except (ValueError, UnicodeDecodeError):
             parsed = None
         if not isinstance(parsed, dict):
-            raise KSeFValidationError("Invalid prepared batch persistence envelope.")
-        return cls.from_sensitive_dict(parsed)
+            raise ValueError("Invalid prepared batch persistence envelope.")
+        return cls.from_sensitive_dict(cast(dict[str, object], parsed))
 
     def recovery_digest(self) -> str:
         """Bind recovery to the exact prepared payload without exporting secrets.
@@ -364,10 +358,22 @@ class PreparedBatch(KSeFBaseModel):
         return digest.hexdigest()
 
 
-def _check_persisted_batch_fields(value: object, model: type[KSeFBaseModel]) -> None:
+def _check_persisted_batch_fields(
+    value: object, model: type[KSeFBaseModel]
+) -> dict[str, object]:
     """Reject unknown fields before model validation can log their names."""
-    if not isinstance(value, dict) or set(value) - model.model_fields.keys():
+    if not isinstance(value, dict):
         raise ValueError
+    fields = cast(dict[str, object], value)
+    if set(fields) - model.model_fields.keys():
+        raise ValueError
+    return fields
+
+
+def _persisted_list(value: object) -> list[object]:
+    if not isinstance(value, list):
+        raise ValueError
+    return cast(list[object], value)
 
 
 class OpenBatchSessionRequest(KSeFBaseModel):

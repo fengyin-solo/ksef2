@@ -10,7 +10,7 @@ from typing import cast, final, override
 
 from typing_extensions import deprecated
 
-from ksef2._clients._handles import OperationHandle
+from ksef2._clients._handles import OperationHandle, not_after_resume
 from ksef2._clients._pager import Pager
 from ksef2._clients._pagination_cursor import OffsetCursor
 from ksef2._core import exceptions
@@ -37,14 +37,6 @@ from ksef2._domain.models.certificates import (
 from ksef2._domain.models.pagination import OffsetPaginationParams, Page
 from ksef2._endpoints.certificates import CertificatesEndpoints
 from ksef2._infra.mappers.certificates import from_spec, to_spec
-
-
-def _not_after_resume(owner: str, name: str) -> AttributeError:
-    """Build the error for data a saved state never held."""
-    return AttributeError(
-        f"{owner!r} object has no attribute {name!r}: a handle rebuilt from"
-        " resume state only knows the reference number"
-    )
 
 
 @final
@@ -93,7 +85,7 @@ class CertificateEnrollment(
         # answered here too and keeps its resume message.
         if name in CertificateEnrollmentResponse.model_fields or name == "response":
             if self._response is None:
-                raise _not_after_resume(type(self).__name__, name)
+                raise not_after_resume(type(self).__name__, name)
             return cast(object, getattr(self._response, name))
         raise AttributeError(
             f"{type(self).__name__!r} object has no attribute {name!r}"
@@ -102,7 +94,7 @@ class CertificateEnrollment(
     def _enrollment_response(self, name: str) -> CertificateEnrollmentResponse:
         """Return the enrollment response, refusing to invent one after a resume."""
         if self._response is None:
-            raise _not_after_resume(type(self).__name__, name)
+            raise not_after_resume(type(self).__name__, name)
         return self._response
 
     def resume_state(self) -> CertificateEnrollmentResumeState:

@@ -5,13 +5,14 @@ import json
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from ksef2._clients._pagination_cursor import (
     CURSOR_VERSION,
     ContinuationCursor,
     InvoiceSearchCursor,
     OffsetCursor,
+    search_fingerprint,
 )
 from ksef2._core.exceptions import KSeFArgumentError
 from ksef2._domain.models.invoices import InvoicesFilter
@@ -183,6 +184,9 @@ def _offset_cursor(page_offset: int = 1) -> str:
     ).encode()
 
 
+SEARCH = "a" * 64
+
+
 def _invoice_search_cursor(
     boundary: date | datetime | None = None,
 ) -> InvoiceSearchCursor:
@@ -190,6 +194,7 @@ def _invoice_search_cursor(
     return InvoiceSearchCursor(
         v=CURSOR_VERSION,
         operation="invoices.search",
+        search=SEARCH,
         filters=InvoicesFilter(
             role="seller",
             date_type="issue_date",
@@ -567,6 +572,7 @@ class TestInvoiceSearchCursorState:
         cursor = InvoiceSearchCursor(
             v=CURSOR_VERSION,
             operation="invoices.search",
+            search=SEARCH,
             filters=filters,
             params=InvoiceMetadataParams(),
         )
@@ -617,3 +623,74 @@ class TestInvoiceSearchCursorState:
         if isinstance(boundary, datetime) and isinstance(resumed_boundary, datetime):
             assert resumed_boundary.utcoffset() == boundary.utcoffset()
             assert resumed_boundary.microsecond == boundary.microsecond
+
+
+class TestSearchFingerprint:
+    """The fingerprint names a search, not how far it has progressed."""
+
+    FILTERS = InvoicesFilter(
+        role="seller",
+        date_type="issue_date",
+        date_from=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        date_to=datetime(2026, 2, 1, tzinfo=timezone.utc),
+    )
+
+    def test_fingerprint_ignores_date_to_and_page_offset(self) -> None:
+        later = self.FILTERS.model_copy(
+            update={"date_to": datetime(2030, 1, 1, tzinfo=timezone.utc)}
+        )
+
+        assert search_fingerprint(
+            self.FILTERS, InvoiceMetadataParams(page_offset=0)
+        ) == search_fingerprint(later, InvoiceMetadataParams(page_offset=7))
+
+    @pytest.mark.parametrize(
+        ("filters", "params"),
+        [
+            (
+                FILTERS.model_copy(update={"buyer_nip": "5260250274"}),
+                InvoiceMetadataParams(),
+            ),
+            (
+                FILTERS.model_copy(
+                    update={"date_from": datetime(2025, 1, 1, tzinfo=timezone.utc)}
+                ),
+                InvoiceMetadataParams(),
+            ),
+            (FILTERS, InvoiceMetadataParams(page_size=50)),
+            (FILTERS, InvoiceMetadataParams(sort_order="desc")),
+        ],
+        ids=["filter", "date-from", "page-size", "sort-order"],
+    )
+    def test_fingerprint_changes_with_the_search(
+        self, filters: InvoicesFilter, params: InvoiceMetadataParams
+    ) -> None:
+        assert search_fingerprint(filters, params) != search_fingerprint(
+            self.FILTERS, InvoiceMetadataParams()
+        )
+
+    def test_decode_search_rejects_a_cursor_of_another_search(self) -> None:
+        cursor = _invoice_search_cursor().encode()
+
+        assert (
+            InvoiceSearchCursor.decode_search(
+                cursor, operation="invoices.search", search=SEARCH
+            ).search
+            == SEARCH
+        )
+        with pytest.raises(KSeFArgumentError, match="different search") as caught:
+            _ = InvoiceSearchCursor.decode_search(
+                cursor, operation="invoices.search", search="b" * 64
+            )
+        assert cursor not in str(caught.value)
+
+    @pytest.mark.parametrize("search", ["", "A" * 64, "a" * 63, "g" * 64])
+    def test_cursor_requires_a_lowercase_hex_fingerprint(self, search: str) -> None:
+        with pytest.raises(ValidationError):
+            _ = InvoiceSearchCursor(
+                v=CURSOR_VERSION,
+                operation="invoices.search",
+                search=search,
+                filters=self.FILTERS,
+                params=InvoiceMetadataParams(),
+            )

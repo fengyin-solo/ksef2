@@ -9,6 +9,7 @@ request is sent.
 
 import base64
 import binascii
+import hashlib
 import json
 import re
 from datetime import date, datetime
@@ -153,12 +154,42 @@ class InvoiceSearchCursor(_PaginationCursor):
     token. A resumed search therefore keeps working after the date range shifts.
     """
 
+    search: str = Field(pattern=r"^[0-9a-f]{64}$")
+    """Fingerprint of the search that issued this cursor, from ``search_fingerprint``.
+    It stays the same while the search narrows its own date range, so a pager can refuse
+    a cursor that belongs to another search."""
     filters: InvoicesFilter
     """Criteria selecting the invoices for the page to fetch."""
     params: InvoiceMetadataParams
     """Page size, page offset and sort order for the page to fetch."""
     previous_truncation_boundary: date | datetime | None = None
     """Boundary the previous page truncated at, used to detect a stalled search."""
+    stalled: Literal["no_invoices", "no_advance"] | None = None
+    """Why the search cannot continue past the page that issued this cursor, or ``None``.
+    The page was still returned in full; resuming this cursor raises the pagination error
+    instead of sending a request, so the failure is reported after the invoices are."""
+
+    @classmethod
+    def decode_search(cls, cursor: str, *, operation: str, search: str) -> Self:
+        """Read a cursor and check that the given search issued it.
+
+        Args:
+            cursor: Cursor string returned by ``encode``.
+            operation: Operation the caller is resuming.
+            search: Fingerprint of the search the caller is resuming, from ``search_fingerprint``.
+
+        Returns:
+            The decoded cursor state.
+
+        Raises:
+            KSeFArgumentError: If the cursor is malformed, belongs to another operation, or was issued by a different search. The cursor itself is never echoed back.
+        """
+        decoded = cls.decode(cursor, operation=operation)
+        if decoded.search != search:
+            raise _invalid_cursor(
+                "it was issued by a different search than the one this pager runs"
+            )
+        return decoded
 
     @field_validator("previous_truncation_boundary", mode="before")
     @classmethod
@@ -182,6 +213,30 @@ class InvoiceSearchCursor(_PaginationCursor):
         if len(value) > 10 and value[10] in "Tt ":
             return datetime.fromisoformat(value)
         return date.fromisoformat(value)
+
+
+def search_fingerprint(filters: InvoicesFilter, params: InvoiceMetadataParams) -> str:
+    """Identify an invoice search independently of how far it has progressed.
+
+    The fingerprint covers the filters, the page size and the sort order. It leaves out
+    the page offset, which moves with every page, and ``date_to``, which defaults to the
+    moment the filters were built, so a pager rebuilt after a restart with the same
+    criteria still recognises its own cursors.
+
+    Args:
+        filters: Filters the search started with.
+        params: Parameters the search started with.
+
+    Returns:
+        A SHA-256 hex digest.
+    """
+    identity = {
+        "filters": filters.model_dump(mode="json", exclude={"date_to"}),
+        "page_size": params.page_size,
+        "sort_order": params.sort_order,
+    }
+    text = json.dumps(identity, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def _read_state(cursor: str) -> dict[str, object]:

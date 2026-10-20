@@ -16,6 +16,7 @@ from ksef2._core.crypto import encrypt_invoice
 from ksef2._core.exceptions import (
     ExceptionCode,
     KSeFApiError,
+    KSeFArgumentError,
     KSeFMetadataPaginationError,
     KSeFExportFailedError,
     KSeFExportTimeoutError,
@@ -395,7 +396,8 @@ _TRUNCATION_REQUEST_DATE = {
 }
 
 # Run in a fresh interpreter: it rebuilds the search from scratch and resumes only from
-# the cursor in argv, which proves the cursor carries no process-local state.
+# the cursor in argv, which proves the cursor carries no process-local state. The
+# rebuilt filters leave out ``date_to``, which defaults to the moment they are built.
 _RESUME_CHILD = """
 import json
 import sys
@@ -420,9 +422,9 @@ page = service.search(
     InvoicesFilter(
         role="seller",
         date_type="issue_date",
-        date_from="2020-01-01T00:00:00+00:00",
+        date_from="2026-01-01T00:00:00+00:00",
     ),
-    InvoiceMetadataParams(page_size=10),
+    InvoiceMetadataParams(page_size=15),
 ).page(sys.argv[1])
 call = flavor.transport.calls[0]
 print(
@@ -548,9 +550,13 @@ class TestSearchCursors:
             )
         )
 
-        # The second truncation lands on the boundary the cursor already carried.
+        # The second truncation lands on the boundary the cursor already carried. Its
+        # invoices are still returned, and the error waits behind the page's cursor.
+        second = flavor.run(service.search(filters).page(first.next_cursor))
+        assert len(second.items) == 2
+        assert second.next_cursor is not None
         with pytest.raises(KSeFMetadataPaginationError, match="did not advance"):
-            flavor.run(service.search(filters).page(first.next_cursor))
+            flavor.run(service.search(filters).page(second.next_cursor))
         assert len(flavor.transport.calls) == 2
 
     @pytest.mark.parametrize(
@@ -597,8 +603,10 @@ class TestSearchCursors:
             )
         )
 
+        second = flavor.run(service.search(filters).page(first.next_cursor))
+        assert second.next_cursor is not None
         with pytest.raises(KSeFMetadataPaginationError, match="did not advance"):
-            flavor.run(service.search(filters).page(first.next_cursor))
+            flavor.run(service.search(filters).page(second.next_cursor))
         assert len(flavor.transport.calls) == 2
 
     def test_cursor_keeps_filters_and_params_after_restart(
@@ -632,7 +640,8 @@ class TestSearchCursors:
             json.loads(json.dumps({"cursor": str(first.next_cursor)}))["cursor"]
         )
 
-        # A search rebuilt with unrelated values still resumes the original request.
+        # A search rebuilt after a restart resumes the original request, whatever page
+        # offset or ``date_to`` it was rebuilt with.
         flavor.transport.enqueue(
             _boundary_page(
                 inv_query_metadata_resp,
@@ -643,12 +652,10 @@ class TestSearchCursors:
         )
         resumed = flavor.run(
             service.search(
-                InvoicesFilter(
-                    role="seller",
-                    date_type="permanent_storage",
-                    date_from=datetime(2020, 1, 1, tzinfo=UTC),
+                filters.model_copy(
+                    update={"date_to": datetime(2030, 1, 1, tzinfo=UTC)}
                 ),
-                InvoiceMetadataParams(page_size=10, page_offset=99),
+                InvoiceMetadataParams(page_size=20, page_offset=99, sort_order="desc"),
             ).page(cursor)
         )
 
@@ -698,11 +705,75 @@ class TestSearchCursors:
             )
         )
 
-        resumed = flavor.run(service.search(_filters()).page(cursor))
+        resumed = flavor.run(service.search(filters).page(cursor))
 
         assert resumed.next_cursor is None
         assert len(flavor.transport.calls) == 2
         assert _request_body(flavor.transport.calls[1])["formType"] == "PEF"
+
+    @pytest.mark.parametrize(
+        "other",
+        [
+            lambda f: (f.model_copy(update={"invoice_number": "FV/1/2026"}), None),
+            lambda f: (f.model_copy(update={"role": "buyer"}), None),
+            lambda f: (f.model_copy(update={"date_type": "invoicing_date"}), None),
+            lambda f: (
+                f.model_copy(update={"date_from": datetime(2025, 1, 1, tzinfo=UTC)}),
+                None,
+            ),
+            lambda f: (f, InvoiceMetadataParams(page_size=50)),
+            lambda f: (f, InvoiceMetadataParams(sort_order="desc")),
+        ],
+        ids=["number", "role", "date-type", "date-from", "page-size", "sort-order"],
+    )
+    def test_cursor_from_another_search_is_rejected_before_any_request(
+        self,
+        flavor: Flavor,
+        inv_query_metadata_resp: BaseFactory[spec.QueryInvoicesMetadataResponse],
+        other: Any,
+    ) -> None:
+        filters = _filters()
+        service = flavor.invoices_service()
+        flavor.transport.enqueue(
+            _boundary_page(
+                inv_query_metadata_resp,
+                has_more=True,
+                truncated=False,
+                boundaries=["2026-02-01T09:00:00+00:00"],
+            )
+        )
+        first = flavor.run(service.search(filters).page(None))
+        assert first.next_cursor is not None
+
+        other_filters, other_params = other(filters)
+        with pytest.raises(KSeFArgumentError, match="different search") as caught:
+            flavor.run(
+                service.search(other_filters, other_params).page(first.next_cursor)
+            )
+
+        assert first.next_cursor not in str(caught.value)
+        assert len(flavor.transport.calls) == 1
+
+    def test_empty_truncated_page_is_returned_then_reported(
+        self,
+        flavor: Flavor,
+        inv_query_metadata_resp: BaseFactory[spec.QueryInvoicesMetadataResponse],
+    ) -> None:
+        filters = _filters()
+        service = flavor.invoices_service()
+        flavor.transport.enqueue(
+            _boundary_page(
+                inv_query_metadata_resp, has_more=True, truncated=True, boundaries=[]
+            )
+        )
+
+        page = flavor.run(service.search(filters).page(None))
+
+        assert page.items == []
+        assert page.next_cursor is not None
+        with pytest.raises(KSeFMetadataPaginationError, match="without invoices"):
+            flavor.run(service.search(filters).page(page.next_cursor))
+        assert len(flavor.transport.calls) == 1
 
     def test_cursor_empty_terminal_page(
         self,

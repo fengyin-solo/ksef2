@@ -21,7 +21,9 @@ class RecordedCall:
 @dataclass()
 class FakeTransport(protocols.Middleware):
     calls: list[RecordedCall] = field(default_factory=list)
-    responses: list[httpx.Response | httpx.RequestError] = field(default_factory=list)
+    responses: list[
+        httpx.Response | httpx.RequestError | httpx.InvalidURL | httpx.StreamError
+    ] = field(default_factory=list)
 
     def request(
         self,
@@ -107,7 +109,9 @@ class FakeTransport(protocols.Middleware):
             )
         self.responses.append(resp)
 
-    def enqueue_error(self, error: httpx.RequestError) -> None:
+    def enqueue_error(
+        self, error: httpx.RequestError | httpx.InvalidURL | httpx.StreamError
+    ) -> None:
         self.responses.append(error)
 
     def clear(self) -> None:
@@ -118,7 +122,9 @@ class FakeTransport(protocols.Middleware):
         if not self.responses:
             raise RuntimeError("FakeTransport: no more queued responses")
         response = self.responses.pop(0)
-        if isinstance(response, httpx.RequestError):
+        if isinstance(
+            response, (httpx.RequestError, httpx.InvalidURL, httpx.StreamError)
+        ):
             raise response
         return response
 
@@ -127,7 +133,9 @@ class FakeTransport(protocols.Middleware):
 @dataclass()
 class AsyncFakeTransport(AsyncMiddleware):
     calls: list[RecordedCall] = field(default_factory=list)
-    responses: list[httpx.Response | httpx.RequestError] = field(default_factory=list)
+    responses: list[
+        httpx.Response | httpx.RequestError | httpx.InvalidURL | httpx.StreamError
+    ] = field(default_factory=list)
 
     async def request(
         self,
@@ -213,7 +221,9 @@ class AsyncFakeTransport(AsyncMiddleware):
             )
         self.responses.append(resp)
 
-    def enqueue_error(self, error: httpx.RequestError) -> None:
+    def enqueue_error(
+        self, error: httpx.RequestError | httpx.InvalidURL | httpx.StreamError
+    ) -> None:
         self.responses.append(error)
 
     def clear(self) -> None:
@@ -224,6 +234,8 @@ class AsyncFakeTransport(AsyncMiddleware):
         if not self.responses:
             raise RuntimeError("AsyncFakeTransport: no more queued responses")
         response = self.responses.pop(0)
-        if isinstance(response, httpx.RequestError):
+        if isinstance(
+            response, (httpx.RequestError, httpx.InvalidURL, httpx.StreamError)
+        ):
             raise response
         return response

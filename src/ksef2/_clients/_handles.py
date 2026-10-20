@@ -12,6 +12,22 @@ _TStatus = TypeVar("_TStatus")
 _TResult = TypeVar("_TResult")
 
 
+def not_after_resume(owner: str, name: str) -> AttributeError:
+    """Build the error for data a saved state never held.
+
+    Args:
+        owner: Class name of the handle that was rebuilt from resume state.
+        name: Attribute the caller read.
+
+    Returns:
+        The error to raise from the attribute access.
+    """
+    return AttributeError(
+        f"{owner!r} object has no attribute {name!r}: a handle rebuilt from"
+        " resume state only knows the reference number"
+    )
+
+
 class OperationHandle(ABC, Generic[_TStatus, _TResult]):
     """Client-side handle to an operation that KSeF finishes asynchronously.
 

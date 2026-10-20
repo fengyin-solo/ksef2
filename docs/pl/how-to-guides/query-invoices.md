@@ -107,9 +107,14 @@ if cursor is not None:
 ```
 
 Kursor wyszukiwania faktur zawiera całe następne żądanie: filtr, rozmiar strony,
-kolejność sortowania oraz granicę obcięcia, na której zatrzymał się KSeF.
-Wyszukiwanie wznowione z kursora zachowuje więc swoją pozycję nawet wtedy, gdy
-zakres dat w kodzie jest już inny. `next_cursor` ma wartość `None` dopiero po
+kolejność sortowania oraz granicę obcięcia, na której zatrzymał się KSeF, więc
+wznowione wyszukiwanie zachowuje pozycję nawet wtedy, gdy KSeF zawęził zakres
+dat. Wznów je na wyszukiwaniu zbudowanym z tym samym filtrem, rozmiarem strony i
+kolejnością sortowania; `date_to` nie jest porównywane, bo domyślnie oznacza
+chwilę zbudowania filtra. Kursor z innego wyszukiwania zgłasza `KSeFArgumentError`
+przed wysłaniem jakiegokolwiek żądania. Kursor pokazuje te filtry, w tym numery
+NIP i numery faktur, w czytelnej postaci, więc nie zapisuj go w logach ani w
+adresach URL. `next_cursor` ma wartość `None` dopiero po
 przeczytaniu ostatniej strony; strona może być pusta i nadal przekazywać kursor
 następnej. W kodzie async to samo odczytanie to
 `second = await auth.invoices.search(filters, params).page(cursor)`.

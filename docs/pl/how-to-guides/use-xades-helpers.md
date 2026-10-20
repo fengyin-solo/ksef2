@@ -28,7 +28,7 @@ private_key = load_private_key_from_pem(
 ### Z DER
 
 `XAdESCredentials.from_der` czyta bajty certyfikatu i klucza w formacie DER i trzyma
-je jako jedną wiążalną wartość zamiast dwóch aktywanych obiektów.
+je w jednym obiekcie poświadczeń jako załadowane obiekty cryptography.
 
 ```python
 import os
@@ -86,8 +86,7 @@ auth = client.authentication.with_xades(
 )
 ```
 
-Można też przekazać model poświadczeń — to forma, którą opisuje schemat JSON i która
-przechodzi przez granicę FFI. W warstwie async na ten sam wynik się czeka:
+Można też przekazać obiekt poświadczeń. W warstwie async użyj `await`:
 
 ```python
 auth = await client.authentication.with_xades(
@@ -137,12 +136,13 @@ signed_xml = sign_xades(xml, cert, private_key)
 
 :::caution[Chroń klucze prywatne]
 Pliki kluczy prywatnych i hasła trzymaj poza kontrolą wersji. Ładuj hasła ze
-zmiennych środowiskowych albo managera sekretów. `XAdESCredentials` normalizuje
-dostarczony format do certyfikatu PEM i niezaszyfrowanego klucza PKCS#8 PEM
-przechowywanego w pamięci, nie zatrzymując żadnego hasła: klucz jest wyłączony z
-`repr()`, `model_dump()` i `model_dump_json()`, więc zrzut ogólny służy tylko do
-wyświetlania i nigdy nie jest eksportem poświadczeń. Sam model traktuj jako sekret
-dopóki żyje.
+zmiennych środowiskowych albo managera sekretów. `XAdESCredentials` przechowuje w
+pamięci załadowane obiekty certyfikatu i odszyfrowanego klucza prywatnego, bez hasła
+ani bajtów wejściowych. `repr()` ukrywa oba obiekty. Obiekt poświadczeń nie ma
+schematu Pydantic ani API serializacji JSON. Traktuj go jako sekret, dopóki żyje.
+Konstruktor sprawdza typ klucza i zgodność certyfikatu z kluczem tylko raz.
+Uwierzytelnianie i podpisywanie używają załadowanych obiektów bez serializacji ani
+ponownego parsowania klucza prywatnego.
 :::
 
 ## Zalecany przepływ

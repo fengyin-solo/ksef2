@@ -1,11 +1,6 @@
-"""XAdES signing credentials supplied as data instead of live crypto objects.
+"""Loaded certificate and private key for XAdES authentication."""
 
-The module keeps the ``cryptography`` parsing in one place so ``with_xades()`` can
-take a single bindable parameter, and so decrypted key material is normalised once
-and held only in a field that generic serialization and ``repr()`` never show.
-"""
-
-from typing import Literal, Self
+from typing import Literal, Self, override
 
 from cryptography import x509
 from cryptography.exceptions import UnsupportedAlgorithm
@@ -15,16 +10,12 @@ from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
 from cryptography.hazmat.primitives.asymmetric.types import PrivateKeyTypes
 from cryptography.hazmat.primitives.serialization import (
     Encoding,
-    NoEncryption,
-    PrivateFormat,
     PublicFormat,
     pkcs12,
 )
 from cryptography.x509 import Certificate
-from pydantic import ConfigDict, Field, SecretBytes
 
 from ksef2._core import exceptions
-from ksef2._domain.models.base import KSeFBaseModel
 
 _DataEncoding = Literal["pem", "der"]
 
@@ -114,49 +105,52 @@ def _usable_pair(
     return certificate, private_key
 
 
-class XAdESCredentials(KSeFBaseModel):
-    """Certificate and private key for ``with_xades()``, held as normalized data.
+class XAdESCredentials:
+    """Loaded certificate and private key for ``with_xades()``.
 
-    Build it with :meth:`from_pem`, :meth:`from_der` or :meth:`from_pkcs12` and pass
-    the result as ``with_xades(nip=..., credentials=...)``. The constructors accept
-    raw bytes rather than file paths, so a caller that reads the files, receives an
-    upload or crosses a language boundary keeps control of the transport.
+    Use :meth:`from_pem`, :meth:`from_der` or :meth:`from_pkcs12` to load bytes,
+    or construct the holder from loaded cryptography objects. Construction checks
+    that the key is RSA or EC and belongs to the certificate, once. Authentication
+    reuses those objects without serializing or parsing the private key again.
 
-    Whatever the input format, the model stores the certificate as PEM and the key
-    as unencrypted PKCS#8 PEM. The key field is a ``SecretBytes`` excluded from
-    ``model_dump()``, ``model_dump_json()`` and ``repr()``, so a generic dump is a
-    display form and never a credential export: it cannot be read back. The password
-    is consumed while decoding and is not stored anywhere on the model, so there is
-    no retained password to leak and none to rotate.
+    The holder retains no password or input bytes. Its repr hides both objects.
+    It has no model schema or JSON serialization API. Treat it as a secret while
+    it holds the decrypted private key in memory.
 
-    Note:
-        Because the stored key is unencrypted PEM in memory, the model is a secret.
-        Keep it out of logs, caches and persistence, and drop the reference when
-        authentication is done. Use it for nothing but the call that signs.
+    Args:
+        certificate: Loaded X.509 signing certificate.
+        private_key: Loaded RSA or EC private key belonging to the certificate.
 
-    Example:
-        ```python
-        from pathlib import Path
-
-        from ksef2.xades import XAdESCredentials
-
-        credentials = XAdESCredentials.from_pem(
-            Path("company.pem").read_bytes(),
-            Path("company.key").read_bytes(),
-        )
-        auth = client.authentication.with_xades(
-            nip="5261040828", credentials=credentials
-        )
-        ```
+    Raises:
+        KSeFArgumentError: If the key is not RSA or EC or does not match.
     """
 
-    model_config = ConfigDict(hide_input_in_errors=True)
+    __slots__ = ("_certificate", "_private_key")
 
-    cert_pem: bytes
-    """Accepted certificate, stored as PEM bytes. The certificate itself is public."""
+    def __init__(self, certificate: Certificate, private_key: PrivateKeyTypes) -> None:
+        self._certificate, self._private_key = _usable_pair(certificate, private_key)
 
-    key_pem: SecretBytes = Field(exclude=True, repr=False)
-    """Accepted private key as unencrypted PKCS#8 PEM; never dumped, serialized or repr'd."""
+    @override
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}(<redacted>)"
+
+    @property
+    def certificate(self) -> Certificate:
+        """Return the loaded signing certificate.
+
+        Returns:
+            The certificate accepted at construction.
+        """
+        return self._certificate
+
+    @property
+    def private_key(self) -> RSAPrivateKey | EllipticCurvePrivateKey:
+        """Return the loaded signing key. Keep this secret and out of logs.
+
+        Returns:
+            The private key accepted at construction.
+        """
+        return self._private_key
 
     @classmethod
     def from_pem(
@@ -175,7 +169,7 @@ class XAdESCredentials(KSeFBaseModel):
                 it from an encrypted key, is rejected instead of ignored.
 
         Returns:
-            Credentials holding the certificate and key as normalized PEM.
+            Credentials holding the loaded certificate and private key.
 
         Raises:
             KSeFArgumentError: If either input cannot be read, the key is not RSA or
@@ -190,7 +184,7 @@ class XAdESCredentials(KSeFBaseModel):
             )
             ```
         """
-        return cls._from_material(
+        return cls(
             _certificate(cert_pem, encoding="pem"),
             _private_key(key_pem, encoding="pem", password=key_password),
         )
@@ -212,7 +206,7 @@ class XAdESCredentials(KSeFBaseModel):
                 it from an encrypted key, is rejected instead of ignored.
 
         Returns:
-            Credentials holding the certificate and key as normalized PEM.
+            Credentials holding the loaded certificate and private key.
 
         Raises:
             KSeFArgumentError: If either input cannot be read, the key is not RSA or
@@ -226,7 +220,7 @@ class XAdESCredentials(KSeFBaseModel):
             )
             ```
         """
-        return cls._from_material(
+        return cls(
             _certificate(cert_der, encoding="der"),
             _private_key(key_der, encoding="der", password=key_password),
         )
@@ -241,7 +235,7 @@ class XAdESCredentials(KSeFBaseModel):
                 password decrypts the archive only: it is not kept afterwards.
 
         Returns:
-            Credentials holding the certificate and key as normalized PEM.
+            Credentials holding the loaded certificate and private key.
 
         Raises:
             KSeFArgumentError: If the archive cannot be read, holds no certificate or
@@ -274,42 +268,4 @@ class XAdESCredentials(KSeFBaseModel):
                 "The XAdES PKCS#12 archive holds no certificate.",
                 hint=_PKCS12_HINT,
             )
-        return cls._from_material(certificate, private_key)
-
-    @classmethod
-    def _from_material(
-        cls, certificate: Certificate, private_key: PrivateKeyTypes
-    ) -> Self:
-        """Normalize an already loaded pair into the single stored representation."""
-        accepted_certificate, accepted_key = _usable_pair(certificate, private_key)
-        return cls(
-            cert_pem=accepted_certificate.public_bytes(Encoding.PEM),
-            key_pem=SecretBytes(
-                accepted_key.private_bytes(
-                    Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()
-                )
-            ),
-        )
-
-    def to_crypto_material(
-        self,
-    ) -> tuple[Certificate, RSAPrivateKey | EllipticCurvePrivateKey]:
-        """Return the signing certificate and key for the stored material.
-
-        The stored PEM is parsed again and re-checked, because a model built by
-        ``model_validate`` or ``model_construct`` can hold data no constructor
-        accepted. The returned key is a live object the XAdES signer uses; it is
-        borrowed from this model's data and shares no handle with the model itself.
-
-        Returns:
-            A ``(certificate, private_key)`` pair, accepted for XAdES signing.
-
-        Raises:
-            KSeFArgumentError: If the stored material cannot be read, the key is not
-                RSA or EC, or the key does not belong to the certificate.
-        """
-        certificate = _certificate(self.cert_pem, encoding="pem")
-        private_key = _private_key(
-            self.key_pem.get_secret_value(), encoding="pem", password=None
-        )
-        return _usable_pair(certificate, private_key)
+        return cls(certificate, private_key)

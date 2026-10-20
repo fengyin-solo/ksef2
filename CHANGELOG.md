@@ -8,7 +8,7 @@
   `to_json()`, `from_dict()` and `from_json()`, and
   `auth.tokens.generation(state)`, `auth.certificates.enrollment(state)`,
   `auth.permissions.operation(state)` or `session.submission(state=...)` builds the
-  handle again after a restart, so a job queue or a language binding can keep
+  handle again after a restart, so a background worker can keep
   waiting without holding the client that started the operation. A resumed handle
   polls the saved reference number and does not invent data: the one-time token
   never appears in `GeneratedTokenResumeState`, in any of its exports or in `repr()`,
@@ -17,28 +17,22 @@
   `submission(state=...)` rejects a state from another session, or a call that
   passes both a reference and a state, with `KSeFArgumentError` (#266).
 
-- Hand a finished invoice export to another process or language binding with
-  `ExportedInvoices.to_model()` and `ExportedInvoices.from_model()`. The
-  `ExportedInvoicesData` model holds the decrypted archive, the package and the
-  parsed `_metadata.json`, gives a schema through `model_json_schema()`, and
-  round-trips the whole result through JSON. The archive is URL-safe Base64 with
-  `=` padding when the byte length requires it. `to_sensitive_json()` is the complete
-  format: a presigned part URL stays out of `model_dump()` and `repr()`, so only
-  that output restores a package that still has parts. `invoices()` and `save()`,
-  including the safe-extraction checks, work the same on a rebuilt result, and
-  async `wait()` returns the same type (#269).
+- Restore a finished invoice export from plain archive bytes with
+  `ExportedInvoices.from_archive(archive, compression="zip")`. Use `"tar_gz"`
+  for TarGz archives. Persist `ExportedInvoices.archive` directly; metadata is
+  read lazily from `_metadata.json`, and no package status or download URLs are
+  persisted. Invoice iteration and safe extraction work for both formats, and
+  async `wait()` returns the same result type (#276).
 
-- Authenticate with `with_xades(nip=..., credentials=XAdESCredentials...)`, where
-  `XAdESCredentials.from_pem`, `.from_der` and `.from_pkcs12` take raw certificate,
-  private-key or archive bytes plus an optional password. Whatever the input format,
-  the model holds a PEM certificate and an unencrypted PKCS#8 PEM key, keeps no
-  password, and excludes the key from `repr()`, `model_dump()` and
-  `model_dump_json()`, so a generic dump is display output and never a credential
-  export. A key that cannot sign for XAdES, and a certificate that does not belong to
-  its key, are rejected before any request. The existing `cert=`/`private_key=` object
-  form is unchanged, and passing both forms or neither raises `KSeFArgumentError`.
-  Because the credentials are one data model with a Pydantic schema, a language
-  binding can call XAdES authentication without special-casing it (#267).
+- Authenticate with `with_xades(nip=..., credentials=XAdESCredentials...)`.
+  `XAdESCredentials.from_pem`, `.from_der` and `.from_pkcs12` load certificate,
+  private-key or archive bytes with an optional password. The holder stores loaded
+  cryptography objects, retains no password or input bytes, and hides both objects
+  in `repr()`. It has no Pydantic schema or JSON serialization API. Construction
+  rejects unsupported keys and mismatched certificate/key pairs once, before any
+  request. Authentication and signing reuse the loaded objects without private-key
+  serialization or reparsing. The existing `cert=`/`private_key=` form is unchanged.
+  Passing both forms or neither raises `KSeFArgumentError` (#267, #277).
 
 - Read complete invoice search responses with `responses()` and `first_response()`,
   including the permanent-storage checkpoint on empty pages. Correct the English

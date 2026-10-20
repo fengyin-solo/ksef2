@@ -86,7 +86,9 @@ class AsyncCertificateEnrollment(
         self._response = response
 
     def __getattr__(self, name: str) -> object:
-        if name in CertificateEnrollmentResponse.model_fields:
+        # A property that raises AttributeError falls through to here, so "response" is
+        # answered here too and keeps its resume message.
+        if name in CertificateEnrollmentResponse.model_fields or name == "response":
             if self._response is None:
                 raise _not_after_resume(type(self).__name__, name)
             return cast(object, getattr(self._response, name))

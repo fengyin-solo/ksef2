@@ -46,7 +46,7 @@ przygotowaną paczkę jako `{"version": "1", "payload": {...}}`, z zaszyfrowanym
 częściami jako Base64 bezpieczne dla URL z dopełnieniem. Odtwórz ją przez
 `from_sensitive_dict()` lub `from_sensitive_json()` wraz z zapisanym stanem sesji
 batch. Czytniki odrzucają brak wersji, nieobsługiwane wersje, niewersjonowane
-eksporty rozwojowe i nieznane pola przez `KSeFValidationError` bez ujawniania
+eksporty rozwojowe i nieznane pola przez `ValueError` bez ujawniania
 zapisanych wartości. Przechowuj ten wynik jak poświadczenia; ogólne dumpy i repr
 pomijają klucze i bajty paczki. Czytniki w serii 1.x zachowują obsługę wydanych
 wersji zapisu. Niezgodne formaty wymagają nowej wersji i udokumentowanej migracji.

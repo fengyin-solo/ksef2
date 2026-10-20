@@ -226,7 +226,7 @@ def test_resumed_generated_token_has_no_token_attribute(
     assert resumed.reference_number == TOKEN_REF
     with pytest.raises(AttributeError):
         _ = resumed.token
-    with pytest.raises(AttributeError):
+    with pytest.raises(AttributeError, match="resume state only knows"):
         _ = resumed.response
     with pytest.raises(AttributeError):
         _ = resumed.to_sensitive_dict()
@@ -283,7 +283,7 @@ def test_resumed_certificate_enrollment_has_no_timestamp(
     }
     with pytest.raises(AttributeError):
         _ = resumed.timestamp
-    with pytest.raises(AttributeError):
+    with pytest.raises(AttributeError, match="resume state only knows"):
         _ = resumed.response
     assert resumed.resume_state() == state
 

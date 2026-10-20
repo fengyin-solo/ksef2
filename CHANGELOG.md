@@ -9,7 +9,7 @@
   The JSON-only envelope is `{"version": "1", "payload": {...}}`; dictionary export
   uses the same shape and has a matching `from_sensitive_dict()` reader. Readers
   reject unsupported or missing versions, unversioned development exports and
-  unknown fields with sanitized `KSeFValidationError` messages. Readers in 1.x
+  unknown fields with sanitized `ValueError` messages. Readers in 1.x
   retain support for released persistence versions. Incompatible formats require
   a new version and a documented migration. Every
   persisted state (`format_version`) and this envelope now write the version as a

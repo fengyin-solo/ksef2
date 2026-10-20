@@ -46,7 +46,7 @@ prepared batch as `{"version": "1", "payload": {...}}`, with encrypted parts as
 URL-safe padded Base64. Restore it with `from_sensitive_dict()` or
 `from_sensitive_json()` and the saved batch session state. These readers reject
 missing or unsupported versions, unversioned development exports and unknown
-fields with sanitized `KSeFValidationError` messages. Store this output as
+fields with sanitized `ValueError` messages. Store this output as
 credential material; generic dumps and repr exclude keys and payload bytes.
 Readers in 1.x retain support for released persistence versions. Incompatible
 formats require a new version and a documented migration. Existing session and

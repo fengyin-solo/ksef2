@@ -3,10 +3,12 @@
 import base64
 import binascii
 import hashlib
+import json
 import warnings
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Literal, Self, override
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import ConfigDict, Field, SecretStr, field_validator
 
 from ksef2._domain.models.base import KSeFBaseModel
 from ksef2._domain.models.compression import (
@@ -199,6 +201,8 @@ class BatchEncryptionData(KSeFBaseModel):
 class BatchPreparedPart(KSeFBaseModel):
     """Prepared encrypted batch part ready for upload."""
 
+    model_config = ConfigDict(ser_json_bytes="base64", val_json_bytes="base64")
+
     ordinal_number: int
     """One-based position of the part in the package."""
     content: bytes = Field(exclude=True, repr=False)
@@ -224,6 +228,110 @@ class PreparedBatch(KSeFBaseModel):
     """Encryption material used for the parts."""
     invoices: list[BatchInvoiceHash]
     """Hash of each invoice in the package, keyed by ZIP entry name."""
+
+    def to_sensitive_dict(self) -> dict[str, object]:
+        """Export a version 1 envelope for protected JSON persistence.
+
+        This contains the AES key and encrypted invoices. Store it as credential
+        material. Generic model dumps and repr exclude these fields.
+
+        Returns:
+            A ``version`` and ``payload`` envelope with JSON-safe values. Part
+            content uses URL-safe Base64 with padding.
+        """
+        data: dict[str, object] = self.model_dump(mode="json")
+        data["parts"] = [
+            {
+                **part.model_dump(mode="json"),
+                "content": base64.urlsafe_b64encode(part.content).decode(),
+            }
+            for part in self.parts
+        ]
+        data["encryption"] = self.encryption.to_sensitive_dict()
+        return {"version": 1, "payload": data}
+
+    def to_sensitive_json(self, *, indent: int | None = None) -> str:
+        """Export the sensitive version 1 envelope as JSON.
+
+        Args:
+            indent: Indentation width; ``None`` for compact output.
+
+        Returns:
+            JSON for ``from_sensitive_json()``. Store it as credential material.
+        """
+        return json.dumps(self.to_sensitive_dict(), indent=indent)
+
+    @classmethod
+    def from_sensitive_dict(cls, state: Mapping[str, object]) -> Self:
+        """Restore a prepared batch from its sensitive persistence envelope.
+
+        Only integer version 1 is supported. Missing versions, unversioned
+        development exports and unknown fields are rejected. Future readers must
+        retain support for released formats throughout 1.x. Incompatible formats
+        require a new version and a documented migration. Generic model validation
+        is not a persistence reader.
+
+        Args:
+            state: JSON-safe envelope produced by ``to_sensitive_dict()``.
+
+        Returns:
+            The complete original prepared batch.
+
+        Raises:
+            KSeFValidationError: If the envelope is unsupported or malformed.
+                Errors never include stored values or validation exception chains.
+        """
+        from ksef2._core.exceptions import KSeFValidationError
+
+        if type(state.get("version")) is not int or state.get("version") != 1:
+            raise KSeFValidationError("Unsupported prepared batch persistence version.")
+        try:
+            if set(state) != {"version", "payload"}:
+                raise ValueError
+            payload = state["payload"]
+            _check_persisted_batch_fields(payload, cls)
+            if isinstance(payload, dict):
+                _check_persisted_batch_fields(payload.get("batch_file"), BatchFileInfo)
+                batch_file = payload.get("batch_file")
+                if isinstance(batch_file, dict):
+                    for part in batch_file.get("parts", []):
+                        _check_persisted_batch_fields(part, BatchFilePart)
+                _check_persisted_batch_fields(
+                    payload.get("encryption"), BatchEncryptionData
+                )
+                for part in payload.get("parts", []):
+                    _check_persisted_batch_fields(part, BatchPreparedPart)
+                for invoice in payload.get("invoices", []):
+                    _check_persisted_batch_fields(invoice, BatchInvoiceHash)
+            return cls.model_validate_json(json.dumps(payload))
+        except (ValueError, TypeError, OverflowError):
+            pass
+        # Raise outside the handler so even __context__ cannot expose stored data.
+        raise KSeFValidationError("Invalid prepared batch persistence payload.")
+
+    @classmethod
+    def from_sensitive_json(cls, state: str | bytes | bytearray) -> Self:
+        """Restore the sensitive versioned JSON envelope.
+
+        Args:
+            state: JSON produced by ``to_sensitive_json()``.
+
+        Returns:
+            The complete original prepared batch.
+
+        Raises:
+            KSeFValidationError: If JSON, version or payload is invalid, without
+                including stored values or validation exception chains.
+        """
+        from ksef2._core.exceptions import KSeFValidationError
+
+        try:
+            parsed: object = json.loads(state)
+        except (ValueError, UnicodeDecodeError):
+            parsed = None
+        if not isinstance(parsed, dict):
+            raise KSeFValidationError("Invalid prepared batch persistence envelope.")
+        return cls.from_sensitive_dict(parsed)
 
     def recovery_digest(self) -> str:
         """Bind recovery to the exact prepared payload without exporting secrets.
@@ -254,6 +362,12 @@ class PreparedBatch(KSeFBaseModel):
                 digest.update(len(value).to_bytes(8, "big"))
                 digest.update(value)
         return digest.hexdigest()
+
+
+def _check_persisted_batch_fields(value: object, model: type[KSeFBaseModel]) -> None:
+    """Reject unknown fields before model validation can log their names."""
+    if not isinstance(value, dict) or set(value) - model.model_fields.keys():
+        raise ValueError
 
 
 class OpenBatchSessionRequest(KSeFBaseModel):

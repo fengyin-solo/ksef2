@@ -2,6 +2,7 @@
 
 import base64
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import httpx
 import pytest
@@ -13,7 +14,12 @@ from cryptography.x509.oid import NameOID
 
 from ksef2 import AsyncClient, Client, Environment
 from ksef2 import KSeFBatchUploadError, KSeFValidationError
-from ksef2.models import AuthenticationResumeState, AuthTokens, TokenCredentials
+from ksef2.models import (
+    AuthenticationResumeState,
+    AuthTokens,
+    PreparedBatch,
+    TokenCredentials,
+)
 from tests.unit.flavors import Flavor
 
 
@@ -35,7 +41,12 @@ from tests.unit.flavors import Flavor
     ],
 )
 def test_public_batch_recovery(
-    flavor: Flavor, retain_prepared: bool, serialized_state: bool, mismatch: str | None
+    flavor: Flavor,
+    retain_prepared: bool,
+    serialized_state: bool,
+    mismatch: str | None,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     now = datetime.now(timezone.utc)
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -181,6 +192,35 @@ def test_public_batch_recovery(
             recovered = recovered.model_copy(deep=True)
             recovered.parts[0].ordinal_number = 2
         saved = state.to_json() if serialized_state else state
+        if serialized_state:
+            # A failed caller-side save must leave the exact recovery objects usable.
+            with monkeypatch.context() as patch:
+
+                def fail_save(*args: object, **kwargs: object) -> int:
+                    raise OSError("protected store unavailable")
+
+                patch.setattr(Path, "write_text", fail_save)
+                with pytest.raises(OSError, match="protected store unavailable"):
+                    (tmp_path / "prepared.json").write_text(
+                        recovered.to_sensitive_json()
+                    )
+            (tmp_path / "prepared.json").write_text(recovered.to_sensitive_json())
+            (tmp_path / "session.json").write_text(state.to_json())
+            recovered = PreparedBatch.from_sensitive_json(
+                (tmp_path / "prepared.json").read_text()
+            )
+            saved = (tmp_path / "session.json").read_text()
+            # Rebuild the SDK client as after a restart, without preparing again.
+            auth_state = auth.resume_state()
+            flavor.run(
+                client.aclose() if isinstance(client, AsyncClient) else client.close()
+            )
+            client = (
+                AsyncClient(Environment.TEST, http_client=http)
+                if isinstance(http, httpx.AsyncClient)
+                else Client(Environment.TEST, http_client=http)
+            )
+            auth = client.authentication.resume(auth_state)
         if mismatch is not None:
             with pytest.raises(KSeFValidationError, match="original prepared batch"):
                 _ = flavor.run(

@@ -11,8 +11,8 @@ from pathlib import Path, PurePosixPath
 from typing import Self, cast, final
 
 from ksef2._core import exceptions
+from ksef2._domain.models.compression import CompressionType, normalize_compression_type
 from ksef2._domain.models.invoices import (
-    ExportedInvoicesData,
     InvoiceMetadata,
     InvoicePackage,
 )
@@ -29,11 +29,11 @@ class ExportedInvoices:
 
     The decrypted package parts are joined into one ZIP or TarGz archive, which holds one
     ``<ksef_number>.xml`` file per invoice and a ``_metadata.json`` file. The archive is
-    opened lazily; construct this object through ``ExportJob.wait()``. An export that
+    opened lazily; use ``ExportJob.wait()`` or ``from_archive()``. An export that
     matched no invoices has an empty archive.
 
-    ``to_model()`` takes a portable ``ExportedInvoicesData`` snapshot of a finished
-    export and ``from_model()`` rebuilds this result from such a snapshot.
+    Persist ``archive`` as plain bytes and restore it with ``from_archive()``.
+    Invoice metadata is read from the archive only when requested.
     """
 
     def __init__(
@@ -50,6 +50,7 @@ class ExportedInvoices:
         """
         self._archive = b"".join(parts)
         self._package = package
+        self._compression: CompressionType = "zip"
         self._metadata: list[InvoiceMetadata] | None = None
         self._metadata_loaded = False
 
@@ -156,63 +157,39 @@ class ExportedInvoices:
                 written.append(target)
         return written
 
-    def to_model(self) -> ExportedInvoicesData:
-        """Take a portable snapshot of this export result.
-
-        The archive bytes are shared because they cannot change in place, while the
-        package and metadata are deep-copied, so the snapshot and this object stay
-        independent. Reading ``metadata`` parses ``_metadata.json``, so this call
-        materializes it and raises whatever that property raises; the constructor
-        itself stays lazy.
-
-        Returns:
-            A snapshot holding the archive, the package metadata and the parsed metadata, independent of this object.
-
-        Raises:
-            KSeFValidationError: If ``_metadata.json`` is not valid metadata.
-            zipfile.BadZipFile: If a ZIP archive is invalid.
-            tarfile.TarError: If a TarGz archive is invalid.
-            ValueError: If an archive contains links or special files.
-        """
-        parsed = self.metadata
-        package: InvoicePackage | None = None
-        if self._package is not None:
-            package = self._package.model_copy(deep=True)
-        metadata: list[InvoiceMetadata] | None = None
-        if parsed is not None:
-            metadata = [item.model_copy(deep=True) for item in parsed]
-        return ExportedInvoicesData(
-            archive=self._archive, package=package, metadata=metadata
-        )
-
     @classmethod
-    def from_model(cls, data: ExportedInvoicesData) -> Self:
-        """Rebuild an export result from a portable snapshot.
+    def from_archive(
+        cls, archive: bytes, *, compression: CompressionType = "zip"
+    ) -> Self:
+        """Read a previously saved, decrypted invoice archive.
 
-        The snapshot's metadata is taken as the parsed result, so the rebuilt object
-        never reopens the archive: ``None`` means the snapshot has no metadata, while
-        an empty list means it has an empty one. The archive bytes are immutable and
-        shared; the nested models are copied so neither side can change the other.
+        Construction is lazy: the archive and its metadata are opened only when
+        reading invoices, requesting metadata or extracting files. No network
+        access or encryption keys are needed.
 
         Args:
-            data: Snapshot from ``to_model()``, read back from JSON if needed.
+            archive: Plain ZIP or TarGz bytes, as returned by ``archive``.
+            compression: Archive format, ``"zip"`` by default or ``"tar_gz"``.
 
         Returns:
-            The equivalent result, whose ``invoices()`` and ``save()`` see the same archive.
+            An export result with no package status or download URLs. Invoice
+            metadata is derived from the archive on first access.
+
+        Raises:
+            ValueError: If the compression type is unsupported.
         """
-        rebuilt = cls(
-            [data.archive],
-            package=(
-                None if data.package is None else data.package.model_copy(deep=True)
-            ),
-        )
-        if data.metadata is not None:
-            rebuilt._metadata = [item.model_copy(deep=True) for item in data.metadata]
-        rebuilt._metadata_loaded = True
-        return rebuilt
+        compression = normalize_compression_type(compression)
+        result = cls([archive])
+        result._compression = compression
+        return result
 
     def _open(self) -> zipfile.ZipFile | tarfile.TarFile:
-        if self._package is not None and self._package.compression_type == "tar_gz":
+        compression = (
+            self._package.compression_type
+            if self._package is not None
+            else self._compression
+        )
+        if compression == "tar_gz":
             return tarfile.open(fileobj=io.BytesIO(self._archive), mode="r:gz")
         return zipfile.ZipFile(io.BytesIO(self._archive), "r")
 

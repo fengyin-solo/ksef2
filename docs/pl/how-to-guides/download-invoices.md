@@ -105,48 +105,44 @@ Podaj dokładnie jedno z `filters` albo `state`. `to_dict()`, `from_json()` i
 `from_dict()` działają jak w stanach sesji; `model_dump()` i `repr()` ukrywają
 klucz.
 
-### Zserializuj zakończony eksport
+### Zapisz i odtwórz zakończony eksport
 
 `ExportResumeState` służy do eksportu, który jeszcze się nie skończył. Gdy `wait()`
-zwróci wynik, `to_model()` daje snapshot `ExportedInvoicesData` zakończonego
-eksportu, który można przekazać innemu procesowi albo innemu wiązaniu językowym, a
-`from_model()` zamienia go z powrotem w ten sam obiekt wyniku.
+zwróci wynik, zapisz `package.archive` jako zwykłe bajty ZIP lub TarGz we własnym
+magazynie. Odtwórz te bajty przez `ExportedInvoices.from_archive()`.
 
 ```python
 from pathlib import Path
 
 from ksef2.clients import ExportedInvoices
-from ksef2.models import ExportedInvoicesData
 
-saved = package.to_model().to_sensitive_json()  # przechowuj jak poświadczenie, nie loguj
+archive_path = Path("export.zip")
+archive_path.write_bytes(package.archive)
 
 # w innym procesie
-data = ExportedInvoicesData.model_validate_json(saved)
-restored = ExportedInvoices.from_model(data)
+restored = ExportedInvoices.from_archive(archive_path.read_bytes())
 for ksef_number, xml in restored.invoices():
     print(ksef_number, len(xml))
 
 written = restored.save(Path("downloads"))
 ```
 
-`to_sensitive_json()` to jedyny pełny format. `archive` jest w Base64 bezpiecznym dla
-adresów URL: alfabet to `A-Za-z0-9` oraz `-` i `_`, a tekst dostaje standardowe
-dopełnienie `=`, gdy długość archiwum nie jest wielokrotnością trzech. Wiązanie w innym
-języku powinno dekodować dopełnione Base64 URL-safe i nie może usuwać ani odrzucać tego
-dopełnienia. Walidacja przyjmuje więcej, niż zapisuje: czyta też tekst bez dopełnienia
-oraz zwykły alfabet `+` i `/`, a oba dekodują się do tych samych bajtów. Na wyjściu
-pojawia się tylko dopełnione Base64 URL-safe. Paczka i metadane zachowują każde pole.
-Adres części paczki jest podpisany i stanowi uprawnienie, więc `model_dump()`,
-`model_dump_json()` i `repr()` go ukrywają: gdy paczka ma części, to wyjście nadaje się
-do logów, a nie do przechowywania. `to_sensitive_dict()` daje tę samą zawartość jako
-słownik i wymaga takiej samej ochrony.
+Fabryka domyślnie używa `compression="zip"`. Dla eksportu TarGz zapisz bajty
+archiwum w pliku `.tar.gz` i podaj `compression="tar_gz"` przy odtwarzaniu.
+Użyj formatu kompresji oryginalnego eksportu; fabryka nie wykrywa go automatycznie.
 
-`to_model()` czyta archiwum, żeby wypełnić `metadata`, więc rzuca te same błędy co
-`metadata`. `from_model()` bierze snapshot taki, jaki jest: `metadata=None` znaczy,
-że snapshot nie zawiera metadanych, a pusta lista, że nie ma w nich faktur. Nic nie
-jest pobierane ponownie i żaden klucz nie jest potrzebny, bo archiwum jest już
-odszyfrowane. `await job.wait()` zwraca tę samą klasę `ExportedInvoices`, więc oba
-warianty zapisują i odtwarzają wynik tak samo.
+Utworzenie obiektu nie otwiera ani nie waliduje archiwum. `metadata` czyta
+`_metadata.json` przy pierwszym dostępie i zapamiętuje wynik: `None` oznacza brak
+pliku, a `[]` oznacza, że plik nie zawiera faktur. Niepoprawne archiwa zgłaszają
+błąd przy odczycie lub wypakowaniu; niepoprawne metadane zgłaszają
+`KSeFValidationError` przy dostępie. `save()` odrzuca niebezpieczne ścieżki,
+dowiązania i pliki specjalne przed zapisaniem czegokolwiek.
+
+Archiwum zawiera już odszyfrowane dane faktur. Chroń je w swoim magazynie.
+Odtworzenie nie wymaga klucza szyfrowania ani dostępu do sieci. Status paczki i
+podpisane adresy pobierania nie są zapisane w archiwum, więc `restored.package`
+ma wartość `None`. `await job.wait()` zwraca tę samą klasę `ExportedInvoices`, więc
+kod synchroniczny i asynchroniczny zapisuje i odtwarza archiwa w ten sam sposób.
 
 :::note[SDK odszyfrowuje części paczki]
 KSeF zwraca zaszyfrowane adresy części paczki. `export()` ładuje poprawny

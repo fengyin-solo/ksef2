@@ -13,9 +13,11 @@ from pydantic import ConfigDict, Field as PydanticField, SecretStr
 from pydantic import field_validator, model_validator
 
 from ksef2._domain.models.base import (
+    CURRENT_FORMAT_VERSION,
     KSeFBaseModel,
     KSeFPersistedModel,
     KSeFResumeState,
+    PersistedFormatVersion,
 )
 from ksef2._domain.models.compression import (
     CompressionType,
@@ -479,8 +481,8 @@ class ExportResumeState(KSeFPersistedModel):
     persistence format.
     """
 
-    format_version: Literal[1] = 1
-    """Version of the serialized state format; currently always ``1``."""
+    format_version: PersistedFormatVersion = CURRENT_FORMAT_VERSION
+    """Version of the serialized state format, a dotted number; currently ``"1"``."""
     reference_number: str
     """KSeF reference number of the export operation."""
     aes_key: SecretStr
@@ -742,15 +744,12 @@ class InvoicesFilter(KSeFBaseModel):
             filters = InvoicesFilter.for_buyer(date_from="2026-01-01T00:00:00+01:00")
             ```
         """
-        effective_date_to = (
-            date_to if date_to is not None else datetime.now(timezone.utc)
-        )
         return cls.model_validate(
             {
                 "role": "buyer",
                 "date_type": date_type,
                 "date_from": date_from,
-                "date_to": effective_date_to,
+                **({"date_to": date_to} if date_to is not None else {}),
                 "restrict_to_permanent_storage_hwm_date": (
                     restrict_to_permanent_storage_hwm_date
                 ),
@@ -831,15 +830,12 @@ class InvoicesFilter(KSeFBaseModel):
             filters = InvoicesFilter.for_seller(date_from="2026-01-01T00:00:00+01:00")
             ```
         """
-        effective_date_to = (
-            date_to if date_to is not None else datetime.now(timezone.utc)
-        )
         return cls.model_validate(
             {
                 "role": "seller",
                 "date_type": date_type,
                 "date_from": date_from,
-                "date_to": effective_date_to,
+                **({"date_to": date_to} if date_to is not None else {}),
                 "restrict_to_permanent_storage_hwm_date": (
                     restrict_to_permanent_storage_hwm_date
                 ),

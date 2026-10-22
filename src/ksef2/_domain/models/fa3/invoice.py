@@ -2,11 +2,16 @@
 
 from collections.abc import Sequence
 from decimal import Decimal
-from typing import Annotated, Literal
+from typing import Annotated
 
 from pydantic import Field, model_validator
 
-from ksef2._domain.models.base import KSeFBaseModel, KSeFPersistedModel
+from ksef2._domain.models.base import (
+    CURRENT_FORMAT_VERSION,
+    KSeFBaseModel,
+    KSeFPersistedModel,
+    PersistedFormatVersion,
+)
 from ksef2._domain.models.fa3.attachment import Attachment
 from ksef2._domain.models.fa3.body import KsefInvoiceBody
 from ksef2._domain.models.fa3.footer import InvoiceFooter
@@ -18,8 +23,8 @@ from ksef2._domain.models.fa3.third_party import InvoiceThirdParty
 class KsefInvoiceDraft(KSeFPersistedModel):
     """Serializable editable snapshot of FA(3) builder state."""
 
-    format_version: Literal[1] = 1
-    """Version of the serialized draft format; currently always ``1``."""
+    format_version: PersistedFormatVersion = CURRENT_FORMAT_VERSION
+    """Version of the serialized draft format, a dotted number; currently ``"1"``."""
 
     header: Annotated[
         InvoiceHeader | None, Field(description="Draft header state.")

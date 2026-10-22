@@ -58,7 +58,7 @@ class AsyncKSeFExceptionMiddleware(AsyncBaseMiddleware):
                 content=content,
                 **kwargs,
             )
-        except httpx.RequestError as exc:
+        except (httpx.RequestError, httpx.InvalidURL, httpx.StreamError) as exc:
             raise exceptions.KSeFTransportError(
                 _TRANSPORT_FAILED_MESSAGE,
                 method=method,

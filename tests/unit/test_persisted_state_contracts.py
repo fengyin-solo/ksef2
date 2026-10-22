@@ -40,11 +40,11 @@ def test_authentication_state_is_versioned_and_accepts_legacy_version_one() -> N
     )
     exported = state.to_dict()
 
-    assert exported["format_version"] == 1
+    assert exported["format_version"] == "1"
 
     legacy_export = dict(exported)
     _ = legacy_export.pop("format_version")
-    assert AuthenticationResumeState.from_dict(legacy_export).format_version == 1
+    assert AuthenticationResumeState.from_dict(legacy_export).format_version == "1"
 
 
 def test_authentication_state_rejects_redacted_future_and_extra_state() -> None:
@@ -60,7 +60,7 @@ def test_authentication_state_rejects_redacted_future_and_extra_state() -> None:
 
     future_state = state.to_dict()
     future_state["format_version"] = 2
-    with pytest.raises(ValidationError, match="Input should be 1"):
+    with pytest.raises(ValidationError, match="unsupported format version"):
         AuthenticationResumeState.from_dict(future_state)
 
     state_with_extra = state.to_dict()
@@ -79,10 +79,10 @@ def test_session_state_is_versioned_and_rejects_redacted_or_invalid_keys() -> No
     )
     exported = state.to_dict()
 
-    assert exported["format_version"] == 1
+    assert exported["format_version"] == "1"
     legacy_export = dict(exported)
     _ = legacy_export.pop("format_version")
-    assert OnlineSessionResumeState.from_dict(legacy_export).format_version == 1
+    assert OnlineSessionResumeState.from_dict(legacy_export).format_version == "1"
 
     with pytest.raises(ValidationError, match="redacted encryption material"):
         OnlineSessionResumeState.from_json(state.model_dump_json())
@@ -102,16 +102,16 @@ def test_invoice_draft_state_is_versioned_and_fails_on_unknown_shape() -> None:
     draft = KsefInvoiceDraft()
     serialized = json.loads(draft.model_dump_json())
 
-    assert serialized["format_version"] == 1
+    assert serialized["format_version"] == "1"
 
     _ = serialized.pop("format_version")
-    assert KsefInvoiceDraft.model_validate(serialized).format_version == 1
+    assert KsefInvoiceDraft.model_validate(serialized).format_version == "1"
 
     serialized["format_version"] = 2
-    with pytest.raises(ValidationError, match="Input should be 1"):
+    with pytest.raises(ValidationError, match="unsupported format version"):
         KsefInvoiceDraft.model_validate(serialized)
 
-    serialized["format_version"] = 1
+    serialized["format_version"] = "1"
     serialized["future_section"] = {}
     with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
         KsefInvoiceDraft.model_validate(serialized)

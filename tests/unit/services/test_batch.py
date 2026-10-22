@@ -1,17 +1,22 @@
+import base64
+import json
 from collections.abc import Callable
 from io import BytesIO
 from zipfile import ZipFile
 
+import httpx
 import pytest
 from polyfactory import BaseFactory
 
 from ksef2._clients.batch import BatchSessionClient
 from ksef2._core.crypto import decrypt_aes_cbc, sha256_b64
 from ksef2._core.exceptions import (
+    KSeFBatchUploadError,
     KSeFBatchSessionTimeoutError,
     KSeFSessionError,
     KSeFValidationError,
 )
+from ksef2.models import AuthTokens
 from ksef2._domain.models.batch import (
     BatchEncryptionData,
     BatchFileInfo,
@@ -26,6 +31,7 @@ from ksef2._domain.models.session import FormSchema, SessionEncryptionMaterial
 from ksef2._infra.schema.api import spec
 from ksef2._services.batch import BatchService, BatchSessionOpener
 from tests.unit.fakes.transport import FakeTransport
+from tests.unit.flavors import Flavor
 from tests.unit.helpers import VALID_PUBLIC_KEY_ID, legacy_api
 
 
@@ -73,6 +79,207 @@ def _unused_open_batch_session(
         prepared_batch,
     )
     raise AssertionError("not used")
+
+
+@pytest.fixture
+def prepared_batch(fake_transport: FakeTransport) -> PreparedBatch:
+    return _build_service(
+        fake_transport, open_batch_session=_unused_open_batch_session
+    ).prepare([b"<Invoice>1</Invoice>", b"<Invoice>2</Invoice>"], offline_mode=True)
+
+
+def test_prepared_batch_sensitive_export_round_trips(
+    prepared_batch: PreparedBatch,
+) -> None:
+    envelope = prepared_batch.to_sensitive_dict()
+    assert set(envelope) == {"version", "payload"}
+    assert type(envelope["version"]) is str
+    assert envelope["version"] == "1"
+    assert json.loads(prepared_batch.to_sensitive_json()) == envelope
+    restored_batches = [
+        PreparedBatch.from_sensitive_json(prepared_batch.to_sensitive_json()),
+        PreparedBatch.from_sensitive_json(prepared_batch.to_sensitive_json(indent=2)),
+        PreparedBatch.from_sensitive_dict(prepared_batch.to_sensitive_dict()),
+    ]
+    for restored in restored_batches:
+        assert restored == prepared_batch
+        assert restored.recovery_digest() == prepared_batch.recovery_digest()
+
+
+@pytest.mark.parametrize(
+    ("content", "encoded"),
+    [(b"\xfb", "-w=="), (b"\xfb\xff", "-_8="), (b"\xfb\xff\xff", "-___")],
+)
+def test_prepared_batch_sensitive_export_is_url_safe_base64(
+    prepared_batch: PreparedBatch, content: bytes, encoded: str
+) -> None:
+    part = BatchPreparedPart(
+        ordinal_number=1,
+        content=content,
+        file_size=len(content),
+        file_hash=sha256_b64(content),
+    )
+    prepared_batch.parts = [part]
+    exported = json.loads(prepared_batch.to_sensitive_json())
+    assert exported["payload"]["parts"][0]["content"] == encoded
+    assert (
+        base64.urlsafe_b64decode(exported["payload"]["parts"][0]["content"]) == content
+    )
+    assert part.content == content
+    assert PreparedBatch.from_sensitive_dict(exported).parts[0].content == content
+
+
+def test_prepared_batch_generic_dump_still_hides_payload_and_keys(
+    prepared_batch: PreparedBatch,
+) -> None:
+    assert "parts" not in prepared_batch.model_dump()
+    assert "encryption" not in prepared_batch.model_dump()
+    assert "content" not in prepared_batch.parts[0].model_dump()
+    assert prepared_batch.encryption.model_dump() == {
+        "public_key_id": VALID_PUBLIC_KEY_ID
+    }
+    secrets = [
+        prepared_batch.encryption.aes_key,
+        prepared_batch.encryption.iv,
+        prepared_batch.encryption.encrypted_key,
+    ]
+    for part in prepared_batch.parts:
+        secrets.extend(
+            [repr(part.content), base64.urlsafe_b64encode(part.content).decode()]
+        )
+    for model in [prepared_batch, *prepared_batch.parts, prepared_batch.encryption]:
+        for output in [str(model.model_dump()), model.model_dump_json(), repr(model)]:
+            assert all(secret not in output for secret in secrets)
+
+
+def test_restored_prepared_batch_resumes_its_session(
+    prepared_batch: PreparedBatch,
+    flavor: Flavor,
+    domain_auth_tokens: BaseFactory[AuthTokens],
+) -> None:
+    auth = flavor.authenticated(domain_auth_tokens.build())
+    upload_url = "https://storage.example/upload?sig=secret"
+    flavor.transport.enqueue(
+        status_code=201,
+        json_body={
+            "referenceNumber": "B" * 36,
+            "partUploadRequests": [
+                {"ordinalNumber": 1, "method": "PUT", "url": upload_url, "headers": {}}
+            ],
+        },
+    )
+    session = flavor.run(auth.batch_session(prepared_batch=prepared_batch))
+    flavor.transport.enqueue_error(
+        httpx.ConnectTimeout(
+            "local storage failure", request=httpx.Request("PUT", upload_url)
+        )
+    )
+    with pytest.raises(KSeFBatchUploadError) as caught:
+        flavor.run(session.upload_parts())
+    saved_state = caught.value.recovery_state().to_json()
+    restored = PreparedBatch.from_sensitive_json(
+        caught.value.recovery_prepared_batch().to_sensitive_json()
+    )
+    resumed = flavor.run(auth.batch_session(state=saved_state, prepared_batch=restored))
+    assert resumed.reference_number == session.reference_number
+    flavor.transport.enqueue(status_code=201, json_body={})
+    flavor.run(resumed.upload_parts())
+    assert [
+        call.content for call in flavor.transport.calls if call.method == "PUT"
+    ] == [
+        prepared_batch.parts[0].content,
+        prepared_batch.parts[0].content,
+    ]
+
+    changed = restored.model_copy(deep=True)
+    changed.parts[0].content += b"changed"
+    changed = PreparedBatch.from_sensitive_json(changed.to_sensitive_json())
+    calls_before = len(flavor.transport.calls)
+    with pytest.raises(KSeFValidationError, match="original prepared batch"):
+        flavor.run(auth.batch_session(state=saved_state, prepared_batch=changed))
+    assert len(flavor.transport.calls) == calls_before
+
+
+@pytest.mark.parametrize("version", [1, "1", "1.2", "1.0.1"])
+def test_prepared_batch_reads_supported_versions(
+    prepared_batch: PreparedBatch, version: object
+) -> None:
+    exported = prepared_batch.to_sensitive_dict()
+    exported["version"] = version
+
+    restored = PreparedBatch.from_sensitive_json(json.dumps(exported))
+
+    assert restored.recovery_digest() == prepared_batch.recovery_digest()
+
+
+@pytest.mark.parametrize(
+    "version", [None, 0, 2, "2", True, 1.0, "1.", "v1", "01", "", "secret-version"]
+)
+def test_prepared_batch_rejects_unsupported_versions(
+    prepared_batch: PreparedBatch,
+    version: object,
+) -> None:
+    exported = prepared_batch.to_sensitive_dict()
+    exported["version"] = version
+    for reader in [
+        lambda: PreparedBatch.from_sensitive_dict(exported),
+        lambda: PreparedBatch.from_sensitive_json(json.dumps(exported)),
+    ]:
+        with pytest.raises(
+            ValueError, match="Unsupported prepared batch persistence version"
+        ) as caught:
+            reader()
+        assert "secret-version" not in repr(caught.value)
+        assert caught.value.__context__ is None
+        assert caught.value.__cause__ is None
+    with pytest.raises(ValueError, match="Unsupported"):
+        PreparedBatch.from_sensitive_dict(prepared_batch.model_dump())
+
+
+@pytest.mark.parametrize(
+    "corruption", ["key", "part", "extra", "nested_extra", "envelope", "raw_bytes"]
+)
+def test_prepared_batch_invalid_persistence_hides_values(
+    prepared_batch: PreparedBatch,
+    corruption: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    exported = json.loads(prepared_batch.to_sensitive_json())
+    secret = "DO-NOT-EXPOSE-STORED-SECRET"
+    if corruption == "key":
+        exported["payload"]["encryption"]["aes_key"] = secret
+    elif corruption == "part":
+        exported["payload"]["parts"][0]["content"] = secret + "!"
+    elif corruption == "extra":
+        exported["payload"][secret] = secret
+    elif corruption == "nested_extra":
+        exported["payload"]["encryption"][secret] = secret
+    elif corruption == "envelope":
+        exported[secret] = secret
+    else:
+        exported["payload"]["parts"][0]["content"] = secret.encode()
+    with pytest.raises(
+        ValueError, match="Invalid prepared batch persistence payload"
+    ) as caught:
+        PreparedBatch.from_sensitive_dict(exported)
+    assert secret not in str(caught.value)
+    assert secret not in repr(caught.value)
+    assert caught.value.__context__ is None
+    assert caught.value.__cause__ is None
+    captured = capsys.readouterr()
+    assert secret not in captured.out + captured.err
+
+
+@pytest.mark.parametrize(
+    "stored", ["not-json-secret", '"secret"', "[]", "null", b"\xffsecret"]
+)
+def test_prepared_batch_malformed_json_is_safe(stored: str | bytes) -> None:
+    with pytest.raises(
+        ValueError, match="Invalid prepared batch persistence envelope"
+    ) as caught:
+        PreparedBatch.from_sensitive_json(stored)
+    assert "secret" not in repr(caught.value)
+    assert caught.value.__context__ is None
 
 
 class TestBatchService:

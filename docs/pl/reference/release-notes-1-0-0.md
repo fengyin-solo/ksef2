@@ -11,7 +11,7 @@ rozstrzygające.
 
 ksef2 1.0.0 to pierwsze wydanie, które traktuje udokumentowane, aplikacyjne
 ścieżki importu jako kontrakt kompatybilności dla linii 1.x.
-SDK obecnie celuje w wersję OpenAPI KSeF `2.8.1`.
+SDK obecnie celuje w wersję OpenAPI KSeF `2.9.0`.
 
 > **Nieoficjalne SDK.** ksef2 jest utrzymywane społecznościowo. Nie jest
 > publikowane, zatwierdzane ani wspierane przez Ministerstwo Finansów. Oficjalna

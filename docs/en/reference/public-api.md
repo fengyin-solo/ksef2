@@ -93,6 +93,11 @@ Persist and restore state with the explicit methods instead:
 - `to_sensitive_dict()` on secret-bearing response models such as `UpoPage`,
   `GenerateTokenResponse` and `ExportHandle` exports the secret fields for
   deliberate, protected handling.
+- `to_sensitive_dict()` and `to_sensitive_json()` on `PreparedBatch` export the
+  encrypted parts and AES material in full for protected storage. Restore the
+  batch with `PreparedBatch.from_sensitive_dict()` or `from_sensitive_json()` and pass
+  it with the saved session state to recover an upload after a restart. Generic
+  dumps and repr keep the payload and keys hidden.
 
 `XAdESCredentials` holds loaded cryptography certificate and private-key objects
 exposed through `certificate` and `private_key`. It retains no password or input

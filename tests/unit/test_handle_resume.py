@@ -172,7 +172,7 @@ def test_generated_token_resume_state_omits_the_one_time_token(
     assert isinstance(state, GeneratedTokenResumeState)
     assert state.reference_number == TOKEN_REF
     assert "token" not in GeneratedTokenResumeState.model_fields
-    assert state.to_dict() == {"format_version": 1, "reference_number": TOKEN_REF}
+    assert state.to_dict() == {"format_version": "1", "reference_number": TOKEN_REF}
     for text in (
         state.to_json(),
         json.dumps(state.to_dict()),
@@ -226,7 +226,7 @@ def test_resumed_generated_token_has_no_token_attribute(
     assert resumed.reference_number == TOKEN_REF
     with pytest.raises(AttributeError):
         _ = resumed.token
-    with pytest.raises(AttributeError):
+    with pytest.raises(AttributeError, match="resume state only knows"):
         _ = resumed.response
     with pytest.raises(AttributeError):
         _ = resumed.to_sensitive_dict()
@@ -278,12 +278,12 @@ def test_resumed_certificate_enrollment_has_no_timestamp(
 
     assert isinstance(state, CertificateEnrollmentResumeState)
     assert state.to_dict() == {
-        "format_version": 1,
+        "format_version": "1",
         "reference_number": ENROLLMENT_REF,
     }
     with pytest.raises(AttributeError):
         _ = resumed.timestamp
-    with pytest.raises(AttributeError):
+    with pytest.raises(AttributeError, match="resume state only knows"):
         _ = resumed.response
     assert resumed.resume_state() == state
 
@@ -414,14 +414,14 @@ def test_resume_state_rejects_version_2_and_unknown_fields(
 ) -> None:
     state = state_cls(**fields)
 
-    assert state.format_version == 1
+    assert state.format_version == "1"
     assert state.to_json(indent=2) == json.dumps(state.to_dict(), indent=2)
 
     future_version = state.to_dict()
     future_version["format_version"] = 2
-    with pytest.raises(ValidationError, match="Input should be 1"):
+    with pytest.raises(ValidationError, match="unsupported format version"):
         state_cls.from_dict(future_version)
-    with pytest.raises(ValidationError, match="Input should be 1"):
+    with pytest.raises(ValidationError, match="unsupported format version"):
         state_cls.from_json(json.dumps(future_version))
 
     with_unknown_field = state.to_dict()

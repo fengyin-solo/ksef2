@@ -2,6 +2,24 @@
 
 ### Added
 
+- `PreparedBatch.to_sensitive_dict()` and `to_sensitive_json()` export a prepared
+  batch in full, including encrypted parts as URL-safe Base64 with `=` padding
+  and the AES material. Save the output in protected storage and restore it with
+  `PreparedBatch.from_sensitive_json()` for upload recovery after a restart.
+  The JSON-only envelope is `{"version": "1", "payload": {...}}`; dictionary export
+  uses the same shape and has a matching `from_sensitive_dict()` reader. Readers
+  reject unsupported or missing versions, unversioned development exports and
+  unknown fields with sanitized `ValueError` messages. Readers in 1.x
+  retain support for released persistence versions. Incompatible formats require
+  a new version and a documented migration. Every
+  persisted state (`format_version`) and this envelope now write the version as a
+  dotted string such as `"1"`. Readers accept any version with major `1`, such as
+  `"1.2"` or `"1.0.1"`, and still read the integer `1` that earlier releases wrote;
+  `true`, `1.0` and malformed strings are rejected. Pagination cursors keep
+  their integer `v`. A minor or patch version never adds or changes fields, so an
+  earlier 1.x reader can read it; additions that older readers cannot ignore
+  take a new major version.
+  Generic model dumps and repr still hide payload bytes and keys (#270).
 - Save and resume every handle KSeF finishes asynchronously. `resume_state()` on a
   `GeneratedToken`, `CertificateEnrollment`, `PermissionOperation` or
   `InvoiceSubmission` returns a versioned state model with `to_dict()`,
@@ -56,9 +74,15 @@
   `Pager`-returning collection answers `page()`, and `pages()` plus iteration follow
   the same cursor chain. An invoice search cursor carries the filters, parameters
   and truncation boundary of the page it resumes, so a search continues across KSeF
-  truncation after a restart. A cursor from another collection, or one this SDK
-  cannot read, raises `KSeFArgumentError` before any request is sent, without
-  echoing the cursor back (#265).
+  truncation after a restart, and records which search issued it. A cursor from
+  another collection, from a different search, or one this SDK cannot read,
+  raises `KSeFArgumentError` before any request is sent, without echoing the
+  cursor back. Resume a search cursor on a search built with the same filters,
+  page size and sort order. An explicit `date_to` must match the original end
+  date; an omitted default uses the bound saved in the cursor. The cursor shows those filters in readable form,
+  so keep it out of logs and URLs. A truncated page that cannot advance is still
+  returned with its invoices, and resuming its cursor raises
+  `KSeFMetadataPaginationError` without sending a request (#265).
 
 ### Changed
 
@@ -87,7 +111,7 @@
 
 - Wrap failed HTTP requests in `KSeFTransportError` (`code = "TRANSPORT_ERROR"`),
   so no public method lets an `httpx` exception escape and every SDK failure is a
-  `KSeFException`. It covers every `httpx.RequestError`: connection and timeout
+  `KSeFException`. It covers every `httpx.RequestError`, plus `httpx.InvalidURL` and `httpx.StreamError`: connection and timeout
   failures, a response the HTTP client could not decode, and an abandoned redirect
   chain. The error carries the request `method`, the URL pathname as `path`
   (userinfo, host, query and fragment are dropped) and `outcome_ambiguous` for

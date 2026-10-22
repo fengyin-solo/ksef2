@@ -257,12 +257,17 @@ class OnlineSessionClient:
             KSeFArgumentError: If both or neither of ``reference_number`` and ``state`` are given, or ``state`` names another session.
             ValidationError: If ``state`` is JSON that is not a saved submission state.
         """
-        if (reference_number is None) == (state is None):
-            raise exceptions.KSeFArgumentError(
-                "Pass exactly one of reference_number or state."
-            )
-
-        if state is not None:
+        if state is None:
+            if reference_number is None:
+                raise exceptions.KSeFArgumentError(
+                    "Pass exactly one of reference_number or state."
+                )
+            submission_reference = reference_number
+        else:
+            if reference_number is not None:
+                raise exceptions.KSeFArgumentError(
+                    "Pass exactly one of reference_number or state."
+                )
             restored = (
                 state
                 if isinstance(state, InvoiceSubmissionResumeState)
@@ -274,11 +279,10 @@ class OnlineSessionClient:
                     f"{restored.session_reference_number}, not "
                     f"{self.reference_number}."
                 )
-            reference_number = restored.reference_number
+            submission_reference = restored.reference_number
 
-        assert reference_number is not None
         return InvoiceSubmission(
-            self, invoices.SendInvoiceResponse(reference_number=reference_number)
+            self, invoices.SendInvoiceResponse(reference_number=submission_reference)
         )
 
     def send_invoice(self, invoice_xml: bytes | str) -> InvoiceSubmission:

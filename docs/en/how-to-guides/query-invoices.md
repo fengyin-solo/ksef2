@@ -106,9 +106,14 @@ if cursor is not None:
 ```
 
 An invoice search cursor carries the whole next request: filters, page size,
-sort order and the truncation boundary KSeF stopped at. A search resumed from a
-cursor keeps its place even when the date range in your code has moved on.
-`next_cursor` is `None` only once the last page is read; a page can come back
+sort order and the truncation boundary KSeF stopped at, so a resumed search
+keeps its place even when KSeF has narrowed the date range. Resume it on a
+search built with the same filters, page size and sort order. An explicitly
+supplied `date_to` must match the original end date. If omitted, the resumed
+search uses the end date saved in the cursor. A cursor from a
+different search raises `KSeFArgumentError` before any request goes out. The
+cursor shows those filters, including NIPs and invoice numbers, in readable
+form, so keep it out of logs and URLs. `next_cursor` is `None` only once the last page is read; a page can come back
 empty and still hand you the cursor for the one after it. In async code the same
 read is `second = await auth.invoices.search(filters, params).page(cursor)`.
 

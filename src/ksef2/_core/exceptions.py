@@ -7,7 +7,10 @@ from enum import IntEnum
 
 from ksef2._core import routes
 from ksef2._domain.models.batch import PreparedBatch
-from ksef2._domain.models.session import SessionInvoiceStatusResponse
+from ksef2._domain.models.session import (
+    SessionInvoiceStatusResponse,
+    SessionStatusResponse,
+)
 
 
 class ExceptionCode(IntEnum):
@@ -190,6 +193,31 @@ class KSeFException(Exception):
         return f"{message}\nHint: {self.hint}"
 
 
+class KSeFPollingTimeoutError(KSeFException):
+    """Base error for workflows that exceed their polling timeout.
+
+    Args:
+        message: Human-readable timeout message.
+        timeout: Number of seconds waited.
+        hint: Next step for this occurrence; overrides the class default.
+        **context: Additional structured workflow details.
+    """
+
+    code: str = "POLLING_TIMEOUT"
+    hint: str | None = None
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        timeout: float,
+        hint: str | None = None,
+        **context: Any,  # pyright: ignore[reportAny, reportExplicitAny]
+    ) -> None:
+        self.timeout = timeout
+        super().__init__(message, hint=hint, timeout=timeout, **context)
+
+
 def _pathname(request_target: str) -> str:
     """Return the URL pathname of a request target, dropping every other part.
 
@@ -279,6 +307,18 @@ class KSeFValidationError(KSeFException):
     code: str = "VALIDATION_ERROR"
 
 
+class KSeFResponseValidationError(KSeFValidationError):
+    """Raised when a response or exported metadata fails SDK model validation."""
+
+    code: str = "RESPONSE_VALIDATION_ERROR"
+
+
+class KSeFProfileConfigError(KSeFValidationError):
+    """Raised when profile configuration or credentials cannot be loaded or saved."""
+
+    code: str = "PROFILE_CONFIG_ERROR"
+
+
 class KSeFArgumentError(KSeFValidationError, TypeError):  # pyright: ignore[reportUnsafeMultipleInheritance]
     """Raised when a call combines arguments the SDK does not allow.
 
@@ -361,6 +401,54 @@ class KSeFApiError(KSeFException):
             trace_id=trace_id,
             details=self.details,
         )
+
+
+class KSeFTokenActivationFailedError(KSeFApiError):
+    """Raised when a generated token fails activation or is revoked.
+
+    Args:
+        reference_number: Reference number of the generated token.
+        token_status: Terminal activation status returned by KSeF.
+        hint: Next step for this occurrence; overrides the class default.
+    """
+
+    code: str = "TOKEN_ACTIVATION_FAILED"
+    hint: str | None = (
+        "Generate a new token with `generate()`, or inspect the token status with `get_status()`."
+    )
+
+    def __init__(
+        self,
+        reference_number: str,
+        token_status: str,
+        *,
+        hint: str | None = None,
+    ) -> None:
+        self.reference_number = reference_number
+        self.token_status = token_status
+        super().__init__(
+            0,
+            ExceptionCode.UNKNOWN_ERROR,
+            f"Token activation failed: status={token_status}",
+            hint=hint,
+        )
+        self.context.update(
+            reference_number=reference_number, token_status=token_status
+        )
+
+
+class KSeFNotFoundError(KSeFApiError):
+    """Raised when KSeF cannot find a requested resource."""
+
+    code: str = "NOT_FOUND"
+    hint: str | None = None
+
+
+class KSeFServerError(KSeFApiError):
+    """Raised when KSeF is unavailable or reports a server failure."""
+
+    code: str = "SERVER_ERROR"
+    hint: str | None = None
 
 
 class KSeFNotReadyError(KSeFApiError):
@@ -678,9 +766,55 @@ class KSeFSessionError(KSeFException):
         super().__init__(f"{self.code}: {message}", hint=hint)
 
 
+class KSeFSessionFailedError(KSeFSessionError):
+    """Raised when online or batch session processing reaches a failed status.
+
+    Args:
+        reference_number: Reference number of the failed session.
+        status: Session status response returned by KSeF.
+        session_kind: Session workflow named in the failure message.
+        hint: Next step for this occurrence; overrides the class default.
+
+    Attributes:
+        reference_number: Reference number of the failed session.
+        status: Original session status response.
+        session_status_code: KSeF session status code, not an HTTP status.
+        description: KSeF description of the failed status.
+        details: Copy of the status detail messages.
+    """
+
+    code: str = "SESSION_FAILED"
+    hint: str | None = "See why invoices failed with `list_failed_invoices()`."
+
+    def __init__(
+        self,
+        reference_number: str,
+        status: SessionStatusResponse,
+        *,
+        session_kind: Literal["Online", "Batch"] = "Online",
+        hint: str | None = None,
+    ) -> None:
+        self.reference_number = reference_number
+        self.status = status
+        self.session_status_code = status.status.code
+        self.description = status.status.description
+        self.details = list(status.status.details or [])
+        super().__init__(
+            f"{session_kind} session processing failed: "
+            f"{reference_number} ({self.session_status_code}: {self.description})",
+            hint=hint,
+        )
+        self.context.update(
+            reference_number=reference_number,
+            session_status_code=self.session_status_code,
+            description=self.description,
+            details=self.details,
+        )
+
+
 _DUPLICATE_INVOICE_HINT = (
     "KSeF already holds this invoice (status 440). `extensions` carries "
-    "`originalKsefNumber`: fetch it with `download()` and compare it with what you sent."
+    "`originalKsefNumber`: fetch it with `auth.invoices.download()` and compare it with what you sent."
 )
 
 
@@ -764,7 +898,7 @@ class NoCertificateAvailableError(KSeFException):
         super().__init__(f"{self.code}: {message}")
 
 
-class KSeFExportTimeoutError(KSeFException):
+class KSeFExportTimeoutError(KSeFPollingTimeoutError):
     """Raised when polling for an export package exceeds the timeout.
 
     Args:
@@ -887,7 +1021,7 @@ class KSeFPermissionOperationFailedError(KSeFException):
         )
 
 
-class KSeFPermissionOperationTimeoutError(KSeFException):
+class KSeFPermissionOperationTimeoutError(KSeFPollingTimeoutError):
     """Raised when polling for a permission operation to finish exceeds the timeout.
 
     Args:
@@ -972,7 +1106,7 @@ class KSeFCertificateEnrollmentFailedError(KSeFException):
         )
 
 
-class KSeFCertificateEnrollmentTimeoutError(KSeFException):
+class KSeFCertificateEnrollmentTimeoutError(KSeFPollingTimeoutError):
     """Raised when polling for a certificate to be issued exceeds the timeout.
 
     Args:
@@ -1004,7 +1138,7 @@ class KSeFCertificateEnrollmentTimeoutError(KSeFException):
         )
 
 
-class KSeFAuthPollingTimeoutError(KSeFException):
+class KSeFAuthPollingTimeoutError(KSeFPollingTimeoutError):
     """Raised when polling for authentication completion exceeds the timeout.
 
     Args:
@@ -1063,7 +1197,7 @@ class KSeFAuthTokenRedemptionError(KSeFTransportError):
         )
 
 
-class KSeFTokenStatusTimeoutError(KSeFException):
+class KSeFTokenStatusTimeoutError(KSeFPollingTimeoutError):
     """Raised when polling for a token status change exceeds the timeout.
 
     Args:
@@ -1095,7 +1229,7 @@ class KSeFTokenStatusTimeoutError(KSeFException):
         )
 
 
-class KSeFInvoiceQueryTimeoutError(KSeFException):
+class KSeFInvoiceQueryTimeoutError(KSeFPollingTimeoutError):
     """Raised when polling for invoices to appear exceeds the timeout.
 
     Args:
@@ -1125,7 +1259,7 @@ class KSeFMetadataPaginationError(KSeFException):
     code: str = "METADATA_PAGINATION_ERROR"
 
 
-class KSeFInvoiceDownloadTimeoutError(KSeFException):
+class KSeFInvoiceDownloadTimeoutError(KSeFPollingTimeoutError):
     """Raised when polling for an invoice download exceeds the timeout.
 
     Args:
@@ -1153,7 +1287,7 @@ class KSeFInvoiceDownloadTimeoutError(KSeFException):
         )
 
 
-class KSeFInvoiceProcessingTimeoutError(KSeFException):
+class KSeFInvoiceProcessingTimeoutError(KSeFPollingTimeoutError):
     """Raised when polling for a session invoice to finish processing exceeds the timeout.
 
     Args:
@@ -1183,7 +1317,7 @@ class KSeFInvoiceProcessingTimeoutError(KSeFException):
         )
 
 
-class KSeFOnlineSessionTimeoutError(KSeFException):
+class KSeFOnlineSessionTimeoutError(KSeFPollingTimeoutError):
     """Raised when polling for an online session to finish processing exceeds the timeout.
 
     Args:
@@ -1212,7 +1346,7 @@ class KSeFOnlineSessionTimeoutError(KSeFException):
         )
 
 
-class KSeFBatchSessionTimeoutError(KSeFException):
+class KSeFBatchSessionTimeoutError(KSeFPollingTimeoutError):
     """Raised when polling for a batch session to finish processing exceeds the timeout.
 
     Args:

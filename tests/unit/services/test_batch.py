@@ -14,6 +14,7 @@ from ksef2._core.exceptions import (
     KSeFBatchUploadError,
     KSeFBatchSessionTimeoutError,
     KSeFSessionError,
+    KSeFSessionFailedError,
     KSeFValidationError,
 )
 from ksef2.models import AuthTokens
@@ -529,12 +530,18 @@ class TestBatchService:
             ).model_dump(mode="json")
         )
 
-        with pytest.raises(KSeFSessionError, match="Rejected"):
+        with pytest.raises(KSeFSessionFailedError, match="Rejected") as exc_info:
             _ = service.wait_for_completion(
                 session="batch-ref",
                 timeout=1.0,
                 poll_interval=0.0,
             )
+
+        error = exc_info.value
+        assert isinstance(error, KSeFSessionError)
+        assert error.reference_number == "batch-ref"
+        assert error.session_status_code == 450
+        assert error.context["description"] == "Rejected"
 
     @legacy_api
     def test_wait_for_completion_raises_on_timeout(

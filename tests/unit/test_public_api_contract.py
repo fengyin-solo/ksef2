@@ -1,5 +1,10 @@
 import inspect
 from functools import cached_property
+from importlib.util import find_spec
+import os
+from pathlib import Path
+import subprocess
+import sys
 from typing import get_args, get_type_hints
 
 import pytest
@@ -20,6 +25,8 @@ PUBLIC_DOMAIN_ALIAS_NAMES = (
     "TokenPermission",
     "TokenStatus",
 )
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 PUBLIC_RUNTIME_ENUM_AND_HELPER_NAMES = (
     "AuthContextIdentifierTypeEnum",
@@ -69,14 +76,32 @@ def _public_functions(cls: type[object]) -> list[object]:
     return functions
 
 
+def _pydantic_generic_origin(annotation: object) -> type[object] | None:
+    """Return the model behind a parametrized pydantic generic such as ``Page[_T]``."""
+    if not inspect.isclass(annotation):
+        return None
+    metadata = getattr(annotation, "__pydantic_generic_metadata__", None)
+    if not isinstance(metadata, dict):
+        return None
+    origin = metadata.get("origin")
+    return origin if isinstance(origin, type) else None
+
+
 def _annotation_types(annotation: object) -> set[type[object]]:
     types: set[type[object]] = set()
-    pending = [annotation]
+    pending: list[object] = [annotation]
 
     while pending:
         current = pending.pop()
         pending.extend(get_args(current))
-        if inspect.isclass(current):
+        origin = _pydantic_generic_origin(current)
+        if origin is not None:
+            # A parametrized generic is published under its own name, and its item
+            # types still have to resolve through the same facade.
+            types.add(origin)
+            metadata = getattr(current, "__pydantic_generic_metadata__", {})
+            pending.extend(metadata.get("args") or ())
+        elif inspect.isclass(current):
             types.add(current)
 
     return types
@@ -85,7 +110,8 @@ def _annotation_types(annotation: object) -> set[type[object]]:
 def _annotated_types(cls: type[object]) -> set[type[object]]:
     types: set[type[object]] = set()
     for function in _public_functions(cls):
-        for annotation in get_type_hints(function, include_extras=True).values():
+        hints = get_type_hints(function, include_extras=True)
+        for annotation in hints.values():
             types.update(_annotation_types(annotation))
     return types
 
@@ -125,6 +151,14 @@ def test_public_model_facade_exports_runtime_enums_and_helpers(name: str) -> Non
 
 def test_public_model_facade_does_not_export_nip_weights() -> None:
     assert "NIP_WEIGHTS" not in public_models.__all__
+
+
+def test_xades_facade_reexports_the_credential_holder_of_the_models_facade() -> None:
+    """``ksef2.xades`` is where XAdES callers look, so it must hand out one class."""
+    import ksef2.xades as public_xades
+
+    assert "XAdESCredentials" in public_xades.__all__
+    assert public_xades.XAdESCredentials is public_models.XAdESCredentials
 
 
 def test_public_client_annotations_resolve_through_stable_facades() -> None:
@@ -185,6 +219,108 @@ def test_public_client_annotations_resolve_through_stable_facades() -> None:
         "Public domain annotation types missing from ksef2.models: "
         f"{', '.join(sorted(missing_models))}"
     )
+
+
+def _class_type_parameters(cls: type[object]) -> tuple[object, ...]:
+    """Return the type variables a generic class declares, as the runtime sees them."""
+    return tuple(getattr(cls, "__parameters__", ()))
+
+
+def test_pager_page_type_hints_remain_public() -> None:
+    """``page()`` names its cursor and its generic ``Page`` return for introspection.
+
+    The runtime check on this return is narrower than the annotation, so a passing
+    collection must not be taken as evidence that the annotation is still readable. Read
+    it here, and pin that the page is parameterized by the pager's own type variable.
+    """
+    for pager_class in (public_clients.Pager, public_clients.AsyncPager):
+        hints = get_type_hints(pager_class.page, include_extras=True)
+
+        assert hints["cursor"] == str | None
+        returned = hints["return"]
+        assert _pydantic_generic_origin(returned) is public_models.Page
+        metadata = getattr(returned, "__pydantic_generic_metadata__", None)
+        assert isinstance(metadata, dict)
+        assert tuple(metadata["args"]) == _class_type_parameters(pager_class)
+
+        signature = inspect.signature(pager_class.page)
+        assert list(signature.parameters) == ["self", "cursor"]
+        assert signature.parameters["cursor"].default is None
+
+
+# The runtime-check switch is read while ksef2 is imported, so a process cannot turn it
+# on halfway through. This child re-reads the same contract in a fresh interpreter and
+# then pages a real client, which is the return value beartype used to reject.
+_PAGE_HINTS_CHILD = """
+import inspect
+import sys
+from typing import get_type_hints
+
+from ksef2.clients import AsyncPager, Pager
+from ksef2.models import Page
+from tests.unit.clients.test_paging import COLLECTIONS, _client, _page
+from tests.unit.flavors import Flavor
+
+runtime_checks = sys.argv[1] == "1"
+
+for pager_class in (Pager, AsyncPager):
+    hints = get_type_hints(pager_class.page)
+    assert hints["cursor"] == str | None, hints
+    returned = hints["return"]
+    metadata = getattr(returned, "__pydantic_generic_metadata__", None)
+    assert isinstance(metadata, dict), returned
+    assert metadata["origin"] is Page, returned
+    assert tuple(metadata["args"]) == pager_class.__parameters__, returned
+    assert list(inspect.signature(pager_class.page).parameters) == ["self", "cursor"]
+
+for flavor in (Flavor("sync"), Flavor("async")):
+    collection = next(item for item in COLLECTIONS if item.id == "certificates.list")
+    flavor.transport.enqueue(_page(collection, more=True))
+    pager = getattr(_client(collection, flavor), collection.method)()
+    page = flavor.run(pager.page(None))
+    assert isinstance(page, Page), page
+    assert page.items, page
+    assert page.next_cursor, page
+
+# Prove this interpreter really is in the mode the test asked for, so the checks-on case
+# cannot quietly degrade into the checks-off one.
+flavor.transport.clear()
+flavor.transport.enqueue(_page(collection, more=True))
+probe = getattr(_client(collection, flavor), collection.method)()
+try:
+    flavor.run(probe.page(123))
+except Exception as exc:
+    checked = type(exc).__name__ == "BeartypeCallHintParamViolation"
+    assert checked == runtime_checks, exc
+else:
+    assert not runtime_checks, "page() did not enforce its own annotation"
+print("page hints ok")
+"""
+
+
+@pytest.mark.parametrize(
+    "runtime_checks", ["0", "1"], ids=["runtime-checks-off", "runtime-checks-on"]
+)
+def test_pager_page_annotations_survive_runtime_checks(
+    runtime_checks: str,
+) -> None:
+    """The public ``page()`` signature and a real paged request both hold either way."""
+    if runtime_checks == "1" and find_spec("beartype") is None:
+        pytest.skip("ksef2[runtime-checks] is not installed")
+
+    environment = os.environ.copy()
+    environment["KSEF2_RUNTIME_CHECKS"] = runtime_checks
+
+    completed = subprocess.run(
+        [sys.executable, "-c", _PAGE_HINTS_CHILD, runtime_checks],
+        capture_output=True,
+        text=True,
+        check=True,
+        cwd=PROJECT_ROOT,
+        env=environment,
+    )
+
+    assert completed.stdout.strip() == "page hints ok"
 
 
 def test_testdata_facade_exports_identifier_generators() -> None:

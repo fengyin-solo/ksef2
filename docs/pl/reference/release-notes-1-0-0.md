@@ -32,12 +32,30 @@ moduł, który da się zaimportować z repozytorium.
 | Wysokopoziomowe moduły klientów | `client.authentication`, `client.encryption`, `client.peppol`, `client.testdata` oraz moduły uwierzytelnione: `auth.invoices`, `auth.tokens`, `auth.permissions`, `auth.certificates`, `auth.collective_identifiers`, `auth.limits`. |
 | Przepływy identyfikatorów zbiorczych | `auth.collective_identifiers` generuje identyfikator zbiorczy dla wskazanych faktur, odpytuje identyfikatory strona po stronie, rozwiązuje identyfikatory dołączone do jednej liczby KSeF oraz wymienia faktury w wybranych identyfikatorach zbiorczych. |
 | Pomocniki sesji | Przepływy sesji online i batch do wysyłki, pollingu, UPO i wznawialnych referencji KSeF. |
+| Stronicowanie | Każdy `Pager` odpowiada na `.page(cursor)`, zwracając `Page` (`items`, `next_cursor`), gdzie kursor to stan wydany przez SDK, który można zapisywać i odtworzyć po restarcie; obok tego `.pages()`, `.first_page()` i `.wait()`. |
 | `ksef2.xades` | Ładowanie certyfikatów, generowanie certyfikatów TEST, lokalne pomocniki podpisu XAdES i `LocalSigner`. |
 | `ksef2.profiles` | Pomocniki konfiguracji profili zgodnych z lokalnymi profilami `ksef2-cli`. |
 | `ksef2.fa3` | Publiczny builder faktur FA(3), drafty buildera i publiczne modele domenowe FA(3) używane przez przepływy buildera. |
 | `ksef2.renderers` | Opcjonalne lokalne pomocniki renderowania faktur XSLT/PDF po instalacji dodatku `pdf`. |
 
 Dokładną granicę kompatybilności opisuje strona interfejsu publicznego.
+
+## Przełomowe zmiany w 1.0
+
+Błędy transportu są błędami SDK. Metoda publiczna nie przepuszcza już wyjątku
+`httpx`: żądanie, które nie dało użytecznej odpowiedzi, rzuca
+`KSeFTransportError` (`code = "TRANSPORT_ERROR"`) z `method`, `path` i
+`outcome_ambiguous`, a oryginalny wyjątek `httpx` pozostaje jako `__cause__`.
+Obejmuje każdy `httpx.RequestError`: błędy połączenia i timeouty, odpowiedź, której
+klient HTTP nie odkodował, oraz porzucony łańcuch przekierowań. Nie dziedziczy on
+po `httpx.HTTPError`, więc obsługujące je wcześniej bloki muszą wskazać klasę SDK;
+`KSeFException` obejmuje już każdy błąd SDK. Ponowienia, klasy błędów API oraz
+`KSeFAuthError` dla 401 albo 403 pozostają bez zmian.
+`KSeFExternalTransferError`, `KSeFBatchUploadError` i
+`KSeFAuthTokenRedemptionError` dziedziczą teraz po `KSeFTransportError` i zachowują
+własne kody oraz zachowanie odzyskiwania.
+Zobacz [przewodnik migracji](migration-1-0.md#błędy-transportu) i
+[referencję błędów](errors.md#atrybuty-błędu-transportu).
 
 ## Publiczne, ale niższopoziomowe
 

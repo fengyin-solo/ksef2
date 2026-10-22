@@ -1,3 +1,5 @@
+import warnings
+
 import httpx
 import pytest
 from polyfactory import BaseFactory
@@ -148,7 +150,6 @@ class TestTokensClient:
         assert len(fake_transport.calls) == 2
         assert fake_transport.calls[1].method == "GET"
 
-    @legacy_api
     def test_list_page(
         self,
         tokens_client: TokensClient,
@@ -167,7 +168,6 @@ class TestTokensClient:
         assert call.method == "GET"
         assert str(call.path) == TokenRoutes.LIST_TOKENS
 
-    @legacy_api
     def test_list_page_with_continuation_token(
         self,
         tokens_client: TokensClient,
@@ -183,6 +183,41 @@ class TestTokensClient:
         call = fake_transport.calls[0]
         assert call.headers is not None
         assert call.headers["x-continuation-token"] == "ct-abc"
+
+    def test_list_page_does_not_warn(
+        self,
+        tokens_client: TokensClient,
+        fake_transport: FakeTransport,
+        token_list_resp: BaseFactory[spec.QueryTokensResponse],
+    ) -> None:
+        """Bindings fetch one page per call, so ``list_page`` stays a supported API."""
+        fake_transport.enqueue(
+            token_list_resp.build(continuationToken=None).model_dump(mode="json")
+        )
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            result = tokens_client.list_page()
+
+        assert isinstance(result, tokens.QueryTokensResponse)
+        assert len(fake_transport.calls) == 1
+
+    def test_list_all_still_warns(
+        self,
+        tokens_client: TokensClient,
+        fake_transport: FakeTransport,
+        token_list_resp: BaseFactory[spec.QueryTokensResponse],
+    ) -> None:
+        fake_transport.enqueue(
+            token_list_resp.build(continuationToken=None).model_dump(mode="json")
+        )
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            pages = list(tokens_client.list_all())
+
+        assert len(pages) == 1
+        assert [w.category for w in caught] == [DeprecationWarning]
 
     @legacy_api
     def test_list_all_single_page(

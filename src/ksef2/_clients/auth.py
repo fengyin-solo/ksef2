@@ -33,6 +33,7 @@ from ksef2._domain.models.auth import (
     InitTokenAuthenticationRequest,
     RefreshedToken,
 )
+from ksef2._domain.models.xades import XAdESCredentials
 from ksef2._endpoints.auth import AuthEndpoints
 from ksef2._infra.mappers.auth import from_spec, to_spec
 from ksef2.xades import XAdESPrivateKey, generate_test_certificate
@@ -56,14 +57,14 @@ class AuthClient:
     """Entry point for creating authenticated SDK clients.
 
     Catch ``KSeFException`` for SDK-classified failures raised by this branch,
-    and ``httpx.HTTPError`` for transport failures.
+    including ``KSeFTransportError`` for transport failures.
 
     Raises:
         KSeFApiError: If KSeF returns an API error response. Catch
             ``KSeFAuthError`` for authentication or authorization failures and
             ``KSeFRateLimitError`` for throttling.
         KSeFValidationError: If a KSeF response cannot be parsed into SDK models.
-        httpx.HTTPError: If the HTTP transport fails before KSeF returns a response.
+        KSeFTransportError: If the HTTP request fails to produce a usable response.
     """
 
     def __init__(
@@ -185,18 +186,29 @@ class AuthClient:
         self,
         *,
         nip: str,
-        cert: Certificate,
-        private_key: XAdESPrivateKey,
+        cert: Certificate | None = None,
+        private_key: XAdESPrivateKey | None = None,
+        credentials: XAdESCredentials | None = None,
         verify_chain: bool = False,
         timeout: float = 60.0,
         poll_interval: float = 1.0,
     ) -> AuthenticatedClient:
         """Authenticate with an XAdES-signed challenge response.
 
+        Pass the signing material either as an ``XAdESCredentials`` holder loaded
+        from PEM, DER or PKCS#12 bytes, or as a loaded certificate and key pair.
+        Exactly one form is accepted.
+
         Args:
             nip: Taxpayer identifier embedded in the authentication request.
-            cert: Signing certificate accepted by the target environment.
-            private_key: RSA or EC private key used to sign the XAdES payload.
+            cert: Signing certificate accepted by the target environment; needs
+                ``private_key`` and cannot be combined with ``credentials``.
+            private_key: RSA or EC private key used to sign the XAdES payload; needs
+                ``cert`` and cannot be combined with ``credentials``.
+            credentials: Loaded certificate and private-key holder, from
+                :meth:`~ksef2._domain.models.xades.XAdESCredentials.from_pem`,
+                :meth:`~ksef2._domain.models.xades.XAdESCredentials.from_der` or
+                :meth:`~ksef2._domain.models.xades.XAdESCredentials.from_pkcs12`.
             verify_chain: Whether KSeF should verify the certificate chain.
             timeout: Maximum number of seconds to wait for authentication.
             poll_interval: Delay in seconds between authentication status checks.
@@ -207,25 +219,47 @@ class AuthClient:
         Raises:
             KSeFAuthError: If authentication fails.
             KSeFAuthPollingTimeoutError: If polling exceeds ``timeout``.
+            KSeFArgumentError: If both credential forms, or neither usable form, is
+                supplied.
 
         Example:
             ```python
-            from ksef2.xades import load_certificate_from_pem, load_private_key_from_pem
+            from pathlib import Path
+
+            from ksef2.xades import XAdESCredentials
 
             client = Client(Environment.DEMO)
             auth = client.authentication.with_xades(
                 nip="5261040828",
-                cert=load_certificate_from_pem("company.pem"),
-                private_key=load_private_key_from_pem("company.key"),
+                credentials=XAdESCredentials.from_pem(
+                    Path("company.pem").read_bytes(),
+                    Path("company.key").read_bytes(),
+                ),
             )
             ```
         """
+        if credentials is not None:
+            if cert is not None or private_key is not None:
+                raise exceptions.KSeFArgumentError(
+                    "with_xades() takes credentials or the cert and private_key pair, "
+                    "not a mix of both.",
+                )
+            signing_cert = credentials.certificate
+            signing_key = credentials.private_key
+        else:
+            if cert is None or private_key is None:
+                raise exceptions.KSeFArgumentError(
+                    "with_xades() needs credentials, or both cert and private_key.",
+                )
+            signing_cert = cert
+            signing_key = private_key
+
         challenge = from_spec(self._auth_ep.challenge())
         signed_xml = _build_signed_xades(
             challenge=challenge.challenge,
             nip=nip,
-            cert=cert,
-            private_key=private_key,
+            cert=signing_cert,
+            private_key=signing_key,
         )
 
         init_resp = from_spec(
@@ -414,7 +448,10 @@ class AuthClient:
         """Redeem the temporary authentication token for access and refresh tokens."""
         try:
             response = self._auth_ep.redeem_token(bearer_token=auth_token)
-        except httpx.TransportError as exc:
+        except exceptions.KSeFTransportError as exc:
+            cause: BaseException = exc.__cause__ or exc
+            raise exceptions.KSeFAuthTokenRedemptionError() from cause
+        except httpx.RequestError as exc:
             raise exceptions.KSeFAuthTokenRedemptionError() from exc
         return from_spec(response)
 

@@ -104,6 +104,44 @@ Pass exactly one of `filters` or `state`. `to_dict()`, `from_json()` and
 `from_dict()` work like the session states; `model_dump()` and `repr()` redact the
 key.
 
+### Save and restore a completed export
+
+`ExportResumeState` is for an export that has not finished. Once `wait()` returns,
+store `package.archive` as plain ZIP or TarGz bytes in your own storage. Restore
+those bytes with `ExportedInvoices.from_archive()`.
+
+```python
+from pathlib import Path
+
+from ksef2.clients import ExportedInvoices
+
+archive_path = Path("export.zip")
+archive_path.write_bytes(package.archive)
+
+# in another process
+restored = ExportedInvoices.from_archive(archive_path.read_bytes())
+for ksef_number, xml in restored.invoices():
+    print(ksef_number, len(xml))
+
+written = restored.save(Path("downloads"))
+```
+
+The factory defaults to `compression="zip"`. For TarGz exports, store the archive
+bytes in a `.tar.gz` file and pass `compression="tar_gz"` when restoring. Use the
+same compression format as the original export; the factory does not detect it.
+
+Construction does not open or validate the archive. `metadata` reads
+`_metadata.json` on first access and caches the result: `None` means the file is
+absent, and `[]` means it contains no invoices. Invalid archives fail when read
+or extracted; invalid metadata raises `KSeFValidationError` when accessed.
+`save()` rejects unsafe paths, links and special files before writing anything.
+
+The archive already contains decrypted invoice data. Protect it in your storage.
+No encryption key or network access is needed to restore it. Package status and
+presigned download URLs are not stored in the archive, so `restored.package` is
+`None`. `await job.wait()` returns the same `ExportedInvoices` class, so sync and
+async callers save and restore archives in the same way.
+
 :::note[The SDK decrypts package parts]
 KSeF returns encrypted package part URLs. `export()` loads a valid KSeF
 encryption certificate, schedules the export with local AES material, and

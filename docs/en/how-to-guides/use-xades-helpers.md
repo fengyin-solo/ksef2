@@ -25,6 +25,26 @@ private_key = load_private_key_from_pem(
 )
 ```
 
+### With DER
+
+`XAdESCredentials.from_der` reads DER certificate and key bytes and keeps them as
+one holder containing the loaded cryptography objects.
+
+```python
+import os
+from pathlib import Path
+
+from ksef2.xades import XAdESCredentials
+
+password = os.environ.get("KSEF2_KEY_PASSWORD")
+
+credentials = XAdESCredentials.from_der(
+    Path("company.cer").read_bytes(),
+    Path("company.key").read_bytes(),
+    key_password=password.encode() if password else None,
+)
+```
+
 ### With PKCS#12
 
 ```python
@@ -40,6 +60,20 @@ cert, private_key = load_certificate_and_key_from_p12(
 )
 ```
 
+The same archive can be handed to the data-based form instead:
+
+```python
+import os
+from pathlib import Path
+
+from ksef2.xades import XAdESCredentials
+
+credentials = XAdESCredentials.from_pkcs12(
+    Path("company.p12").read_bytes(),
+    password=os.environ["KSEF2_P12_PASSWORD"].encode(),
+)
+```
+
 ## Authenticate with XAdES
 
 Pass the loaded certificate and private key to the authentication branch.
@@ -49,6 +83,15 @@ auth = client.authentication.with_xades(
     nip="5261040828",
     cert=cert,
     private_key=private_key,
+)
+```
+
+Or pass the credential holder. The async branch awaits the same call.
+
+```python
+auth = await client.authentication.with_xades(
+    nip="5261040828",
+    credentials=credentials,
 )
 ```
 
@@ -92,14 +135,19 @@ signed_xml = sign_xades(xml, cert, private_key)
 ```
 
 :::caution[Protect private keys]
-Keep private-key files and passwords outside source control. Load passwords
-from environment variables or a secret manager, and pass only the loaded key
-object to SDK authentication.
+Keep private-key files and passwords outside source control. Load passwords from
+environment variables or a secret manager. `XAdESCredentials` keeps the loaded
+certificate and decrypted private-key objects in memory, with no retained password
+or input bytes. Its `repr()` hides both objects. It has no Pydantic schema or JSON
+serialization API. Treat the holder as a secret while it is alive. Construction
+checks the key type and certificate/key match once. Authentication and signing
+reuse the loaded objects without serializing or reparsing the private key.
 :::
 
 ## Recommended flow
 
-1. Load certificate material from PEM or PKCS#12.
+1. Load certificate material from PEM, DER or PKCS#12, as objects or as one
+   `XAdESCredentials` value.
 
 2. Keep private-key passwords in environment variables or a secret manager.
 

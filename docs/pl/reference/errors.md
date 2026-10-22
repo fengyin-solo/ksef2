@@ -3,11 +3,14 @@ title: Referencja błędów
 description: Hierarchia wyjątków SDK, atrybuty, kody błędów KSeF, wskazówki i klasy timeoutów pollingu.
 ---
 
-ksef2 rzuca wyjątki SDK dla błędów, które potrafi sklasyfikować. Błędy
-transportu, które wystąpią zanim KSeF zwróci sparsowaną odpowiedź API, pozostają
-wyjątkami `httpx.HTTPError`. Transfery przez presigned URL-e do zewnętrznego
-storage używają opisanych niżej dedykowanych wyjątków zamiast klasyfikacji
-błędów API lub uwierzytelnienia KSeF.
+ksef2 rzuca wyjątki SDK dla każdego błędu, który klasyfikuje, także dla błędów
+żądań HTTP: żadna metoda publiczna nie przepuszcza błędu żądania `httpx` do
+wywołującego. Łap `KSeFException`, żeby obsłużyć każdy błąd SDK, albo węższy
+`KSeFTransportError`, gdy żądanie nie dało odpowiedzi, której SDK mógłby użyć.
+Błędy, których SDK nie zgłasza, np. `TypeError` z Twoich własnych argumentów,
+pozostają zwykłymi wyjątkami Pythona. Transfery przez presigned URL-e do
+zewnętrznego storage używają opisanych niżej dedykowanych wyjątków zamiast
+klasyfikacji błędów API lub uwierzytelnienia KSeF.
 
 ## Rozgałęziaj po klasie albo po `ksef_code`
 
@@ -28,12 +31,13 @@ aktualne sformułowania KSeF i mogą zmienić się między wydaniami. To samo do
 | `KSeFTokenActivationFailedError` | `KSeFApiError` | `TOKEN_ACTIVATION_FAILED` | `reference_number`, `token_status` |
 | `KSeFNotFoundError` | `KSeFApiError` | `NOT_FOUND` | `status_code`, `ksef_code`, `details`, `response` |
 | `KSeFServerError` | `KSeFApiError` | `SERVER_ERROR` | `status_code`, `ksef_code`, `details`, `response` |
+| `KSeFTransportError` | `KSeFException` | `TRANSPORT_ERROR` | `method`, `path`, `outcome_ambiguous` |
 | `KSeFApiError` | `KSeFException` | `API_ERROR` | `status_code`, `ksef_code`, `exception_code`, `trace_id`, `details`, `response` |
 | `KSeFNotReadyError` | `KSeFApiError` | `NOT_READY` | Atrybuty błędu API |
 | `KSeFAuthError` | `KSeFApiError` | `AUTH_ERROR` | Atrybuty błędu API |
 | `KSeFAuthenticationExpiredError` | `KSeFAuthError` | `AUTHENTICATION_EXPIRED` | Atrybuty błędu API |
 | `KSeFRateLimitError` | `KSeFApiError` | `RATE_LIMIT_ERROR` | `retry_after` oraz atrybuty błędu API |
-| `KSeFExternalTransferError` | `KSeFException` | `EXTERNAL_TRANSFER_ERROR` | `operation`, `host`, `reference_number`, `part_ordinal`, `status_code`, `outcome_ambiguous` |
+| `KSeFExternalTransferError` | `KSeFTransportError` | `EXTERNAL_TRANSFER_ERROR` | `operation`, `host`, `reference_number`, `part_ordinal`, `status_code`, `outcome_ambiguous` |
 | `KSeFBatchUploadError` | `KSeFExternalTransferError` | `BATCH_UPLOAD_ERROR` | Atrybuty transferu zewnętrznego oraz `recovery_state()` i `recovery_prepared_batch()` |
 | `KSeFInvoiceRejectedError` | `KSeFSessionError` | `INVOICE_REJECTED` | `invoice_reference_number`, `invoice_status_code`, `description`, `details`, `extensions`, `status` |
 
@@ -51,10 +55,11 @@ except KSeFApiError as exc:
     if exc.ksef_code == 21405:
         details = exc.details
     trace_id = exc.trace_id  # podaj go, kontaktując się z pomocą KSeF
+except KSeFTransportError as exc:
+    if exc.outcome_ambiguous:
+        ...  # KSeF mógł przyjąć żądanie; sprawdź rezultat przed ponowną wysyłką
 except KSeFException as exc:
     context = exc.context
-except httpx.HTTPError as exc:
-    transport_error = exc
 ```
 
 ## Klasy wyjątków SDK
@@ -79,15 +84,50 @@ except httpx.HTTPError as exc:
 | `KSeFExportFailedError` | `EXPORT_FAILED` | KSeF zakończył eksport faktur bez paczki: eksport się nie powiódł, został anulowany przez system albo wygasł (`ExportJob.wait()`). |
 | `KSeFPermissionOperationFailedError` | `PERMISSION_OPERATION_FAILED` | KSeF zakończył nadanie albo cofnięcie uprawnienia bez jego zastosowania (`PermissionOperation.wait()`). |
 | `KSeFCertificateEnrollmentFailedError` | `CERTIFICATE_ENROLLMENT_FAILED` | KSeF odrzucił, anulował albo nie zrealizował rejestracji certyfikatu (`CertificateEnrollment.wait()`). |
-| `KSeFAuthTokenRedemptionError` | `AUTH_TOKEN_REDEMPTION_ERROR` | Jednorazowy redeem uwierzytelnienia utracił odpowiedź i mógł się powieść. |
-| `KSeFExternalTransferError` | `EXTERNAL_TRANSFER_ERROR` | Upload lub download przez presigned URL został odrzucony albo utracił odpowiedź. |
+| `KSeFAuthTokenRedemptionError` | `AUTH_TOKEN_REDEMPTION_ERROR` | Jednorazowy redeem uwierzytelnienia nie dostał użytecznej odpowiedzi i mógł się powieść. Podklasa `KSeFTransportError`. |
+| `KSeFExternalTransferError` | `EXTERNAL_TRANSFER_ERROR` | Upload lub download przez presigned URL został odrzucony albo nie dał użytecznej odpowiedzi. |
 | `KSeFBatchUploadError` | `BATCH_UPLOAD_ERROR` | Upload części batch nie powiódł się, ale chroniony stan odzyskiwania pozostaje dostępny. |
 | `NoCertificateAvailableError` | `NO_CERTIFICATE_AVAILABLE` | Brak poprawnego certyfikatu dla podpisu albo szyfrowania. |
 | `KSeFMetadataPaginationError` | `METADATA_PAGINATION_ERROR` | Paginacja metadanych nie może bezpiecznie kontynuować. |
 
 `KSeFAuthTokenRedemptionError.outcome_ambiguous` ma zawsze wartość `True`. Nie
 ponawiaj redeem: KSeF mógł już zużyć tymczasowy token uwierzytelnienia, mimo że
-odpowiedź nie dotarła do wywołującego.
+do wywołującego nie dotarła użyteczna odpowiedź.
+
+## Atrybuty błędu transportu
+
+`KSeFTransportError` jest rzucany, gdy żądanie nie dało odpowiedzi, której SDK
+mógłby użyć: nie dotarło do KSeF, odpowiedź nie dała się zdekodować albo
+łańcuch przekierowań został porzucony. Żądania nadające się do ponowienia są
+ponawiane najpierw, więc ten błąd oznacza wyczerpane próby albo żądanie, którego
+SDK nie ponawia. Powtarzamy tylko błędy, których KSeF mógł nie zobaczyć, więc
+błąd dekodowania albo przekierowania jest zgłaszany po jednej próbie; sama
+otoczka nie zmienia liczby prób.
+
+| Atrybut | Typ | Znaczenie |
+| --- | --- | --- |
+| `method` | `str \| None` | Metoda HTTP błędnego żądania albo `None`, gdy SDK jej nie zna. |
+| `path` | `str \| None` | Ścieżka URL żądania bez userinfo, hosta, query i fragmentu. Presigned URL-e storage nigdy nie trafiają do tego pola. |
+| `outcome_ambiguous` | `bool` | `True`, gdy żądanie mogło mimo wszystko dotrzeć do KSeF: wszystko poza `GET`, `HEAD` i `OPTIONS`, bo wcześniejsza próba mogła dotrzeć. |
+
+Oryginalny wyjątek `httpx` pozostaje dostępny jako `__cause__`. To surowa
+diagnostyka HTTP, która może powtórzyć szczegóły żądania nieuwzględnione w samym
+błędzie, więc czytaj ją wyłącznie w chronionym logu. Komunikat, `str(exc)`,
+`repr(exc)` i `context` nigdy nie zawierają tokenu bearer, podpisanego URL-a ani
+ciała żądania.
+
+```python
+from ksef2 import KSeFException, KSeFTransportError
+
+try:
+    providers = client.peppol.list().first_page()
+except KSeFTransportError as exc:
+    print(f"{exc.method} {exc.path} nie dało użytecznej odpowiedzi")
+    if exc.outcome_ambiguous:
+        ...  # sprawdź, co zapisał KSeF, zanim wyślesz coś ponownie
+except KSeFException as exc:
+    print(exc)  # każdy pozostały błąd SDK
+```
 
 ## Atrybuty transferu zewnętrznego i odzyskiwanie batch
 
@@ -254,20 +294,20 @@ Wskazówki do pozostałych błędów SDK:
 | `KSeFAuthenticationExpiredError` | Authenticate again with `client.authentication.with_token()` or `client.authentication.with_xades()`, or restore tokens that are still valid with `client.authentication.resume()`. |
 | `KSeFBatchSessionTimeoutError` | KSeF may still be processing the batch. Call `wait()` on the batch session again with a larger `timeout`. After a restart, rebuild the session from the state saved with `resume_state()` using `batch_session(state=...)`. |
 | `KSeFCertificateEnrollmentFailedError` | Read `description` and `details` for the reason, then submit a corrected request with `enroll()`. `get_limits()` shows how many enrollments and certificates are still allowed. |
-| `KSeFCertificateEnrollmentTimeoutError` | KSeF may still issue the certificate. Call `wait()` on the enrollment again with a larger `timeout`, or check it with `get_enrollment_status()`. |
+| `KSeFCertificateEnrollmentTimeoutError` | KSeF may still issue the certificate. Call `wait()` on the enrollment again with a larger `timeout`, or check it with `get_enrollment_status()`. After a restart, get the handle back with `auth.certificates.enrollment(state)` using the state saved from `resume_state()`. |
 | `KSeFExportFailedError` | Read `description` and `details` for the reason, then start a new export with `export()`. |
 | `KSeFExportTimeoutError` | The export may still finish. Call `wait()` on the export again with a larger `timeout`. After a restart, get the job back with `export(state=...)` using the state saved from `resume_state()`. |
 | `KSeFInvoiceDownloadTimeoutError` | KSeF has not made the invoice available yet. Call `download()` again with a larger `timeout`. |
-| `KSeFInvoiceProcessingTimeoutError` | KSeF may still accept the invoice. Keep waiting with `submission(reference_number).wait()` on the session, with a larger `timeout`. After a restart, rebuild the session from the state saved with `resume_state()` using `online_session(state=...)`. |
+| `KSeFInvoiceProcessingTimeoutError` | KSeF may still accept the invoice. Keep waiting with `submission(reference_number).wait()` on the session, with a larger `timeout`. After a restart, rebuild the session from the state saved with `resume_state()` using `online_session(state=...)`. `submission(state=...)` also takes the state saved on the submission itself, which keeps the invoice and session references together. |
 | `KSeFInvoiceQueryTimeoutError` | No invoice matched before the deadline. Call `wait()` again with a larger `timeout`, or check the filters passed to `search()`. |
 | `KSeFInvoiceRejectedError` | Read `description` and `details` for the reason, fix the invoice and send it again with `send_invoice()`. |
 | `KSeFNotReadyError` | KSeF has not finished preparing this resource. Wait and request it again. |
 | `KSeFOnlineSessionTimeoutError` | KSeF may still be processing the session. Call `wait()` on the session again with a larger `timeout`. After a restart, rebuild the session from the state saved with `resume_state()` using `online_session(state=...)`. |
 | `KSeFPermissionOperationFailedError` | Read `description` for the reason, fix the request and grant or revoke again. `get_operation_status()` shows the operation's final state. |
-| `KSeFPermissionOperationTimeoutError` | The operation may still be applied. Call `wait()` on the operation again with a larger `timeout`, or check it with `get_operation_status()`. |
+| `KSeFPermissionOperationTimeoutError` | The operation may still be applied. Call `wait()` on the operation again with a larger `timeout`, or check it with `get_operation_status()`. After a restart, get the handle back with `auth.permissions.operation(state)` using the state saved from `resume_state()`. |
 | `KSeFSessionFailedError` | See why invoices failed with `list_failed_invoices()`. |
 | `KSeFTokenActivationFailedError` | Generate a new token with `generate()`, or inspect the token status with `get_status()`. |
-| `KSeFTokenStatusTimeoutError` | KSeF may still be activating the token. Call `wait()` on the token again with a larger `timeout`, or check it with `get_status()`. |
+| `KSeFTokenStatusTimeoutError` | KSeF may still be activating the token. Call `wait()` on the token again with a larger `timeout`, or check it with `get_status()`. After a restart, get the handle back with `auth.tokens.generation(state)` using the state saved from `resume_state()`; that state never holds the one-time token. |
 
 `KSeFSessionError` nie ma wskazówki na poziomie klasy. SDK ustawia ją tam, gdzie
 zna przyczynę: oczekiwanie na sesję, która jest nadal otwarta (najpierw ją
@@ -382,9 +422,9 @@ czekania. Same w sobie nie dowodzą, że zdalny workflow KSeF się nie udał.
 | `KSeFBatchSessionTimeoutError` | `BATCH_SESSION_TIMEOUT` | `reference_number`, `timeout` |
 | `KSeFOnlineSessionTimeoutError` | `ONLINE_SESSION_TIMEOUT` | `reference_number`, `timeout` |
 
-Zapisz właściwą referencję przed pollingiem, aby inny proces mógł wznowić
-sprawdzanie statusu. Każdy błąd timeoutu niesie `hint`, który mówi, jak czekać
-dalej albo wznowić pracę.
+Zapisz właściwą referencję albo stan zwracany przez `resume_state()` przed
+pollingiem, aby inny proces mógł wznowić sprawdzanie statusu. Każdy błąd
+timeoutu niesie `hint`, który mówi, jak czekać dalej albo wznowić pracę.
 
 `download_upo()` na handle faktury, sesji interaktywnej i sesji batch nigdy nie
 czeka i nie ma `timeout`. Najpierw wywołaj `wait()` na handle albo sesji.

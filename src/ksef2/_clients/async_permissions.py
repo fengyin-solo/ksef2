@@ -1,15 +1,16 @@
 """Async permissions branch client."""
 
-from collections.abc import AsyncGenerator, Awaitable, Callable, Coroutine, Sequence
+from collections.abc import Awaitable, Callable, Coroutine, Sequence
 from typing import cast, final, override
 
 from typing_extensions import deprecated
 
 from ksef2._clients._async_handles import AsyncOperationHandle
 from ksef2._clients._async_pager import AsyncPager
+from ksef2._clients._pagination_cursor import OffsetCursor
 from ksef2._core import exceptions
 from ksef2._core.async_protocols import AsyncMiddleware
-from ksef2._domain.models.pagination import OffsetPaginationParams
+from ksef2._domain.models.pagination import OffsetPaginationParams, Page
 from ksef2._domain.models.permissions import (
     AttachmentPermissionStatus,
     AuthorizationGrantDetail,
@@ -39,6 +40,7 @@ from ksef2._domain.models.permissions import (
     GrantSubunitPermissionsRequest,
     IndirectPermissionType,
     IndirectTargetIdentifierType,
+    PermissionOperationResumeState,
     PermissionOperationStatusResponse,
     PersonalPermissionDetail,
     PersonalPermissionsQuery,
@@ -75,23 +77,45 @@ from ksef2._infra.mappers.permissions import (
 
 
 def _offset_pager[PageT, ItemT](
+    operation: str,
     fetch: Callable[[OffsetPaginationParams], Awaitable[PageT]],
     items: Callable[[PageT], Sequence[ItemT]],
     has_more: Callable[[PageT], bool],
     params: OffsetPaginationParams | None,
 ) -> AsyncPager[ItemT]:
-    """Build a pager over an offset-paged permissions query."""
+    """Build a pager over an offset-paged permissions query.
 
-    async def _pages() -> AsyncGenerator[list[ItemT], None]:
-        current_params = params or OffsetPaginationParams()
-        while True:
-            page = await fetch(current_params)
-            yield list(items(page))
-            if not has_more(page):
-                break
-            current_params = current_params.next_page()
+    Args:
+        operation: Distinct SDK operation name, so a cursor from one permissions query is not accepted by another.
+        fetch: Fetches exactly one page for the supplied parameters.
+        items: Reads the items out of one response page.
+        has_more: Reports whether KSeF has further pages.
+        params: Page size and offset of the first page; defaults are used when ``None``.
 
-    return AsyncPager(_pages)
+    Returns:
+        A pager whose pages carry cursors for this operation.
+    """
+    parameters = params or OffsetPaginationParams()
+
+    async def _fetch_page(cursor: str | None) -> Page[ItemT]:
+        page_params = (
+            parameters
+            if cursor is None
+            else parameters.with_page_offset(
+                OffsetCursor.decode(cursor, operation=operation).page_offset
+            )
+        )
+        page = await fetch(page_params)
+        return Page[ItemT](
+            items=list(items(page)),
+            next_cursor=OffsetCursor.encode_next(
+                operation=operation,
+                page_offset=page_params.page_offset,
+                has_more=has_more(page),
+            ),
+        )
+
+    return AsyncPager(fetch_page=_fetch_page)
 
 
 @final
@@ -108,10 +132,14 @@ class AsyncPermissionOperation(
     finished it. ``get_operation_status()`` on the permissions client reads the
     same status for a reference number you stored earlier.
 
+    ``resume_state()`` saves what is needed to build the handle again after a
+    restart with ``auth.permissions.operation(state)``. The reference number
+    is all KSeF returned, so a resumed handle is a full copy of the original.
+
     Raises:
         KSeFApiError: If KSeF returns an API error response.
         KSeFValidationError: If a KSeF response cannot be parsed into SDK models.
-        httpx.HTTPError: If the HTTP transport fails before KSeF returns a response.
+        KSeFTransportError: If the HTTP request fails to produce a usable response.
     """
 
     def __init__(
@@ -144,6 +172,17 @@ class AsyncPermissionOperation(
             The data model KSeF returned when it accepted the operation.
         """
         return self._response
+
+    def resume_state(self) -> PermissionOperationResumeState:
+        """Return the state needed to resume this operation after a restart.
+
+        Persist it with ``to_json()`` and pass it to
+        ``auth.permissions.operation(state)`` later.
+
+        Returns:
+            The operation's reference number as saveable state.
+        """
+        return PermissionOperationResumeState(reference_number=self.reference_number)
 
     @override
     async def get_status(self) -> PermissionOperationStatusResponse:
@@ -209,14 +248,14 @@ class AsyncPermissionsClient:
     """Async high-level API for permission grants, revocations, and queries.
 
     Catch ``KSeFException`` for SDK-classified failures raised by this branch,
-    and ``httpx.HTTPError`` for transport failures.
+    including ``KSeFTransportError`` for transport failures.
 
     Raises:
         KSeFApiError: If KSeF returns an API error response. Catch
             ``KSeFAuthError`` for authentication or authorization failures and
             ``KSeFRateLimitError`` for throttling.
         KSeFValidationError: If a KSeF response cannot be parsed into SDK models.
-        httpx.HTTPError: If the HTTP transport fails before KSeF returns a response.
+        KSeFTransportError: If the HTTP request fails to produce a usable response.
     """
 
     def __init__(self, transport: AsyncMiddleware) -> None:
@@ -234,6 +273,38 @@ class AsyncPermissionsClient:
         self, response: GrantPermissionsResponse
     ) -> AsyncPermissionOperation:
         return AsyncPermissionOperation(self, response)
+
+    def operation(
+        self, state: PermissionOperationResumeState | str
+    ) -> AsyncPermissionOperation:
+        """Rebuild the handle of a permission operation KSeF accepted earlier.
+
+        Use it after a restart to keep waiting for the grant or revoke. No request
+        is made until the handle is used.
+
+        Args:
+            state: State saved with ``resume_state().to_json()``, or the object itself.
+
+        Returns:
+            A handle that polls the operation's status.
+
+        Raises:
+            ValidationError: If ``state`` is JSON that is not a saved permission operation state.
+
+        Example:
+            ```python
+            operation = auth.permissions.operation(saved_state)
+            status = await operation.wait()
+            ```
+        """
+        restored = (
+            state
+            if isinstance(state, PermissionOperationResumeState)
+            else PermissionOperationResumeState.from_json(state)
+        )
+        return self._operation(
+            GrantPermissionsResponse(reference_number=restored.reference_number)
+        )
 
     async def grant_person(
         self,
@@ -869,6 +940,7 @@ class AsyncPermissionsClient:
             ```
         """
         return _offset_pager(
+            "permissions.list_entity_roles",
             self._entity_roles,
             lambda page: page.roles,
             lambda page: page.has_more,
@@ -901,6 +973,7 @@ class AsyncPermissionsClient:
             ```
         """
         return _offset_pager(
+            "permissions.list_authorizations",
             lambda page_params: self._authorizations(query, page_params),
             lambda page: page.authorization_grants,
             lambda page: page.has_more,
@@ -933,6 +1006,7 @@ class AsyncPermissionsClient:
             ```
         """
         return _offset_pager(
+            "permissions.list_entities",
             lambda page_params: self._entities(query, page_params),
             lambda page: page.permissions,
             lambda page: page.has_more,
@@ -965,6 +1039,7 @@ class AsyncPermissionsClient:
             ```
         """
         return _offset_pager(
+            "permissions.list_eu_entities",
             lambda page_params: self._eu_entities(query, page_params),
             lambda page: page.permissions,
             lambda page: page.has_more,
@@ -997,6 +1072,7 @@ class AsyncPermissionsClient:
             ```
         """
         return _offset_pager(
+            "permissions.list_personal",
             lambda page_params: self._personal(query, page_params),
             lambda page: page.permissions,
             lambda page: page.has_more,
@@ -1029,6 +1105,7 @@ class AsyncPermissionsClient:
             ```
         """
         return _offset_pager(
+            "permissions.list_persons",
             lambda page_params: self._persons(query, page_params),
             lambda page: page.permissions,
             lambda page: page.has_more,
@@ -1061,6 +1138,7 @@ class AsyncPermissionsClient:
             ```
         """
         return _offset_pager(
+            "permissions.list_subordinate_entities",
             lambda page_params: self._subordinate_entities(query, page_params),
             lambda page: page.roles,
             lambda page: page.has_more,
@@ -1093,6 +1171,7 @@ class AsyncPermissionsClient:
             ```
         """
         return _offset_pager(
+            "permissions.list_subunits",
             lambda page_params: self._subunits(query, page_params),
             lambda page: page.permissions,
             lambda page: page.has_more,

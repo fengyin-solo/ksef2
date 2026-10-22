@@ -15,7 +15,10 @@ from ksef2._core.crypto import encrypt_invoice
 from ksef2._core.polling import poll_until
 from ksef2._core.protocols import Middleware
 from ksef2._domain.models import invoices
-from ksef2._domain.models.invoices import SendInvoicePayload
+from ksef2._domain.models.invoices import (
+    InvoiceSubmissionResumeState,
+    SendInvoicePayload,
+)
 from ksef2._domain.models.session import (
     OnlineSessionResumeState,
     SessionInvoicesResponse,
@@ -43,10 +46,14 @@ class InvoiceSubmission(
     processing status with ``wait()``. It keeps working after the session is
     closed, so a typical flow sends inside the ``with`` block and waits after it.
 
+    ``resume_state()`` saves what is needed to build the handle again after a
+    restart: the invoice reference and the reference of the session it went
+    into. Rebuild it with ``session.submission(state=...)``.
+
     Raises:
         KSeFApiError: If KSeF returns an API error response.
         KSeFValidationError: If a KSeF response cannot be parsed into SDK models.
-        httpx.HTTPError: If the HTTP transport fails before KSeF returns a response.
+        KSeFTransportError: If the HTTP request fails to produce a usable response.
     """
 
     def __init__(
@@ -79,6 +86,21 @@ class InvoiceSubmission(
             The data model KSeF returned when the invoice was accepted for processing.
         """
         return self._response
+
+    def resume_state(self) -> InvoiceSubmissionResumeState:
+        """Return the state needed to resume this invoice after a restart.
+
+        Persist it with ``to_json()`` and pass it to
+        ``session.submission(state=...)`` later, on a session built from the same
+        session reference number.
+
+        Returns:
+            The invoice reference and the online session it was sent into.
+        """
+        return InvoiceSubmissionResumeState(
+            reference_number=self.reference_number,
+            session_reference_number=self._session.reference_number,
+        )
 
     @override
     def get_status(self) -> SessionInvoiceStatusResponse:
@@ -165,7 +187,7 @@ class OnlineSessionClient:
     ``download_upo()`` for the session UPO.
 
     Catch ``KSeFException`` for SDK-classified failures raised by this session
-    branch, and ``httpx.HTTPError`` for transport failures.
+    branch, including ``KSeFTransportError`` for transport failures.
 
     Raises:
         KSeFApiError: If KSeF returns an API error response. Catch
@@ -173,7 +195,7 @@ class OnlineSessionClient:
             ``KSeFRateLimitError`` for throttling.
         KSeFValidationError: If a KSeF response cannot be parsed into SDK models.
         KSeFClientClosedError: If an operation is attempted after closing the session.
-        httpx.HTTPError: If the HTTP transport fails before KSeF returns a response.
+        KSeFTransportError: If the HTTP request fails to produce a usable response.
     """
 
     def __init__(
@@ -211,18 +233,50 @@ class OnlineSessionClient:
         """
         return self._state.reference_number
 
-    def submission(self, reference_number: str) -> InvoiceSubmission:
+    def submission(
+        self,
+        reference_number: str | None = None,
+        *,
+        state: InvoiceSubmissionResumeState | str | None = None,
+    ) -> InvoiceSubmission:
         """Get the handle of an invoice sent earlier in this session.
 
         Use it after a restart or on a resumed session to ``wait()`` for the
         invoice or ``download_upo()``. No request is made until you call one.
+        Pass the invoice reference on its own, or the state saved from the
+        original handle with ``resume_state()``.
 
         Args:
-            reference_number: Invoice reference number, as exposed by the handle ``send_invoice()`` returned.
+            reference_number: Invoice reference number, as exposed by the handle ``send_invoice()`` returned. Pass this or ``state``.
+            state: State saved with ``submission.resume_state().to_json()``, or the object itself. Its session reference must match this session. Pass this or ``reference_number``.
 
         Returns:
             The invoice submission handle.
+
+        Raises:
+            KSeFArgumentError: If both or neither of ``reference_number`` and ``state`` are given, or ``state`` names another session.
+            ValidationError: If ``state`` is JSON that is not a saved submission state.
         """
+        if (reference_number is None) == (state is None):
+            raise exceptions.KSeFArgumentError(
+                "Pass exactly one of reference_number or state."
+            )
+
+        if state is not None:
+            restored = (
+                state
+                if isinstance(state, InvoiceSubmissionResumeState)
+                else InvoiceSubmissionResumeState.from_json(state)
+            )
+            if restored.session_reference_number != self.reference_number:
+                raise exceptions.KSeFArgumentError(
+                    "The saved submission belongs to session "
+                    f"{restored.session_reference_number}, not "
+                    f"{self.reference_number}."
+                )
+            reference_number = restored.reference_number
+
+        assert reference_number is not None
         return InvoiceSubmission(
             self, invoices.SendInvoiceResponse(reference_number=reference_number)
         )
@@ -632,7 +686,7 @@ class OnlineSessionClient:
 
         Raises:
             KSeFApiError: If KSeF rejects the session termination request.
-            httpx.HTTPError: If the HTTP transport fails before KSeF returns a
+            KSeFTransportError: If the HTTP request fails to produce a usable
                 response.
         """
         if self._closed:

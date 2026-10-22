@@ -50,6 +50,26 @@ A timeout or transport error from `wait()` does not discard the credential you
 already stored. Resume the status check later with
 `auth.tokens.get_status(reference_number=...)`.
 
+### Resume the handle after a restart
+
+`token.resume_state()` returns a `GeneratedTokenResumeState`: the token's
+reference number and nothing else. Persist it with `to_json()` and hand it to
+`auth.tokens.generation()` when a queue worker or a restarted process picks the
+job up again.
+
+```python
+saved_state = token.resume_state().to_json()
+
+# Later, in the same or another process:
+token = auth.tokens.generation(saved_state)
+status = token.wait(timeout=60.0, poll_interval=1.0)
+```
+
+`generation()` takes the state object or its JSON string and returns a handle
+that polls the same reference number. The one-time token is never part of the
+state, in `to_json()`, `to_dict()`, `model_dump()` or `repr()`, so a resumed
+handle has no `token` and no `response`: keep storing the secret yourself.
+
 ## List tokens
 
 `list()` returns a `Pager`: iterate it for every token, call `.pages()` for
@@ -83,6 +103,28 @@ first = auth.tokens.list().first_page()
 for page in auth.tokens.list().pages():
     print(len(page), "tokens on this page")
 ```
+
+### Resume from a cursor
+
+`.page()` returns one `Page`: its `items` and `next_cursor`, the string naming
+the page after it. Keep that string and pass it back to `.page()`, in this
+process or a later one, to continue without re-reading the tokens you already
+saw.
+
+```python
+first = auth.tokens.list().page()
+cursor = first.next_cursor
+
+# Later, after a restart.
+if cursor is not None:
+    second = auth.tokens.list().page(cursor)
+```
+
+Rebuild the pager with the same parameters: this cursor holds KSeF's
+continuation state for the collection, not your filters. `.pages()` and plain
+iteration follow the same cursor chain, and `next_cursor` is `None` only after
+the last page. An empty page on its own does not end the walk. In async code the
+same read is `second = await auth.tokens.list().page(cursor)`.
 
 ## Inspect or revoke one token
 

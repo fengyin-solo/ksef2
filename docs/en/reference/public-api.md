@@ -12,9 +12,9 @@ They are the paths intended to remain stable through the 1.x line.
 | --- | --- |
 | `ksef2` | Root clients, environment and transport config, `FormSchema`, `__version__`, and public exceptions. |
 | `ksef2.clients` | Concrete sync/async clients, the stable `InvoicesService` / `BatchService` workflow types, and the handle, paging and export result types (`InvoiceSubmission`, `ExportJob`, `GeneratedToken`, `PermissionOperation`, `CertificateEnrollment`, `ExportedInvoices`, `Pager`, `OperationHandle`), plus async twins, for type annotations. |
-| `ksef2.models` | SDK request, response, filter, pagination, token, permission, session, and batch models. |
+| `ksef2.models` | SDK request, response, filter, pagination (including `Page`), token, permission, session, batch, export and resume-state (`ExportResumeState`, `GeneratedTokenResumeState`, `CertificateEnrollmentResumeState`, `PermissionOperationResumeState`, `InvoiceSubmissionResumeState`) models, plus the XAdES credential holder (`XAdESCredentials`). |
 | `ksef2.fa3` | FA(3) invoice builder, draft snapshots, and public FA(3) domain models used by builder workflows. |
-| `ksef2.xades` | Certificate loading, TEST certificate generation, local XAdES signing helpers, and `LocalSigner`. |
+| `ksef2.xades` | Certificate loading, TEST certificate generation, local XAdES signing helpers, `LocalSigner`, and the `XAdESCredentials` holder accepted by `with_xades()`. |
 | `ksef2.testdata` | TEST-only helpers that generate valid NIP and PESEL numbers (`generate_nip`, `generate_pesel`). |
 | `ksef2.profiles` | Local `ksef2-cli` compatible profile config helpers. |
 | `ksef2.renderers` | Optional local XSLT/PDF invoice rendering helpers. |
@@ -28,7 +28,7 @@ from ksef2 import Client, Environment, FormSchema, KSeFApiError
 from ksef2.fa3 import FA3InvoiceBuilder, KsefInvoiceDraft, VatRate
 from ksef2.models import InvoicesFilter, InvoiceMetadataParams
 from ksef2.renderers import InvoicePDFExporter, InvoiceXSLTRenderer
-from ksef2.xades import load_certificate_from_pem, load_private_key_from_pem
+from ksef2.xades import XAdESCredentials, load_certificate_from_pem
 ```
 
 ## Root package exports
@@ -94,8 +94,19 @@ Persist and restore state with the explicit methods instead:
   `GenerateTokenResponse` and `ExportHandle` exports the secret fields for
   deliberate, protected handling.
 
+`XAdESCredentials` holds loaded cryptography certificate and private-key objects
+exposed through `certificate` and `private_key`. It retains no password or input
+bytes, hides both objects in `repr()`, and has no Pydantic schema or JSON
+serialization API.
+
 Treat anything produced by these methods as a credential: store it encrypted,
 never log it, and never commit it.
+
+Persist completed invoice exports as plain `ExportedInvoices.archive` bytes.
+Restore with `ExportedInvoices.from_archive(archive, compression="zip")`, or use
+`compression="tar_gz"` for TarGz. Metadata is read lazily from the archive;
+package status and download URLs are not restored. Protect the decrypted invoice
+data in storage. See [Download invoices](../how-to-guides/download-invoices.md).
 
 ## Compatibility rule
 
@@ -151,7 +162,7 @@ outside `__main__` and test runners, so run your tests with
 | `auth.invoices.schedule_export()`, `get_export_status()`, `wait_for_export_package()`, `fetch_package()`, `fetch_package_bytes()` and `export_and_download()` | `auth.invoices.export(...)`, then `ExportJob.wait()` | 2.0.0 or later |
 | `auth.tokens.wait_for_activation(reference_number=...)` | `auth.tokens.generate(...).wait()` | 2.0.0 or later |
 | `auth.tokens.status()` | `auth.tokens.get_status()` | 2.0.0 or later |
-| `auth.tokens.list_page()` and `list_all()` | `auth.tokens.list(...)` with `.pages()` and `.first_page()` | 2.0.0 or later |
+| `auth.tokens.list_all()` | `auth.tokens.list(...)` with `.pages()` and `.first_page()` | 2.0.0 or later |
 | `auth.certificates.query()` and `all()` | `auth.certificates.list(...)` | 2.0.0 or later |
 | `client.peppol.query()` and `all()` | `client.peppol.list(...)` | 2.0.0 or later |
 | `auth.sessions.query()` and `all()` | `auth.sessions.list(...)` | 2.0.0 or later |
@@ -182,6 +193,12 @@ getters.
 `Pager` over the invoices instead of one page, so it is the one name in the table
 above whose return type changes. Iterate it, or call `.first_page()` for the old
 single request; `list_all_invoices()` still returns pages.
+
+`auth.tokens.list_page()` stays supported and is no longer described as
+deprecated: it is the single request that takes KSeF's own continuation token,
+and resumable paging does not replace it. Every `Pager`, including the one from
+`auth.invoices.search(...)`, answers `.page(cursor)` with a `Page` holding
+`items` and the `next_cursor` you store to continue that collection later.
 
 `FA3InvoiceBuilder.dump_state()` and `from_state()` are a separate builder
 draft API and are not deprecated.

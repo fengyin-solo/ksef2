@@ -2,8 +2,10 @@
 
 from typing import Any, Literal, override
 from pydantic import BaseModel
+from urllib.parse import urlsplit
 from enum import IntEnum
 
+from ksef2._core import routes
 from ksef2._domain.models.batch import PreparedBatch
 from ksef2._domain.models.session import (
     SessionInvoiceStatusResponse,
@@ -214,6 +216,71 @@ class KSeFPollingTimeoutError(KSeFException):
     ) -> None:
         self.timeout = timeout
         super().__init__(message, hint=hint, timeout=timeout, **context)
+
+
+def _pathname(request_target: str) -> str:
+    """Return the URL pathname of a request target, dropping every other part.
+
+    Userinfo, host, query and fragment are removed, so a presigned URL or a path
+    carrying a token in its query string cannot be kept in an error payload. A
+    target the parser rejects keeps no path at all.
+    """
+    try:
+        return urlsplit(request_target).path or "/"
+    except ValueError:
+        return "/"
+
+
+class KSeFTransportError(KSeFException):
+    """Raised when an HTTP request produces no response the SDK can use.
+
+    The request may have failed on the way to KSeF, returned a response the HTTP
+    client could not decode, or followed a redirect chain it gave up on. Retryable
+    requests are retried first, so this error means the retries were used up or the
+    request was not safe to retry. The original ``httpx`` exception is the
+    ``__cause__`` and may repeat request details that are not in ``message``,
+    ``str(exc)`` or ``context``: read it only in a protected log, never put it in a
+    message shown to a user or in a generic error dump.
+
+    Args:
+        message: Human-readable error message.
+        hint: Next step for this occurrence; overrides the class default.
+        method: HTTP method of the failed request, ``None`` when the SDK does not know it.
+        path: Request target, kept as its URL pathname; userinfo, host, query and fragment are dropped.
+        outcome_ambiguous: Whether the request may have reached KSeF despite the failure.
+        **context: Additional structured details, stored in ``context``. ``code`` is
+            reserved: it always reports the code of the exception class.
+
+    Attributes:
+        method: HTTP method of the failed request, or ``None``.
+        path: Pathname of the failed request, or ``None`` when the SDK did not record one.
+        outcome_ambiguous: Whether KSeF may have processed the request despite the failure. Read it before sending the request again; it does not say the retry is safe.
+    """
+
+    code: str = "TRANSPORT_ERROR"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        hint: str | None = None,
+        method: str | None = None,
+        path: str | None = None,
+        outcome_ambiguous: bool = False,
+        **context: object,
+    ) -> None:
+        self.method = method
+        self.path = None if path is None else _pathname(path)
+        self.outcome_ambiguous = outcome_ambiguous
+        super().__init__(message, hint=hint)
+        # ``code`` belongs to the class, so extra context must not replace it.
+        _ = context.pop("code", None)
+        self.context.update(context)
+        if method is not None:
+            self.context["method"] = method
+        if self.path is not None:
+            self.context["path"] = self.path
+        self.context["outcome_ambiguous"] = outcome_ambiguous
 
 
 class KSeFClientClosedError(KSeFException):
@@ -538,15 +605,20 @@ class KSeFRateLimitError(KSeFApiError):
         self.context["retry_after"] = retry_after
 
 
-class KSeFExternalTransferError(KSeFException):
+class KSeFExternalTransferError(KSeFTransportError):
     """Raised when a presigned external-storage transfer fails.
+
+    It subclasses ``KSeFTransportError``, so one handler covers rejected answers
+    and requests that produced no usable response. Storage answers are classified
+    here and not as KSeF API errors: a storage ``403`` does not raise
+    ``KSeFAuthError``.
 
     Args:
         operation: Direction of the failed transfer, ``upload`` or ``download``.
         host: Host of the presigned URL.
         reference_number: KSeF reference number the transfer belongs to.
         part_ordinal: One-based number of the part being transferred.
-        status_code: HTTP status code returned by external storage; ``None`` if no response was received.
+        status_code: HTTP status code returned by external storage; ``None`` when the transfer produced no usable response.
         outcome_ambiguous: Whether the transfer may have succeeded despite the failure.
 
     Attributes:
@@ -556,6 +628,8 @@ class KSeFExternalTransferError(KSeFException):
         part_ordinal: One-based number of the part being transferred.
         status_code: HTTP status code returned by external storage, or ``None``.
         outcome_ambiguous: Whether the transfer may have succeeded despite the failure.
+        method: Always ``None``; the signed URL is never kept as a request path.
+        path: Always ``None``; the signed URL is never kept as a request path.
     """
 
     code: str = "EXTERNAL_TRANSFER_ERROR"
@@ -578,9 +652,7 @@ class KSeFExternalTransferError(KSeFException):
         self.outcome_ambiguous = outcome_ambiguous
 
         status = (
-            f"status {status_code}"
-            if status_code is not None
-            else "no response received"
+            f"status {status_code}" if status_code is not None else "no usable response"
         )
         super().__init__(
             f"External storage {operation} failed for host {host} "
@@ -1099,20 +1171,28 @@ class KSeFAuthPollingTimeoutError(KSeFPollingTimeoutError):
         )
 
 
-class KSeFAuthTokenRedemptionError(KSeFException):
-    """Raised when a one-shot authentication token redemption loses its response.
+class KSeFAuthTokenRedemptionError(KSeFTransportError):
+    """Raised when a one-shot authentication token redemption gets no usable response.
+
+    It subclasses ``KSeFTransportError``, so handlers of request failures catch it
+    too. Only the redemption request is recorded: the one-shot token is never part
+    of the message, ``str(exc)`` or ``context``.
 
     Attributes:
+        method: Always ``POST``; the HTTP method of the redemption request.
+        path: Always ``/auth/token/redeem``; the pathname of the redemption request.
         outcome_ambiguous: Always ``True``; the redemption may have succeeded.
     """
 
     code: str = "AUTH_TOKEN_REDEMPTION_ERROR"
 
     def __init__(self) -> None:
-        self.outcome_ambiguous = True
         super().__init__(
-            "Authentication token redemption may have succeeded, but its response "
-            "was lost. Do not retry the one-shot redemption automatically.",
+            "Authentication token redemption may have succeeded, but it produced "
+            "no usable response. Do not retry the one-shot redemption "
+            "automatically.",
+            method=routes.AuthRoutes.REDEEM_TOKEN.method,
+            path=routes.AuthRoutes.REDEEM_TOKEN.path,
             outcome_ambiguous=True,
         )
 

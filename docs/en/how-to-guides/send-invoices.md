@@ -127,6 +127,22 @@ with auth.online_session(state=session_state_json) as session:
 an invoice sent earlier. Leaving the block closes the session; closing one that
 is already closed does nothing.
 
+`submission.resume_state()` keeps both references in one document: the invoice
+and the session it went into. Pass that state to `session.submission(state=...)`
+instead of a reference number. The session must be the one the invoice was sent
+into; another session raises `KSeFArgumentError`, and passing both arguments or
+neither of them raises it too.
+
+```python
+with auth.online_session(form_code=FormSchema.FA3) as session:
+    submission_state_json = session.send_invoice(invoice_xml).resume_state().to_json()
+
+# Later: rebuild the session from its own state, then the invoice from its state.
+with auth.online_session(state=session_state_json) as session:
+    submission = session.submission(state=submission_state_json)
+    status = submission.wait(timeout=120.0)
+```
+
 ## Send a batch
 
 Use a batch when you need to submit many XML files as one KSeF batch workflow.

@@ -7,6 +7,7 @@ from typing import final
 from typing_extensions import deprecated
 
 from ksef2._clients._async_pager import AsyncPager
+from ksef2._clients._pagination_cursor import ContinuationCursor
 from ksef2._core.async_protocols import AsyncMiddleware
 from ksef2._domain.models.collective_identifiers import (
     CollectiveIdentifierInvoice,
@@ -20,7 +21,7 @@ from ksef2._domain.models.collective_identifiers import (
     CollectiveIdentifiersQuery,
     GenerateCollectiveIdentifierResponse,
 )
-from ksef2._domain.models.pagination import CollectiveIdentifierParams
+from ksef2._domain.models.pagination import CollectiveIdentifierParams, Page
 from ksef2._endpoints.async_collective_identifiers import (
     AsyncCollectiveIdentifiersEndpoints,
 )
@@ -307,7 +308,9 @@ class AsyncCollectiveIdentifiersClient:
     ) -> AsyncPager[CollectiveIdentifierReference]:
         """List the collective identifiers that reference one KSeF invoice.
 
-        Nothing is requested until the result is consumed.
+        Nothing is requested until the result is consumed. Resume a partial walk
+        with ``page()``: rebuild this call with the same ``ksef_number`` and
+        ``params``, then pass the stored cursor back.
 
         Args:
             ksef_number: KSeF number of the invoice.
@@ -323,13 +326,30 @@ class AsyncCollectiveIdentifiersClient:
             ```
         """
 
-        async def _reference_pages() -> AsyncGenerator[
-            list[CollectiveIdentifierReference], None
-        ]:
-            async for page in self._query_by_ksef_number_pages(ksef_number, params):
-                yield page.collective_identifiers
+        async def _fetch_page(
+            cursor: str | None,
+        ) -> Page[CollectiveIdentifierReference]:
+            continuation_token = (
+                None
+                if cursor is None
+                else ContinuationCursor.decode(
+                    cursor, operation="collective_identifiers.list_for_invoice"
+                ).continuation_token
+            )
+            response = await self._query_by_ksef_number(
+                ksef_number=ksef_number,
+                continuation_token=continuation_token,
+                params=params,
+            )
+            return Page[CollectiveIdentifierReference](
+                items=response.collective_identifiers,
+                next_cursor=ContinuationCursor.encode_next(
+                    operation="collective_identifiers.list_for_invoice",
+                    continuation_token=response.continuation_token,
+                ),
+            )
 
-        return AsyncPager(_reference_pages)
+        return AsyncPager(fetch_page=_fetch_page)
 
     def list_invoices(
         self,
@@ -340,7 +360,8 @@ class AsyncCollectiveIdentifiersClient:
         """List the invoices inside the supplied collective identifiers.
 
         Nothing is requested until the result is consumed. Unlike the former
-        ``list_invoices()``, which fetched one page, this returns a paging object.
+        ``list_invoices()``, which fetched one page, this returns a paging object
+        that ``page()`` can resume from a stored cursor.
 
         Args:
             collective_identifier_numbers: Collective identifier numbers to expand (1–10).
@@ -356,15 +377,30 @@ class AsyncCollectiveIdentifiersClient:
             ```
         """
 
-        async def _invoice_pages() -> AsyncGenerator[
-            list[CollectiveIdentifierInvoiceDetails], None
-        ]:
-            async for page in self._list_invoices_pages(
-                collective_identifier_numbers, params
-            ):
-                yield page.invoices
+        async def _fetch_page(
+            cursor: str | None,
+        ) -> Page[CollectiveIdentifierInvoiceDetails]:
+            continuation_token = (
+                None
+                if cursor is None
+                else ContinuationCursor.decode(
+                    cursor, operation="collective_identifiers.list_invoices"
+                ).continuation_token
+            )
+            response = await self._list_invoices(
+                collective_identifier_numbers=collective_identifier_numbers,
+                continuation_token=continuation_token,
+                params=params,
+            )
+            return Page[CollectiveIdentifierInvoiceDetails](
+                items=response.invoices,
+                next_cursor=ContinuationCursor.encode_next(
+                    operation="collective_identifiers.list_invoices",
+                    continuation_token=response.continuation_token,
+                ),
+            )
 
-        return AsyncPager(_invoice_pages)
+        return AsyncPager(fetch_page=_fetch_page)
 
     def list(
         self,
@@ -375,8 +411,8 @@ class AsyncCollectiveIdentifiersClient:
         """List the collective identifiers visible in the context.
 
         Nothing is requested until the result is consumed. Iterate it for every
-        identifier, call ``pages()`` for page-sized lists or ``first_page()`` for
-        one request only.
+        identifier, call ``pages()`` for page-sized lists, ``first_page()`` for one
+        request only, or ``page()`` to walk it with a resumable cursor.
 
         Args:
             filters: Criteria selecting collective identifiers.
@@ -392,10 +428,25 @@ class AsyncCollectiveIdentifiersClient:
             ```
         """
 
-        async def _identifier_pages() -> AsyncGenerator[
-            list[CollectiveIdentifierSummary], None
-        ]:
-            async for page in self._query_pages(filters, params):
-                yield page.collective_identifiers
+        async def _fetch_page(cursor: str | None) -> Page[CollectiveIdentifierSummary]:
+            continuation_token = (
+                None
+                if cursor is None
+                else ContinuationCursor.decode(
+                    cursor, operation="collective_identifiers.list"
+                ).continuation_token
+            )
+            response = await self._query(
+                filters=filters,
+                continuation_token=continuation_token,
+                params=params,
+            )
+            return Page[CollectiveIdentifierSummary](
+                items=response.collective_identifiers,
+                next_cursor=ContinuationCursor.encode_next(
+                    operation="collective_identifiers.list",
+                    continuation_token=response.continuation_token,
+                ),
+            )
 
-        return AsyncPager(_identifier_pages)
+        return AsyncPager(fetch_page=_fetch_page)

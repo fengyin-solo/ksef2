@@ -91,6 +91,24 @@ A grant response means KSeF accepted an operation request. Wait for the
 operation before treating the permission as active in your application.
 :::
 
+### Resume the operation after a restart
+
+`operation.resume_state()` returns a `PermissionOperationResumeState` holding the
+operation's reference number. Persist it with `to_json()` and pass it to
+`auth.permissions.operation()` when a later process picks the work up:
+
+```python
+saved_state = operation.resume_state().to_json()
+
+# Later, in the same or another process:
+operation = auth.permissions.operation(saved_state)
+status = operation.wait(timeout=60.0, poll_interval=1.0)
+```
+
+`operation()` takes the state object or its JSON string and returns a handle that
+polls the same reference number. The reference number is all KSeF returned for
+the operation, so a resumed handle is a full copy of the original.
+
 ## Query permissions
 
 The `list_*()` methods have separate shapes because KSeF distinguishes personal,

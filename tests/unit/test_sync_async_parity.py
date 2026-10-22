@@ -19,6 +19,7 @@ SKIPPED_MODULES = {
     "ksef2._clients._pager": "private pager implementation, paired with _async_pager rather than the async_X convention",
     "ksef2._clients.exported_invoices": "shared sync/async export result with no IO methods",
     "ksef2._clients._metadata_pagination": "shared pagination helpers, not a public sync facade",
+    "ksef2._clients._pagination_cursor": "shared cursor codec used by both flavours; cursors carry data, so they need no async twin",
     "ksef2._clients.profiles": "shared profile configuration models, not a public sync facade",
     "ksef2._endpoints.shared": "shared endpoint helper protocols, not a public sync facade",
     "ksef2._services.auth": "sync-only authentication helper module with no async facade class",

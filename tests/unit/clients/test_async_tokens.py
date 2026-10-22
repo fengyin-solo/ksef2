@@ -1,5 +1,6 @@
 import asyncio
 from collections.abc import AsyncIterator
+import warnings
 
 import httpx
 import pytest
@@ -173,7 +174,6 @@ class TestAsyncTokensClient:
         assert len(async_fake_transport.calls) == 2
         assert async_fake_transport.calls[1].method == "GET"
 
-    @legacy_api
     def test_list_page(
         self,
         async_fake_transport: AsyncFakeTransport,
@@ -189,6 +189,41 @@ class TestAsyncTokensClient:
         assert len(async_fake_transport.calls) == 1
         assert async_fake_transport.calls[0].method == "GET"
         assert str(async_fake_transport.calls[0].path) == TokenRoutes.LIST_TOKENS
+
+    def test_list_page_does_not_warn(
+        self,
+        async_fake_transport: AsyncFakeTransport,
+        token_list_resp: BaseFactory[spec.QueryTokensResponse],
+    ) -> None:
+        """Bindings fetch one page per call, so ``list_page`` stays a supported API."""
+        tokens_client = AsyncTokensClient(async_fake_transport)
+        async_fake_transport.enqueue(
+            token_list_resp.build(continuationToken=None).model_dump(mode="json")
+        )
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            result = asyncio.run(tokens_client.list_page())
+
+        assert isinstance(result, tokens.QueryTokensResponse)
+        assert len(async_fake_transport.calls) == 1
+
+    def test_list_all_still_warns(
+        self,
+        async_fake_transport: AsyncFakeTransport,
+        token_list_resp: BaseFactory[spec.QueryTokensResponse],
+    ) -> None:
+        tokens_client = AsyncTokensClient(async_fake_transport)
+        async_fake_transport.enqueue(
+            token_list_resp.build(continuationToken=None).model_dump(mode="json")
+        )
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            pages = asyncio.run(_collect_async_pages(tokens_client.list_all()))
+
+        assert len(pages) == 1
+        assert [warning.category for warning in caught] == [DeprecationWarning]
 
     @legacy_api
     def test_list_all_multiple_pages(

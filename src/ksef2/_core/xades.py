@@ -257,14 +257,7 @@ def sign_xades(
     )
     root = parse_xml_bytes(xml_bytes)
 
-    cert_pem = cert.public_bytes(serialization.Encoding.PEM)
-    key_pem = private_key.private_bytes(
-        serialization.Encoding.PEM,
-        serialization.PrivateFormat.PKCS8,
-        serialization.NoEncryption(),
-    )
-
-    signed_root = signer.sign(data=root, key=key_pem, cert=cert_pem)  # pyright: ignore[reportCallIssue]
+    signed_root = signer.sign(data=root, key=private_key, cert=[cert])  # pyright: ignore[reportCallIssue]
     return etree.tostring(signed_root, xml_declaration=True, encoding="UTF-8")
 
 

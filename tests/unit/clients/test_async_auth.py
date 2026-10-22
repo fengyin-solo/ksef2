@@ -118,10 +118,20 @@ class TestAsyncAuthClient:
             "Authorization": f"Bearer {init_response.authenticationToken.token}"
         }
 
+    @pytest.mark.parametrize(
+        ("failure", "message"),
+        [
+            (httpx.ReadError, "redemption response lost"),
+            (httpx.DecodingError, "redemption body undecodable"),
+        ],
+        ids=["read", "decoding"],
+    )
     @patch("ksef2._clients.async_auth.encrypt_token", return_value=VALID_BASE64)
     def test_with_token_reports_ambiguous_lost_redemption_response(
         self,
         _mock_encrypt_token: MagicMock,
+        failure: type[httpx.RequestError],
+        message: str,
         async_fake_transport: AsyncFakeTransport,
         domain_public_key_cert: BaseFactory[PublicKeyCertificate],
         auth_challenge_resp: BaseFactory[spec.AuthenticationChallengeResponse],
@@ -134,7 +144,7 @@ class TestAsyncAuthClient:
         status_response = auth_status_resp.build(
             status=spec.StatusInfo(code=200, description="Authenticated")
         )
-        transport_error = httpx.ReadError("redemption response lost")
+        transport_error = failure(message)
         async_fake_transport.enqueue(
             auth_challenge_resp.build(timestampMs=1735689600000).model_dump(mode="json")
         )

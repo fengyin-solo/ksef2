@@ -32,6 +32,7 @@ from ksef2._domain.models import (
     BlockContextRequest,
     BuyerIdentifierType,
     CertificateEnrollmentData,
+    CertificateEnrollmentResumeState,
     CertificateInfo,
     CertificateLimitsResponse,
     CertificateStatusValue,
@@ -105,6 +106,7 @@ from ksef2._domain.models import (
     InvoiceMetadataThirdSubject,
     InvoiceMetadataThirdSubjectIdentifier,
     InvoicePackage,
+    InvoiceSubmissionResumeState,
     InvoiceStatusInfo,
     InvoiceType,
     InvoicesFilter,
@@ -124,6 +126,7 @@ from ksef2._domain.models import (
     PartUploadRequest,
     PeppolProvider,
     Permission,
+    PermissionOperationResumeState,
     PermissionOperationStatusResponse,
     PermissionState,
     PermissionType,
@@ -146,6 +149,7 @@ from ksef2._domain.models import (
     PersonalPermissionsTargetIdentifierType,
     PreparedBatch,
     QueryInvoicesMetadataResponse,
+    GeneratedTokenResumeState,
     QueryTokensResponse,
     QueryType,
     RefreshedToken,
@@ -183,6 +187,7 @@ from ksef2._domain.models import (
     UpdateCertificateRequest,
     Upo,
     UpoPage,
+    XAdESCredentials,
 )
 from ksef2._domain.models.certificates import (
     Certificate,
@@ -208,6 +213,7 @@ from ksef2._domain.models.limits import (
 from ksef2._domain.models.pagination import (
     ListSessionsQuery,
     OffsetPaginationParams,
+    Page,
     TokenListParams,
 )
 from ksef2._domain.models.session import (
@@ -317,6 +323,7 @@ __all__ = [
     "PreparedBatch",
     "ExportHandle",
     "ExportResumeState",
+    "InvoiceSubmissionResumeState",
     "BuyerIdentifierType",
     "ExportInvoicesPayload",
     "ExportInvoicesResponse",
@@ -386,6 +393,7 @@ __all__ = [
     "IndirectTargetIdentifierType",
     "OperationStatus",
     "OperationStatusCode",
+    "PermissionOperationResumeState",
     "PermissionOperationStatusResponse",
     "PermissionState",
     "PersonalPermissionDetail",
@@ -433,6 +441,7 @@ __all__ = [
     "SubUnit",
     "UnblockContextRequest",
     "UpdateCertificateRequest",
+    "GeneratedTokenResumeState",
     "QueryTokensResponse",
     "GenerateTokenResponse",
     "TokenListParams",
@@ -458,6 +467,7 @@ __all__ = [
     "RefreshedToken",
     "TokenCredentials",
     "CertificateEnrollmentData",
+    "CertificateEnrollmentResumeState",
     "CertificateEnrollmentResponse",
     "CertificateEnrollmentStatusResponse",
     "Certificate",
@@ -484,6 +494,7 @@ __all__ = [
     "PublicKeyCertificate",
     "ListSessionsQuery",
     "OffsetPaginationParams",
+    "Page",
     "PeppolProvider",
     "ListPeppolProvidersResponse",
     "ContextIdentifierTypeEnum",
@@ -507,4 +518,5 @@ __all__ = [
     "TokenPermissionEnum",
     "TokenStatusEnum",
     "CurrencyCodes",
+    "XAdESCredentials",
 ]

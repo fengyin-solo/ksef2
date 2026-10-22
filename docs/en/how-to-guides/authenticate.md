@@ -83,8 +83,39 @@ auth = client.authentication.with_test_certificate(
 
 ### With PEM XAdES
 
-Use PEM certificate and private-key files when your certificate material is
-stored separately.
+Use PEM certificate and private-key bytes when your certificate material is
+stored separately. `XAdESCredentials.from_pem` takes the bytes themselves, so the
+SDK never opens a file for you and a caller that keeps material elsewhere can hand
+it over directly.
+
+```python
+import os
+from pathlib import Path
+
+from ksef2.xades import XAdESCredentials
+
+password = os.environ.get("KSEF2_KEY_PASSWORD")
+credentials = XAdESCredentials.from_pem(
+    Path("company.pem").read_bytes(),
+    Path("company.key").read_bytes(),
+    key_password=password.encode() if password else None,
+)
+
+auth = client.authentication.with_xades(
+    nip=os.environ["KSEF2_NIP"],
+    credentials=credentials,
+)
+```
+
+The password decrypts the key while the credentials are built and is not kept
+after that. The decrypted key lives in memory inside `credentials`, so treat the
+object as a secret: do not log it, cache it or persist it, and drop the reference
+once authentication is done. `repr()` hides the certificate and key objects.
+The holder has no Pydantic schema or JSON serialization API. It retains the loaded objects, validates the key
+type and certificate/key match once, and reuses them for signing.
+
+The object form stays supported. Load the material yourself and pass the certificate
+and key you get back.
 
 ```python
 import os
@@ -109,6 +140,30 @@ auth = client.authentication.with_xades(
 
 Use a PKCS#12/PFX archive when the certificate and private key are stored in one
 file.
+
+```python
+import os
+from pathlib import Path
+
+from ksef2.xades import XAdESCredentials
+
+password = os.environ.get("KSEF2_P12_PASSWORD")
+credentials = XAdESCredentials.from_pkcs12(
+    Path("company.p12").read_bytes(),
+    password=password.encode() if password else None,
+)
+
+auth = client.authentication.with_xades(
+    nip=os.environ["KSEF2_NIP"],
+    credentials=credentials,
+)
+```
+
+`XAdESCredentials.from_der` does the same for DER-encoded certificate and key
+bytes. Passing `credentials` together with `cert` or `private_key`, or passing
+neither pair, raises `KSeFArgumentError` before any request is sent.
+
+The object form stays supported:
 
 ```python
 import os
@@ -242,21 +297,20 @@ async with AsyncClient(Environment.PRODUCTION) as client:
 
 ## Errors
 
-Catch SDK-classified failures with `KSeFException`. Catch `httpx.HTTPError`
-separately for transport failures before KSeF returns a response.
+Every failure the SDK reports is a `KSeFException` subclass, HTTP request
+failures included. Catch `KSeFTransportError` first when a request that produced
+no usable response changes what you do next.
 
 ```python
-import httpx
-
-from ksef2 import Client, Environment, KSeFException
+from ksef2 import Client, Environment, KSeFException, KSeFTransportError
 
 try:
     with Client(Environment.TEST) as client:
         auth = client.authentication.with_test_certificate(nip="5261040828")
+except KSeFTransportError as exc:
+    print(f"No usable response: {exc.method} {exc.path}")
 except KSeFException as exc:
     print(exc)
-except httpx.HTTPError as exc:
-    print(f"Transport failed: {exc}")
 ```
 
 ## Next workflows

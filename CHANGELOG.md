@@ -2,6 +2,38 @@
 
 ### Added
 
+- Save and resume every handle KSeF finishes asynchronously. `resume_state()` on a
+  `GeneratedToken`, `CertificateEnrollment`, `PermissionOperation` or
+  `InvoiceSubmission` returns a versioned state model with `to_dict()`,
+  `to_json()`, `from_dict()` and `from_json()`, and
+  `auth.tokens.generation(state)`, `auth.certificates.enrollment(state)`,
+  `auth.permissions.operation(state)` or `session.submission(state=...)` builds the
+  handle again after a restart, so a background worker can keep
+  waiting without holding the client that started the operation. A resumed handle
+  polls the saved reference number and does not invent data: the one-time token
+  never appears in `GeneratedTokenResumeState`, in any of its exports or in `repr()`,
+  so a resumed token has no `token`, and a resumed enrollment has no `timestamp`.
+  `InvoiceSubmissionResumeState` also keeps the session reference, and
+  `submission(state=...)` rejects a state from another session, or a call that
+  passes both a reference and a state, with `KSeFArgumentError` (#266).
+
+- Restore a finished invoice export from plain archive bytes with
+  `ExportedInvoices.from_archive(archive, compression="zip")`. Use `"tar_gz"`
+  for TarGz archives. Persist `ExportedInvoices.archive` directly; metadata is
+  read lazily from `_metadata.json`, and no package status or download URLs are
+  persisted. Invoice iteration and safe extraction work for both formats, and
+  async `wait()` returns the same result type (#276).
+
+- Authenticate with `with_xades(nip=..., credentials=XAdESCredentials...)`.
+  `XAdESCredentials.from_pem`, `.from_der` and `.from_pkcs12` load certificate,
+  private-key or archive bytes with an optional password. The holder stores loaded
+  cryptography objects, retains no password or input bytes, and hides both objects
+  in `repr()`. It has no Pydantic schema or JSON serialization API. Construction
+  rejects unsupported keys and mismatched certificate/key pairs once, before any
+  request. Authentication and signing reuse the loaded objects without private-key
+  serialization or reparsing. The existing `cert=`/`private_key=` form is unchanged.
+  Passing both forms or neither raises `KSeFArgumentError` (#267, #277).
+
 - Read complete invoice search responses with `responses()` and `first_response()`,
   including the permanent-storage checkpoint on empty pages. Correct the English
   and Polish incremental-sync examples (#258).
@@ -17,6 +49,30 @@
   matches the session is rejected before anything is uploaded, and part bytes plus
   encryption material stay out of repr and model dumps (#256).
 
+- Page any collection one cursor at a time with `pager.page(cursor)`, which returns
+  a `Page` holding `items` and `next_cursor`. A cursor is opaque, versioned SDK
+  state, so a job that stops, restarts, or hands work to another process continues
+  with the next request instead of replaying the pages it already read. Every
+  `Pager`-returning collection answers `page()`, and `pages()` plus iteration follow
+  the same cursor chain. An invoice search cursor carries the filters, parameters
+  and truncation boundary of the page it resumes, so a search continues across KSeF
+  truncation after a restart. A cursor from another collection, or one this SDK
+  cannot read, raises `KSeFArgumentError` before any request is sent, without
+  echoing the cursor back (#265).
+
+### Changed
+
+- `auth.tokens.list_page()` is supported, not deprecated: it stays the single
+  request that takes KSeF's own continuation token, which resumable `page()`
+  paging does not replace. `auth.tokens.list_all()` remains deprecated in favour
+  of `auth.tokens.list()` (#265).
+
+- `FormSchema` is written to JSON as its member name, such as `"FA3"`, in model
+  dumps, saved state and pagination cursors, and reads back from that name or from
+  the list form earlier versions wrote. A model holding a `FormSchema` now survives a
+  JSON round trip, so an invoice search filtered by `invoice_schema` resumes from its
+  cursor, and its JSON Schema is a string enum of the member names (#265).
+
 ### Deprecated
 
 - Keep the former `ksef2.core`, `domain`, `infra` and `services` imports,
@@ -26,6 +82,22 @@
   download and export aliases, through 1.x. Removal is a 2.0 decision and may
   happen no earlier than 2.0.0, replacing the former 1.10.0 removal schedule.
 - Add English and Polish migration examples for legacy imports and workflows.
+
+### Breaking
+
+- Wrap failed HTTP requests in `KSeFTransportError` (`code = "TRANSPORT_ERROR"`),
+  so no public method lets an `httpx` exception escape and every SDK failure is a
+  `KSeFException`. It covers every `httpx.RequestError`: connection and timeout
+  failures, a response the HTTP client could not decode, and an abandoned redirect
+  chain. The error carries the request `method`, the URL pathname as `path`
+  (userinfo, host, query and fragment are dropped) and `outcome_ambiguous` for
+  requests that may have reached KSeF; the original `httpx` exception stays
+  available as `__cause__`. It does not subclass `httpx.HTTPError`, so handlers
+  that caught `httpx.HTTPError` must name `KSeFTransportError` instead. Retries,
+  retryable statuses and API error classification are unchanged, and
+  `KSeFExternalTransferError`, `KSeFBatchUploadError` and
+  `KSeFAuthTokenRedemptionError` now derive from `KSeFTransportError` while keeping
+  their own codes, attributes and recovery behaviour (#268).
 
 ## v0.22.2 (2026-09-25)
 

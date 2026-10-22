@@ -32,12 +32,30 @@ module in the repository.
 | High-level client branches | `client.authentication`, `client.encryption`, `client.peppol`, `client.testdata`, and authenticated branches such as `auth.invoices`, `auth.tokens`, `auth.permissions`, `auth.certificates`, `auth.collective_identifiers`, and `auth.limits`. |
 | Collective identifier workflows | `auth.collective_identifiers` generates a collective identifier for supplied invoices, queries identifiers page by page, resolves the identifiers attached to one KSeF number, and lists the invoices inside selected collective identifiers. |
 | Session helpers | Online and batch session workflows for sending, polling, UPO, and resumable KSeF references. |
+| Paging | Every `Pager` answers `.page(cursor)` with a `Page` (`items`, `next_cursor`), where the cursor is SDK-issued state you can store and replay after a restart, alongside `.pages()`, `.first_page()` and `.wait()`. |
 | `ksef2.xades` | Certificate loading, TEST certificate generation, local XAdES signing helpers, and `LocalSigner`. |
 | `ksef2.profiles` | Local `ksef2-cli` compatible profile config helpers. |
 | `ksef2.fa3` | Public FA(3) invoice builder, draft snapshots, and public FA(3) domain models used by builder workflows. |
 | `ksef2.renderers` | Optional local XSLT/PDF invoice rendering helpers when installed with the `pdf` extra. |
 
 For the exact compatibility boundary, use the public API contract page.
+
+## Breaking in 1.0
+
+Transport failures are SDK errors. A public method no longer lets an `httpx`
+exception escape: a request that produces no usable response raises
+`KSeFTransportError` (`code = "TRANSPORT_ERROR"`) with `method`, `path` and
+`outcome_ambiguous`, and the original `httpx` exception as `__cause__`. It covers
+every `httpx.RequestError`: connection and timeout failures, a response the HTTP
+client could not decode, and an abandoned redirect chain. It does not subclass
+`httpx.HTTPError`, so handlers that caught `httpx.HTTPError` must name the SDK
+class; `KSeFException` already covers every SDK failure. Retries, API error
+classes and `KSeFAuthError` on a 401 or 403 are unchanged.
+`KSeFExternalTransferError`, `KSeFBatchUploadError` and
+`KSeFAuthTokenRedemptionError` now derive from `KSeFTransportError` and keep their
+own codes and recovery behaviour.
+See the [migration guide](migration-1-0.md#transport-failures) and the
+[error reference](errors.md#transport-failure-attributes).
 
 ## Public but lower level
 

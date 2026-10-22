@@ -105,6 +105,45 @@ Podaj dokładnie jedno z `filters` albo `state`. `to_dict()`, `from_json()` i
 `from_dict()` działają jak w stanach sesji; `model_dump()` i `repr()` ukrywają
 klucz.
 
+### Zapisz i odtwórz zakończony eksport
+
+`ExportResumeState` służy do eksportu, który jeszcze się nie skończył. Gdy `wait()`
+zwróci wynik, zapisz `package.archive` jako zwykłe bajty ZIP lub TarGz we własnym
+magazynie. Odtwórz te bajty przez `ExportedInvoices.from_archive()`.
+
+```python
+from pathlib import Path
+
+from ksef2.clients import ExportedInvoices
+
+archive_path = Path("export.zip")
+archive_path.write_bytes(package.archive)
+
+# w innym procesie
+restored = ExportedInvoices.from_archive(archive_path.read_bytes())
+for ksef_number, xml in restored.invoices():
+    print(ksef_number, len(xml))
+
+written = restored.save(Path("downloads"))
+```
+
+Fabryka domyślnie używa `compression="zip"`. Dla eksportu TarGz zapisz bajty
+archiwum w pliku `.tar.gz` i podaj `compression="tar_gz"` przy odtwarzaniu.
+Użyj formatu kompresji oryginalnego eksportu; fabryka nie wykrywa go automatycznie.
+
+Utworzenie obiektu nie otwiera ani nie waliduje archiwum. `metadata` czyta
+`_metadata.json` przy pierwszym dostępie i zapamiętuje wynik: `None` oznacza brak
+pliku, a `[]` oznacza, że plik nie zawiera faktur. Niepoprawne archiwa zgłaszają
+błąd przy odczycie lub wypakowaniu; niepoprawne metadane zgłaszają
+`KSeFValidationError` przy dostępie. `save()` odrzuca niebezpieczne ścieżki,
+dowiązania i pliki specjalne przed zapisaniem czegokolwiek.
+
+Archiwum zawiera już odszyfrowane dane faktur. Chroń je w swoim magazynie.
+Odtworzenie nie wymaga klucza szyfrowania ani dostępu do sieci. Status paczki i
+podpisane adresy pobierania nie są zapisane w archiwum, więc `restored.package`
+ma wartość `None`. `await job.wait()` zwraca tę samą klasę `ExportedInvoices`, więc
+kod synchroniczny i asynchroniczny zapisuje i odtwarza archiwa w ten sam sposób.
+
 :::note[SDK odszyfrowuje części paczki]
 KSeF zwraca zaszyfrowane adresy części paczki. `export()` ładuje poprawny
 certyfikat szyfrowania KSeF i planuje eksport z lokalnym materiałem AES, a

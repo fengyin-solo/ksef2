@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import Field
 
-from ksef2._domain.models.base import KSeFBaseModel
+from ksef2._domain.models.base import KSeFBaseModel, KSeFResumeState
 
 type TokenPermission = Literal[
     "invoice_read",
@@ -101,6 +101,16 @@ class GenerateTokenResponse(KSeFBaseModel):
             A dictionary with the reference number and the plain token.
         """
         return {"reference_number": self.reference_number, "token": self.token}
+
+
+class GeneratedTokenResumeState(KSeFResumeState):
+    """Serializable state needed to resume a generated token after a restart.
+
+    ``AsyncGeneratedToken.resume_state()`` returns it and
+    ``auth.tokens.generation(state)`` turns it back into a handle. It holds
+    only the reference number: the one-time token KSeF returned at generation is
+    never part of it, in any export. Keep storing that secret yourself.
+    """
 
 
 class TokenStatusResponse(KSeFBaseModel):

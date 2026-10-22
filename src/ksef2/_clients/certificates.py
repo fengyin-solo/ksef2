@@ -12,11 +12,13 @@ from typing_extensions import deprecated
 
 from ksef2._clients._handles import OperationHandle
 from ksef2._clients._pager import Pager
+from ksef2._clients._pagination_cursor import OffsetCursor
 from ksef2._core import exceptions
 from ksef2._core.protocols import Middleware
 from ksef2._domain.models.certificates import (
     CertificateEnrollmentData,
     CertificateEnrollmentResponse,
+    CertificateEnrollmentResumeState,
     CertificateEnrollmentStatusResponse,
     CertificateInfo,
     CertificateLimitsResponse,
@@ -32,9 +34,17 @@ from ksef2._domain.models.certificates import (
     RevokeCertificateRequest,
     validate_certificate_serial_number,
 )
-from ksef2._domain.models.pagination import OffsetPaginationParams
+from ksef2._domain.models.pagination import OffsetPaginationParams, Page
 from ksef2._endpoints.certificates import CertificatesEndpoints
 from ksef2._infra.mappers.certificates import from_spec, to_spec
+
+
+def _not_after_resume(owner: str, name: str) -> AttributeError:
+    """Build the error for data a saved state never held."""
+    return AttributeError(
+        f"{owner!r} object has no attribute {name!r}: a handle rebuilt from"
+        " resume state only knows the reference number"
+    )
 
 
 @final
@@ -51,33 +61,58 @@ class CertificateEnrollment(
     ``get_enrollment_status()`` on the certificates client reads the same status
     for a reference number you stored earlier.
 
+    ``resume_state()`` saves what is needed to build the handle again after a
+    restart with ``auth.certificates.enrollment(state)``. Only the reference
+    number is saved, so a resumed handle has no ``timestamp``.
+
     Raises:
         KSeFApiError: If KSeF returns an API error response.
         KSeFValidationError: If a KSeF response cannot be parsed into SDK models.
-        httpx.HTTPError: If the HTTP transport fails before KSeF returns a response.
+        KSeFTransportError: If the HTTP request fails to produce a usable response.
     """
 
     def __init__(
         self,
         client: "CertificatesClient",
-        response: CertificateEnrollmentResponse,
+        reference_number: str,
+        response: CertificateEnrollmentResponse | None = None,
     ) -> None:
         """Create the handle.
 
         Args:
             client: Certificates client used to poll the enrollment's status.
-            response: Response returned by KSeF when it accepted the enrollment.
+            reference_number: KSeF reference number of the enrollment.
+            response: Response returned by KSeF when it accepted the enrollment. ``None`` for a handle rebuilt from resume state, which never held the acceptance time.
         """
-        super().__init__(response.reference_number)
+        super().__init__(reference_number)
         self._client = client
         self._response = response
 
     def __getattr__(self, name: str) -> object:
         if name in CertificateEnrollmentResponse.model_fields:
+            if self._response is None:
+                raise _not_after_resume(type(self).__name__, name)
             return cast(object, getattr(self._response, name))
         raise AttributeError(
             f"{type(self).__name__!r} object has no attribute {name!r}"
         )
+
+    def _enrollment_response(self, name: str) -> CertificateEnrollmentResponse:
+        """Return the enrollment response, refusing to invent one after a resume."""
+        if self._response is None:
+            raise _not_after_resume(type(self).__name__, name)
+        return self._response
+
+    def resume_state(self) -> CertificateEnrollmentResumeState:
+        """Return the state needed to resume this enrollment after a restart.
+
+        Persist it with ``to_json()`` and pass it to
+        ``auth.certificates.enrollment(state)`` later.
+
+        Returns:
+            The enrollment's reference number as saveable state.
+        """
+        return CertificateEnrollmentResumeState(reference_number=self.reference_number)
 
     @property
     def timestamp(self) -> datetime:
@@ -85,8 +120,11 @@ class CertificateEnrollment(
 
         Returns:
             The acceptance time reported by KSeF.
+
+        Raises:
+            AttributeError: If the handle was rebuilt from resume state, which never holds the acceptance time.
         """
-        return self._response.timestamp
+        return self._enrollment_response("timestamp").timestamp
 
     @property
     def response(self) -> CertificateEnrollmentResponse:
@@ -94,8 +132,11 @@ class CertificateEnrollment(
 
         Returns:
             The data model KSeF returned when it accepted the enrollment.
+
+        Raises:
+            AttributeError: If the handle was rebuilt from resume state, which never held an enrollment response.
         """
-        return self._response
+        return self._enrollment_response("response")
 
     @override
     def get_status(self) -> CertificateEnrollmentStatusResponse:
@@ -162,14 +203,14 @@ class CertificatesClient:
     """High-level API for certificate enrollment, retrieval, and search.
 
     Catch ``KSeFException`` for SDK-classified failures raised by this branch,
-    and ``httpx.HTTPError`` for transport failures.
+    including ``KSeFTransportError`` for transport failures.
 
     Raises:
         KSeFApiError: If KSeF returns an API error response. Catch
             ``KSeFAuthError`` for authentication or authorization failures and
             ``KSeFRateLimitError`` for throttling.
         KSeFValidationError: If a KSeF response cannot be parsed into SDK models.
-        httpx.HTTPError: If the HTTP transport fails before KSeF returns a response.
+        KSeFTransportError: If the HTTP request fails to produce a usable response.
     """
 
     def __init__(self, transport: Middleware) -> None:
@@ -231,7 +272,38 @@ class CertificatesClient:
             valid_from=valid_from,
         )
         body = to_spec(request)
-        return CertificateEnrollment(self, from_spec(self._endpoints.enroll(body=body)))
+        response = from_spec(self._endpoints.enroll(body=body))
+        return CertificateEnrollment(self, response.reference_number, response)
+
+    def enrollment(
+        self, state: CertificateEnrollmentResumeState | str
+    ) -> CertificateEnrollment:
+        """Rebuild the handle of an enrollment KSeF accepted earlier.
+
+        Use it after a restart to keep waiting for the certificate. No request is
+        made until the handle is used.
+
+        Args:
+            state: State saved with ``resume_state().to_json()``, or the object itself.
+
+        Returns:
+            A handle that polls the enrollment's status. It has no ``timestamp``: the acceptance time is not part of the saved state.
+
+        Raises:
+            ValidationError: If ``state`` is JSON that is not a saved enrollment state.
+
+        Example:
+            ```python
+            enrollment = auth.certificates.enrollment(saved_state)
+            status = enrollment.wait()
+            ```
+        """
+        restored = (
+            state
+            if isinstance(state, CertificateEnrollmentResumeState)
+            else CertificateEnrollmentResumeState.from_json(state)
+        )
+        return CertificateEnrollment(self, restored.reference_number)
 
     def get_enrollment_status(
         self,
@@ -436,8 +508,9 @@ class CertificatesClient:
         """List the certificates of the authenticated context.
 
         Nothing is requested until the result is consumed. Iterate it for every
-        matching certificate, call ``pages()`` for page-sized lists or
-        ``first_page()`` for one request only.
+        matching certificate, call ``pages()`` for page-sized lists,
+        ``first_page()`` for one request only, or ``page()`` to walk it with a
+        resumable cursor.
 
         Args:
             name: Match this certificate name.
@@ -456,16 +529,33 @@ class CertificatesClient:
                 print(certificate.certificate_serial_number)
             ```
         """
+        parameters = params or OffsetPaginationParams()
 
-        def _certificate_pages() -> Generator[list[CertificateInfo], None]:
-            for page in self._pages(
+        def _fetch_page(cursor: str | None) -> Page[CertificateInfo]:
+            page_params = (
+                parameters
+                if cursor is None
+                else parameters.with_page_offset(
+                    OffsetCursor.decode(
+                        cursor, operation="certificates.list"
+                    ).page_offset
+                )
+            )
+            response = self._query(
                 name=name,
                 certificate_serial_number=certificate_serial_number,
                 certificate_type=certificate_type,
                 status=status,
                 expires_after=expires_after,
-                params=params,
-            ):
-                yield page.certificates
+                params=page_params,
+            )
+            return Page[CertificateInfo](
+                items=response.certificates,
+                next_cursor=OffsetCursor.encode_next(
+                    operation="certificates.list",
+                    page_offset=page_params.page_offset,
+                    has_more=response.has_more,
+                ),
+            )
 
-        return Pager(_certificate_pages)
+        return Pager(fetch_page=_fetch_page)

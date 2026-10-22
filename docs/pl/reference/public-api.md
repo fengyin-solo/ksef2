@@ -12,9 +12,9 @@ stabilne w linii 1.x.
 | --- | --- |
 | `ksef2` | Klienci root, konfiguracja środowiska i transportu, `FormSchema`, `__version__` oraz publiczne wyjątki. |
 | `ksef2.clients` | Konkretne klasy klientów sync/async, stabilne typy workflow `InvoicesService` / `BatchService` oraz typy uchwytów, stronicowania i wyniku eksportu (`InvoiceSubmission`, `ExportJob`, `GeneratedToken`, `PermissionOperation`, `CertificateEnrollment`, `ExportedInvoices`, `Pager`, `OperationHandle`) wraz z odpowiednikami async, do adnotacji typów. |
-| `ksef2.models` | Modele żądań, odpowiedzi, filtrów, paginacji, tokenów, uprawnień, sesji i batchy. |
+| `ksef2.models` | Modele żądań, odpowiedzi, filtrów, paginacji (w tym `Page`), tokenów, uprawnień, sesji, batchy, eksportu i stanów wznowienia (`ExportResumeState`, `GeneratedTokenResumeState`, `CertificateEnrollmentResumeState`, `PermissionOperationResumeState`, `InvoiceSubmissionResumeState`) oraz obiekt poświadczeń XAdES (`XAdESCredentials`). |
 | `ksef2.fa3` | Publiczny builder faktur FA(3), drafty buildera oraz typy modelu faktury używane przez aplikacje. |
-| `ksef2.xades` | Ładowanie certyfikatów, generowanie certyfikatów TEST, lokalne podpisy XAdES i `LocalSigner`. |
+| `ksef2.xades` | Ładowanie certyfikatów, generowanie certyfikatów TEST, lokalne podpisy XAdES, `LocalSigner` oraz obiekt poświadczeń `XAdESCredentials` przyjmowany przez `with_xades()`. |
 | `ksef2.testdata` | Pomocniki tylko dla TEST, które generują poprawne numery NIP i PESEL (`generate_nip`, `generate_pesel`). |
 | `ksef2.profiles` | Helpery konfiguracji profili zgodnych z `ksef2-cli`. |
 | `ksef2.renderers` | Opcjonalne lokalne helpery renderowania faktur XSLT/PDF. |
@@ -28,7 +28,7 @@ from ksef2 import Client, Environment, FormSchema, KSeFApiError
 from ksef2.fa3 import FA3InvoiceBuilder, KsefInvoiceDraft, VatRate
 from ksef2.models import InvoicesFilter, InvoiceMetadataParams
 from ksef2.renderers import InvoicePDFExporter, InvoiceXSLTRenderer
-from ksef2.xades import load_certificate_from_pem, load_private_key_from_pem
+from ksef2.xades import XAdESCredentials, load_certificate_from_pem
 ```
 
 ## Eksporty pakietu root
@@ -95,8 +95,19 @@ Stan zapisuj i odtwarzaj jawnymi metodami:
   `GenerateTokenResponse` i `ExportHandle`, eksportuje pola sekretne do
   świadomego, chronionego użycia.
 
+`XAdESCredentials` przechowuje załadowane obiekty certyfikatu i klucza prywatnego
+cryptography, dostępne przez `certificate` i `private_key`. Nie zachowuje hasła ani
+bajtów wejściowych, ukrywa oba obiekty w `repr()` i nie ma schematu Pydantic ani
+API serializacji JSON.
+
 Wynik tych metod traktuj jak poświadczenie: przechowuj go zaszyfrowany, nigdy
 nie loguj i nie commituj.
+
+Zakończone eksporty faktur zapisuj jako zwykłe bajty `ExportedInvoices.archive`.
+Odtwórz je przez `ExportedInvoices.from_archive(archive, compression="zip")` lub
+użyj `compression="tar_gz"` dla TarGz. Metadane są odczytywane leniwie z archiwum;
+status paczki i adresy pobierania nie są odtwarzane. Chroń odszyfrowane dane faktur
+w magazynie. Zobacz [Pobieranie faktur](../how-to-guides/download-invoices.md).
 
 ## Reguła kompatybilności
 
@@ -152,7 +163,7 @@ wskazują miejsca użycia, i może zostać usunięte nie wcześniej niż w ksef2
 | `auth.invoices.schedule_export()`, `get_export_status()`, `wait_for_export_package()`, `fetch_package()`, `fetch_package_bytes()` i `export_and_download()` | `auth.invoices.export(...)`, potem `ExportJob.wait()` | 2.0.0 lub później |
 | `auth.tokens.wait_for_activation(reference_number=...)` | `auth.tokens.generate(...).wait()` | 2.0.0 lub później |
 | `auth.tokens.status()` | `auth.tokens.get_status()` | 2.0.0 lub później |
-| `auth.tokens.list_page()` i `list_all()` | `auth.tokens.list(...)` z `.pages()` i `.first_page()` | 2.0.0 lub później |
+| `auth.tokens.list_all()` | `auth.tokens.list(...)` z `.pages()` i `.first_page()` | 2.0.0 lub później |
 | `auth.certificates.query()` i `all()` | `auth.certificates.list(...)` | 2.0.0 lub później |
 | `client.peppol.query()` i `all()` | `client.peppol.list(...)` | 2.0.0 lub później |
 | `auth.sessions.query()` i `all()` | `auth.sessions.list(...)` | 2.0.0 lub później |
@@ -183,6 +194,12 @@ Każdy udostępnia wszystkie pola odpowiedzi, którą zastępuje, a
 tabeli, której typ zwracany się zmienia. Iteruj po nim albo wywołaj
 `.first_page()`, by wykonać dawne pojedyncze żądanie; `list_all_invoices()` nadal
 zwraca strony.
+
+`auth.tokens.list_page()` pozostaje wspierane i nie jest już opisane jako
+wycofane: to pojedyncze żądanie przyjmujące własny token kontynuacji KSeF, a
+stronicowanie z kursorem go nie zastępuje. Każdy `Pager`, także ten z
+`auth.invoices.search(...)`, odpowiada na `.page(cursor)` zwracając `Page` z
+`items` oraz `next_cursor`, który zapisujesz, by kontynuować tę kolekcję później.
 
 `FA3InvoiceBuilder.dump_state()` i `from_state()` to osobne API szkiców buildera
 i nie są wycofane.

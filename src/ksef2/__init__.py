@@ -1,10 +1,8 @@
 """Public package facade for the KSeF 2 SDK."""
 
-import os
 from importlib.metadata import version
 
-
-_TRUE_ENV_VALUES = {"1", "true", "yes", "on"}
+from ksef2._core.runtime_checks import RUNTIME_CHECKS_ENABLED
 
 
 def _enable_runtime_checks() -> None:
@@ -35,7 +33,7 @@ def _enable_runtime_checks() -> None:
     )
 
 
-if os.environ.get("KSEF2_RUNTIME_CHECKS", "").lower() in _TRUE_ENV_VALUES:
+if RUNTIME_CHECKS_ENABLED:
     _enable_runtime_checks()
 
 from ksef2._clients.async_base import AsyncClient
@@ -82,6 +80,7 @@ from ksef2._core.exceptions import (
     KSeFRateLimitError,
     KSeFSessionError,
     KSeFTokenStatusTimeoutError,
+    KSeFTransportError,
     KSeFUnsupportedEnvironmentError,
     KSeFValidationError,
     NoCertificateAvailableError,
@@ -126,6 +125,7 @@ __all__ = [
     "KSeFRateLimitError",
     "KSeFSessionError",
     "KSeFTokenStatusTimeoutError",
+    "KSeFTransportError",
     "KSeFUnsupportedEnvironmentError",
     "KSeFValidationError",
     "NoCertificateAvailableError",

@@ -96,7 +96,6 @@ def _alias(
 
 
 ALIASES = [
-    _alias("tokens.list", "list_page", "page"),
     _alias("tokens.list", "list_all", "pages"),
     _alias("certificates.list", "query", "page"),
     _alias("certificates.list", "all", "items"),

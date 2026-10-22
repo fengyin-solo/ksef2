@@ -81,6 +81,51 @@ for invoice in auth.invoices.search(filters, params):
     print(invoice.ksef_number, invoice.invoice_number)
 ```
 
+## Resume from a cursor
+
+`page()` fetches one page and returns a `Page`: its `items`, plus `next_cursor`,
+a string naming the page after it. Keep that string and pass it back to `page()`
+later, from the same process or a fresh one, and the search continues where it
+stopped instead of replaying the pages you already read.
+
+```python
+params = InvoiceMetadataParams(page_size=100, sort_order="asc")
+
+first = auth.invoices.search(filters, params).page()
+cursor = first.next_cursor
+
+for invoice in first.items:
+    print(invoice.ksef_number, invoice.invoice_number)
+
+# Later, after a restart, with the cursor you kept.
+if cursor is not None:
+    second = auth.invoices.search(filters, params).page(cursor)
+
+    for invoice in second.items:
+        print(invoice.ksef_number, invoice.invoice_number)
+```
+
+An invoice search cursor carries the whole next request: filters, page size,
+sort order and the truncation boundary KSeF stopped at, so a resumed search
+keeps its place even when KSeF has narrowed the date range. Resume it on a
+search built with the same filters, page size and sort order. An explicitly
+supplied `date_to` must match the original end date. If omitted, the resumed
+search uses the end date saved in the cursor. A cursor from a
+different search raises `KSeFArgumentError` before any request goes out. The
+cursor shows those filters, including NIPs and invoice numbers, in readable
+form, so keep it out of logs and URLs. `next_cursor` is `None` only once the last page is read; a page can come back
+empty and still hand you the cursor for the one after it. In async code the same
+read is `second = await auth.invoices.search(filters, params).page(cursor)`.
+
+`pages()` and plain iteration follow the same cursor chain for you, so you only
+handle cursors when you want to stop and continue later.
+
+:::note[Cursors are opaque]
+A cursor is SDK state, not a page number you calculate. A cursor from another
+collection, or one this SDK cannot read, raises `KSeFArgumentError` before any
+request goes out, and the message never repeats your cursor.
+:::
+
 ## Find a specific invoice
 
 If you know your own invoice number, include it in the filter. If you already

@@ -8,10 +8,14 @@ import tarfile
 import zipfile
 from collections.abc import Iterator
 from pathlib import Path, PurePosixPath
-from typing import cast, final
+from typing import Self, cast, final
 
 from ksef2._core import exceptions
-from ksef2._domain.models.invoices import InvoiceMetadata, InvoicePackage
+from ksef2._domain.models.compression import CompressionType, normalize_compression_type
+from ksef2._domain.models.invoices import (
+    InvoiceMetadata,
+    InvoicePackage,
+)
 from ksef2._infra.mappers.invoices import from_spec
 from ksef2._infra.schema.api import spec
 
@@ -25,8 +29,11 @@ class ExportedInvoices:
 
     The decrypted package parts are joined into one ZIP or TarGz archive, which holds one
     ``<ksef_number>.xml`` file per invoice and a ``_metadata.json`` file. The archive is
-    opened lazily; construct this object through ``ExportJob.wait()``. An export that
+    opened lazily; use ``ExportJob.wait()`` or ``from_archive()``. An export that
     matched no invoices has an empty archive.
+
+    Persist ``archive`` as plain bytes and restore it with ``from_archive()``.
+    Invoice metadata is read from the archive only when requested.
     """
 
     def __init__(
@@ -43,6 +50,7 @@ class ExportedInvoices:
         """
         self._archive = b"".join(parts)
         self._package = package
+        self._compression: CompressionType = "zip"
         self._metadata: list[InvoiceMetadata] | None = None
         self._metadata_loaded = False
 
@@ -72,7 +80,7 @@ class ExportedInvoices:
             The parsed ``invoices`` list of ``_metadata.json``, or ``None`` if the package has no such file.
 
         Raises:
-            KSeFValidationError: If ``_metadata.json`` is not valid metadata.
+            KSeFResponseValidationError: If ``_metadata.json`` is not valid metadata.
             zipfile.BadZipFile: If a ZIP archive is invalid.
             tarfile.TarError: If a TarGz archive is invalid.
             ValueError: If an archive contains links or special files.
@@ -149,8 +157,39 @@ class ExportedInvoices:
                 written.append(target)
         return written
 
+    @classmethod
+    def from_archive(
+        cls, archive: bytes, *, compression: CompressionType = "zip"
+    ) -> Self:
+        """Read a previously saved, decrypted invoice archive.
+
+        Construction is lazy: the archive and its metadata are opened only when
+        reading invoices, requesting metadata or extracting files. No network
+        access or encryption keys are needed.
+
+        Args:
+            archive: Plain ZIP or TarGz bytes, as returned by ``archive``.
+            compression: Archive format, ``"zip"`` by default or ``"tar_gz"``.
+
+        Returns:
+            An export result with no package status or download URLs. Invoice
+            metadata is derived from the archive on first access.
+
+        Raises:
+            ValueError: If the compression type is unsupported.
+        """
+        compression = normalize_compression_type(compression)
+        result = cls([archive])
+        result._compression = compression
+        return result
+
     def _open(self) -> zipfile.ZipFile | tarfile.TarFile:
-        if self._package is not None and self._package.compression_type == "tar_gz":
+        compression = (
+            self._package.compression_type
+            if self._package is not None
+            else self._compression
+        )
+        if compression == "tar_gz":
             return tarfile.open(fileobj=io.BytesIO(self._archive), mode="r:gz")
         return zipfile.ZipFile(io.BytesIO(self._archive), "r")
 
@@ -170,7 +209,7 @@ class ExportedInvoices:
                         for item in payload["invoices"]
                     ]
                 except (ValueError, KeyError, TypeError) as exc:
-                    raise exceptions.KSeFValidationError(
+                    raise exceptions.KSeFResponseValidationError(
                         f"Export package has an invalid {METADATA_FILE_NAME}: {exc}"
                     ) from exc
         return None

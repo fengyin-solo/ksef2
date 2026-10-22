@@ -5,7 +5,6 @@
 
 from collections.abc import (
     Callable,
-    Generator,
     Iterator,
 )
 from pathlib import Path
@@ -14,7 +13,18 @@ from typing import final, overload, override
 from typing_extensions import deprecated
 
 from ksef2._clients._handles import OperationHandle
+from ksef2._clients._metadata_pagination import (
+    MetadataBoundary,
+    metadata_stall,
+    metadata_stall_error,
+    next_metadata_page_request,
+)
 from ksef2._clients._pager import Pager
+from ksef2._clients._pagination_cursor import (
+    CURSOR_VERSION,
+    InvoiceSearchCursor,
+    search_fingerprint,
+)
 from ksef2._clients.exported_invoices import ExportedInvoices
 from ksef2._clients.invoices import InvoicesClient
 from ksef2._core import exceptions
@@ -34,7 +44,7 @@ from ksef2._domain.models.invoices import (
     PackagePart,
     QueryInvoicesMetadataResponse,
 )
-from ksef2._domain.models.pagination import InvoiceMetadataParams
+from ksef2._domain.models.pagination import InvoiceMetadataParams, Page
 from ksef2._logging import get_logger
 from ksef2._services.export_parts import safe_part_filename
 
@@ -53,7 +63,7 @@ class ExportJob(OperationHandle[InvoiceExportStatusResponse, ExportedInvoices]):
     Raises:
         KSeFApiError: If KSeF returns an API error response.
         KSeFValidationError: If a KSeF response cannot be parsed into SDK models.
-        httpx.HTTPError: If the HTTP transport fails before KSeF returns a response.
+        KSeFTransportError: If the HTTP request fails to produce a usable response.
     """
 
     def __init__(
@@ -156,6 +166,18 @@ class InvoiceSearchPager(Pager[InvoiceMetadata]):
     contracts. Use ``responses()`` or ``first_response()`` to read pagination
     flags and ``permanent_storage_hwm_date``, including on empty pages. Each
     consumption starts a fresh query; no responses are cached.
+
+    A search cursor holds the whole next request: its filters, its parameters and
+    the truncation boundary the previous page stopped at, so resuming from
+    ``page(cursor)`` keeps working when KSeF shifts the date range. The cursor
+    also records which search issued it. Resume it on a pager built with the same
+    filters, page size and sort order. An explicit ``date_to`` must match the
+    original upper bound; an omitted default uses the bound saved in the cursor. A cursor from another search
+    raises ``KSeFArgumentError`` before any request is sent. The cursor shows the
+    filters in readable form, so keep it out of logs and URLs.
+
+    When KSeF reports a truncated page that cannot advance, the page is still
+    returned and the pagination error is raised when its cursor is resumed.
     """
 
     def __init__(
@@ -174,16 +196,97 @@ class InvoiceSearchPager(Pager[InvoiceMetadata]):
         self._client = client
         self._filters = filters
         self._params = params
+        self._search = search_fingerprint(filters, params or InvoiceMetadataParams())
         super().__init__(
-            self._invoice_pages,
+            fetch_page=self._fetch_metadata_page,
             timeout_error=lambda timeout: exceptions.KSeFInvoiceQueryTimeoutError(
                 timeout=timeout
             ),
         )
 
-    def _invoice_pages(self) -> Generator[list[InvoiceMetadata], None]:
-        for response in self.responses():
-            yield list(response.invoices)
+    def _fetch_metadata_page(self, cursor: str | None) -> Page[InvoiceMetadata]:
+        """Fetch one metadata page and describe the request that follows it.
+
+        Args:
+            cursor: Cursor from a previous page, or ``None`` to start from this search's own filters and parameters.
+
+        Returns:
+            The requested metadata page, with a cursor for the next page or ``None`` when the search ended.
+
+        Raises:
+            KSeFArgumentError: If ``cursor`` was issued by a different search or operation.
+            KSeFMetadataPaginationError: If ``cursor`` follows a truncated page that cannot advance safely.
+        """
+        if cursor is None:
+            filters = self._filters
+            search_date_to = filters.date_to
+            params = self._params or InvoiceMetadataParams()
+            previous_truncation_boundary: MetadataBoundary | None = None
+        else:
+            state = InvoiceSearchCursor.decode_search(
+                cursor,
+                operation="invoices.search",
+                search=self._search,
+                date_to=self._filters.date_to
+                if "date_to" in self._filters.model_fields_set
+                else None,
+            )
+            filters = state.filters
+            search_date_to = state.search_date_to
+            params = state.params
+            previous_truncation_boundary = state.previous_truncation_boundary
+            if state.stalled is not None:
+                raise metadata_stall_error(
+                    state.stalled,
+                    filters=filters,
+                    params=params,
+                    boundary=previous_truncation_boundary,
+                )
+
+        response = self._client.query_metadata(filters=filters, params=params)
+        stalled = metadata_stall(
+            filters=filters,
+            response=response,
+            previous_truncation_boundary=previous_truncation_boundary,
+        )
+        if stalled is not None:
+            return Page[InvoiceMetadata](
+                items=list(response.invoices),
+                next_cursor=InvoiceSearchCursor(
+                    v=CURSOR_VERSION,
+                    operation="invoices.search",
+                    search=self._search,
+                    search_date_to=search_date_to,
+                    filters=filters,
+                    params=params,
+                    previous_truncation_boundary=previous_truncation_boundary,
+                    stalled=stalled,
+                ).encode(),
+            )
+        next_request = next_metadata_page_request(
+            filters=filters,
+            params=params,
+            response=response,
+            previous_truncation_boundary=previous_truncation_boundary,
+        )
+        if next_request is None:
+            return Page[InvoiceMetadata](
+                items=list(response.invoices), next_cursor=None
+            )
+
+        next_filters, next_params, next_boundary = next_request
+        return Page[InvoiceMetadata](
+            items=list(response.invoices),
+            next_cursor=InvoiceSearchCursor(
+                v=CURSOR_VERSION,
+                operation="invoices.search",
+                search=self._search,
+                search_date_to=search_date_to,
+                filters=next_filters,
+                params=next_params,
+                previous_truncation_boundary=next_boundary,
+            ).encode(),
+        )
 
     def responses(self) -> Iterator[QueryInvoicesMetadataResponse]:
         """Fetch complete responses, following page and truncation boundaries.
@@ -215,14 +318,14 @@ class InvoicesService:
     """Invoice workflows with encryption, polling, and export helpers.
 
     Catch ``KSeFException`` for SDK-classified failures raised by this service,
-    and ``httpx.HTTPError`` for transport failures.
+    including ``KSeFTransportError`` for transport failures.
 
     Raises:
         KSeFApiError: If KSeF returns an API error response. Catch
             ``KSeFAuthError`` for authentication or authorization failures and
             ``KSeFRateLimitError`` for throttling.
         KSeFValidationError: If a KSeF response cannot be parsed into SDK models.
-        httpx.HTTPError: If the HTTP transport fails before KSeF returns a response.
+        KSeFTransportError: If the HTTP request fails to produce a usable response.
     """
 
     def __init__(

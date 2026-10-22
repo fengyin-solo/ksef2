@@ -9,6 +9,22 @@ _TStatus = TypeVar("_TStatus")
 _TResult = TypeVar("_TResult")
 
 
+def not_after_resume(owner: str, name: str) -> AttributeError:
+    """Build the error for data a saved state never held.
+
+    Args:
+        owner: Class name of the handle that was rebuilt from resume state.
+        name: Attribute the caller read.
+
+    Returns:
+        The error to raise from the attribute access.
+    """
+    return AttributeError(
+        f"{owner!r} object has no attribute {name!r}: a handle rebuilt from"
+        " resume state only knows the reference number"
+    )
+
+
 class AsyncOperationHandle(ABC, Generic[_TStatus, _TResult]):
     """Client-side handle to an operation that KSeF finishes asynchronously.
 
@@ -18,8 +34,8 @@ class AsyncOperationHandle(ABC, Generic[_TStatus, _TResult]):
     to read the operation's status, when it is still pending and how to turn the
     finished status into the result returned by ``wait()``.
 
-    Catch ``KSeFException`` for SDK-classified failures raised while waiting, and
-    ``httpx.HTTPError`` for transport failures.
+    Catch ``KSeFException`` for SDK-classified failures raised while waiting,
+    including ``KSeFTransportError`` for transport failures.
     """
 
     def __init__(self, reference_number: str) -> None:

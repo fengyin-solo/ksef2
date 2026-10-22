@@ -7,9 +7,10 @@ from typing import final
 from typing_extensions import deprecated
 
 from ksef2._clients._async_pager import AsyncPager
+from ksef2._clients._pagination_cursor import ContinuationCursor
 from ksef2._core.async_protocols import AsyncMiddleware
-from ksef2._core.exceptions import KSeFValidationError
-from ksef2._domain.models.pagination import ListSessionsQuery
+from ksef2._core.exceptions import KSeFArgumentError
+from ksef2._domain.models.pagination import ListSessionsQuery, Page
 from ksef2._domain.models.session import (
     ListSessionsResponse,
     SessionStatus,
@@ -28,14 +29,14 @@ class AsyncInvoiceSessionsClient:
     """Async browse historical invoice sessions and download their UPO documents.
 
     Catch ``KSeFException`` for SDK-classified failures raised by this branch,
-    and ``httpx.HTTPError`` for transport failures.
+    including ``KSeFTransportError`` for transport failures.
 
     Raises:
         KSeFApiError: If KSeF returns an API error response. Catch
             ``KSeFAuthError`` for authentication or authorization failures and
             ``KSeFRateLimitError`` for throttling.
-        KSeFValidationError: If a KSeF response cannot be parsed into SDK models.
-        httpx.HTTPError: If the HTTP transport fails before KSeF returns a response.
+        KSeFResponseValidationError: If a KSeF response cannot be parsed into SDK models.
+        KSeFTransportError: If the HTTP request fails to produce a usable response.
     """
 
     def __init__(self, transport: AsyncMiddleware) -> None:
@@ -72,7 +73,7 @@ class AsyncInvoiceSessionsClient:
             The invoice UPO or session UPO page as XML bytes.
 
         Raises:
-            KSeFValidationError: If no selector or multiple selectors are given.
+            KSeFArgumentError: If no selector or multiple selectors are given.
             KSeFNotReadyError: If KSeF has not issued the requested UPO yet.
                 Check processing status before retrying. Rejected invoices may
                 never receive a UPO.
@@ -86,7 +87,7 @@ class AsyncInvoiceSessionsClient:
             )
         )
         if selector_count != 1:
-            raise KSeFValidationError(
+            raise KSeFArgumentError(
                 "Pass exactly one of invoice_reference_number, ksef_number "
                 "or upo_reference_number."
             )
@@ -230,8 +231,8 @@ class AsyncInvoiceSessionsClient:
         """List the invoice sessions of the chosen type, newest history first as KSeF returns it.
 
         Nothing is requested until the result is consumed. Iterate it for every
-        session, call ``pages()`` for page-sized lists or ``first_page()`` for one
-        request only.
+        session, call ``pages()`` for page-sized lists, ``first_page()`` for one
+        request only, or ``page()`` to walk it with a resumable cursor.
 
         Args:
             session_type: Invoice session family to browse, such as ``"online"`` or ``"batch"``.
@@ -248,8 +249,26 @@ class AsyncInvoiceSessionsClient:
             ```
         """
 
-        async def _session_pages() -> AsyncGenerator[list[SessionSummary], None]:
-            async for page in self._pages(session_type, params, statuses):
-                yield page.sessions
+        async def _fetch_page(cursor: str | None) -> Page[SessionSummary]:
+            continuation_token = (
+                None
+                if cursor is None
+                else ContinuationCursor.decode(
+                    cursor, operation="invoice_sessions.list"
+                ).continuation_token
+            )
+            response = await self._query(
+                session_type=session_type,
+                continuation_token=continuation_token,
+                params=params,
+                statuses=statuses,
+            )
+            return Page[SessionSummary](
+                items=response.sessions,
+                next_cursor=ContinuationCursor.encode_next(
+                    operation="invoice_sessions.list",
+                    continuation_token=response.continuation_token,
+                ),
+            )
 
-        return AsyncPager(_session_pages)
+        return AsyncPager(fetch_page=_fetch_page)

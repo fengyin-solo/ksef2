@@ -9,7 +9,7 @@ description: Stability boundary and the documented public surface of the first s
 
 ksef2 1.0.0 is the first release that treats documented application-facing
 imports as a compatibility contract for the 1.x line.
-The SDK currently targets KSeF OpenAPI version `2.8.1`.
+The SDK currently targets KSeF OpenAPI version `2.9.0`.
 
 > **Unofficial SDK.** ksef2 is community-maintained. It is not published,
 > endorsed, or supported by Poland's Ministry of Finance. The official KSeF
@@ -30,12 +30,25 @@ module in the repository.
 | High-level client branches | `client.authentication`, `client.encryption`, `client.peppol`, `client.testdata`, and authenticated branches such as `auth.invoices`, `auth.tokens`, `auth.permissions`, `auth.certificates`, `auth.collective_identifiers`, and `auth.limits`. |
 | Collective identifier workflows | `auth.collective_identifiers` generates a collective identifier for supplied invoices, queries identifiers page by page, resolves the identifiers attached to one KSeF number, and lists the invoices inside selected collective identifiers. |
 | Session helpers | Online and batch session workflows for sending, polling, UPO, and resumable KSeF references. |
+| Paging | Every `Pager` answers `.page(cursor)` with a `Page` (`items`, `next_cursor`), where the cursor is SDK-issued state you can store and replay after a restart, alongside `.pages()`, `.first_page()` and `.wait()`. |
 | `ksef2.xades` | Certificate loading, TEST certificate generation, local XAdES signing helpers, and `LocalSigner`. |
 | `ksef2.profiles` | Local `ksef2-cli` compatible profile config helpers. |
 | `ksef2.fa3` | Public FA(3) invoice builder, draft snapshots, and public FA(3) domain models used by builder workflows. |
 | `ksef2.renderers` | Optional local XSLT/PDF invoice rendering helpers when installed with the `pdf` extra. |
 
 For the exact compatibility boundary, use the public API contract page.
+
+`PreparedBatch.to_sensitive_dict()` and `to_sensitive_json()` persist the full
+prepared batch as `{"version": "1", "payload": {...}}`, with encrypted parts as
+URL-safe padded Base64. Restore it with `from_sensitive_dict()` or
+`from_sensitive_json()` and the saved batch session state. These readers reject
+missing or unsupported versions, unversioned development exports and unknown
+fields with sanitized `ValueError` messages. Store this output as
+credential material; generic dumps and repr exclude keys and payload bytes.
+Readers in 1.x retain support for released persistence versions. Incompatible
+formats require a new version and a documented migration. Session and operation resume states now write `format_version` as the string
+`"1"`; readers also accept the integer `1` written by earlier releases.
+Pagination cursors retain a separate integer version field.
 
 ## Invoice workflows in 1.0
 
@@ -75,6 +88,13 @@ says what to do next. The response body is no longer dumped into the message; it
 stays on `e.response`. Branch on the exception class or `ksef_code`, never on
 message text.
 
+Narrower classes cover the common cases: `KSeFNotFoundError`, `KSeFServerError`,
+`KSeFResponseValidationError`, `KSeFProfileConfigError`, `KSeFSessionFailedError`
+and `KSeFTokenActivationFailedError`. Every polling timeout derives from
+`KSeFPollingTimeoutError`, which exposes `timeout`. Each new class subclasses the
+class that was raised before, so existing handlers keep working. See the
+[error reference](errors.md).
+
 ```text
 # before
 API_ERROR/400: KSeF API error: 400
@@ -94,6 +114,23 @@ or closed session, then fetch the UPO (#169).
 KSeF Problem Details is requested by default. Use
 `TransportConfig(error_format="legacy")` for the older HTTP 400/429 format;
 HTTP 401, 403 and 410 always use Problem Details (#169, #175).
+
+## Breaking in 1.0
+
+Transport failures are SDK errors. A public method no longer lets an `httpx`
+exception escape: a request that produces no usable response raises
+`KSeFTransportError` (`code = "TRANSPORT_ERROR"`) with `method`, `path` and
+`outcome_ambiguous`, and the original `httpx` exception as `__cause__`. It covers
+every `httpx.RequestError`: connection and timeout failures, a response the HTTP
+client could not decode, and an abandoned redirect chain. It does not subclass
+`httpx.HTTPError`, so handlers that caught `httpx.HTTPError` must name the SDK
+class; `KSeFException` already covers every SDK failure. Retries, API error
+classes and `KSeFAuthError` on a 401 or 403 are unchanged.
+`KSeFExternalTransferError`, `KSeFBatchUploadError` and
+`KSeFAuthTokenRedemptionError` now derive from `KSeFTransportError` and keep their
+own codes and recovery behaviour.
+See the [migration guide](migration-1-0.md#transport-failures) and the
+[error reference](errors.md#transport-failure-attributes).
 
 ## Public but lower level
 

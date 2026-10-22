@@ -17,8 +17,11 @@ result locally, and serve operational views from your own store.
 ## Metadata finds invoices
 
 `auth.invoices.search()` returns an `InvoiceSearchPager` over `InvoiceMetadata`
-rows. Iterate it, or use `pages()`, `first_page()` and `wait()`. These retain
-the generic `Pager` contracts. Use `responses()` for complete typed pages or
+rows. Iterate it, or use `pages()`, `first_page()`, `page(cursor)` and `wait()`.
+These retain the generic `Pager` contracts. `page(cursor)` reads one page and
+returns the `next_cursor` that resumes the same search later, even in another
+process. Only a `next_cursor` of `None` ends a search: a page can come back
+empty and still name the page after it. Use `responses()` for complete typed pages or
 `first_response()` for a single `QueryInvoicesMetadataResponse` with pagination
 flags and `permanent_storage_hwm_date`.
 
@@ -71,6 +74,31 @@ package. To survive a restart, persist `job.resume_state().to_json()` as a
 credential and pass it to `auth.invoices.export(state=...)`; never log it.
 :::
 
+## Every asynchronous handle saves its state
+
+An export is not the only operation that outlives the call that started it. The
+handles for a generated token, a certificate enrollment, a permission operation
+and a submitted invoice save and resume the same way: `resume_state()` returns
+the state, `to_json()` writes it, and one method on the client reads it back.
+
+| Handle | Save with | Resume with |
+| --- | --- | --- |
+| `ExportJob` | `job.resume_state()` | `auth.invoices.export(state=...)` |
+| `GeneratedToken` | `token.resume_state()` | `auth.tokens.generation(state)` |
+| `CertificateEnrollment` | `enrollment.resume_state()` | `auth.certificates.enrollment(state)` |
+| `PermissionOperation` | `operation.resume_state()` | `auth.permissions.operation(state)` |
+| `InvoiceSubmission` | `submission.resume_state()` | `session.submission(state=...)` |
+
+Only `ExportResumeState` carries secrets. The other four states hold the KSeF
+reference number, and the submission state also names the session the invoice
+went into, so their `to_dict()` and `to_json()` output is ordinary data rather
+than a credential. In particular `GeneratedTokenResumeState` never contains the
+one-time token: persist that secret separately, as above.
+
+A resumed handle polls the same reference number the original one did. It does
+not invent data that was not stored, so a resumed token has no `token` and a
+resumed enrollment has no `timestamp`.
+
 ## HWM is the sync boundary
 
 For unattended synchronization, the important concept is HWM: High Water Mark.
@@ -119,8 +147,9 @@ if next_checkpoint is not None:
 
 An empty, completed response can still provide a checkpoint. If KSeF omits
 the HWM, or the final response is truncated, keep the previous checkpoint.
-In async code, use `async for page in pager.responses()` and
-`page = await pager.first_response()`.
+In async code, use `async for page in pager.responses()`,
+`page = await pager.first_response()` and
+`page = await pager.page(cursor)` to read one page and its cursor.
 
 `responses()` follows metadata page and truncation boundaries automatically.
 For a truncated export package, continue from its `last_permanent_storage_date`

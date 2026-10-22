@@ -9,7 +9,7 @@ description: Granica stabilności i udokumentowana publiczna powierzchnia pierws
 
 ksef2 1.0.0 to pierwsze wydanie, które traktuje udokumentowane, aplikacyjne
 ścieżki importu jako kontrakt kompatybilności dla linii 1.x.
-SDK obecnie celuje w wersję OpenAPI KSeF `2.8.1`.
+SDK obecnie celuje w wersję OpenAPI KSeF `2.9.0`.
 
 > **Nieoficjalne SDK.** ksef2 jest utrzymywane społecznościowo. Nie jest
 > publikowane, zatwierdzane ani wspierane przez Ministerstwo Finansów. Oficjalna
@@ -30,12 +30,26 @@ moduł, który da się zaimportować z repozytorium.
 | Wysokopoziomowe moduły klientów | `client.authentication`, `client.encryption`, `client.peppol`, `client.testdata` oraz moduły uwierzytelnione: `auth.invoices`, `auth.tokens`, `auth.permissions`, `auth.certificates`, `auth.collective_identifiers`, `auth.limits`. |
 | Przepływy identyfikatorów zbiorczych | `auth.collective_identifiers` generuje identyfikator zbiorczy dla wskazanych faktur, odpytuje identyfikatory strona po stronie, rozwiązuje identyfikatory dołączone do jednej liczby KSeF oraz wymienia faktury w wybranych identyfikatorach zbiorczych. |
 | Pomocniki sesji | Przepływy sesji online i batch do wysyłki, pollingu, UPO i wznawialnych referencji KSeF. |
+| Stronicowanie | Każdy `Pager` odpowiada na `.page(cursor)`, zwracając `Page` (`items`, `next_cursor`), gdzie kursor to stan wydany przez SDK, który można zapisywać i odtworzyć po restarcie; obok tego `.pages()`, `.first_page()` i `.wait()`. |
 | `ksef2.xades` | Ładowanie certyfikatów, generowanie certyfikatów TEST, lokalne pomocniki podpisu XAdES i `LocalSigner`. |
 | `ksef2.profiles` | Pomocniki konfiguracji profili zgodnych z lokalnymi profilami `ksef2-cli`. |
 | `ksef2.fa3` | Publiczny builder faktur FA(3), drafty buildera i publiczne modele domenowe FA(3) używane przez przepływy buildera. |
 | `ksef2.renderers` | Opcjonalne lokalne pomocniki renderowania faktur XSLT/PDF po instalacji dodatku `pdf`. |
 
 Dokładną granicę kompatybilności opisuje strona interfejsu publicznego.
+
+`PreparedBatch.to_sensitive_dict()` i `to_sensitive_json()` zapisują pełną
+przygotowaną paczkę jako `{"version": "1", "payload": {...}}`, z zaszyfrowanymi
+częściami jako Base64 bezpieczne dla URL z dopełnieniem. Odtwórz ją przez
+`from_sensitive_dict()` lub `from_sensitive_json()` wraz z zapisanym stanem sesji
+batch. Czytniki odrzucają brak wersji, nieobsługiwane wersje, niewersjonowane
+eksporty rozwojowe i nieznane pola przez `ValueError` bez ujawniania
+zapisanych wartości. Przechowuj ten wynik jak poświadczenia; ogólne dumpy i repr
+pomijają klucze i bajty paczki. Czytniki w serii 1.x zachowują obsługę wydanych
+wersji zapisu. Niezgodne formaty wymagają nowej wersji i udokumentowanej migracji.
+Stany wznowienia sesji i operacji zapisują teraz `format_version` jako tekst
+`"1"`; czytniki przyjmują także liczbę całkowitą `1` zapisywaną przez wcześniejsze
+wydania. Kursory stronicowania zachowują osobne pole wersji całkowitej.
 
 ## Przepływy faktur w 1.0
 
@@ -74,6 +88,13 @@ oraz podpowiada, co zrobić dalej. Treść odpowiedzi nie jest już zrzucana do
 komunikatu; pozostaje w `e.response`. Rozgałęziaj kod po klasie wyjątku lub
 `ksef_code`, nigdy po treści komunikatu.
 
+Węższe klasy obejmują typowe przypadki: `KSeFNotFoundError`, `KSeFServerError`,
+`KSeFResponseValidationError`, `KSeFProfileConfigError`, `KSeFSessionFailedError`
+i `KSeFTokenActivationFailedError`. Każdy timeout oczekiwania dziedziczy po
+`KSeFPollingTimeoutError`, który udostępnia `timeout`. Każda nowa klasa dziedziczy
+po klasie rzucanej wcześniej, więc istniejące obsługi nadal działają. Zobacz
+[referencję błędów](errors.md).
+
 ```text
 # przed
 API_ERROR/400: KSeF API error: 400
@@ -94,6 +115,23 @@ a następnie pobierz UPO (#169).
 SDK domyślnie żąda Problem Details. `TransportConfig(error_format="legacy")`
 wybiera starszy format HTTP 400/429; HTTP 401, 403 i 410 zawsze używają
 Problem Details (#169, #175).
+
+## Przełomowe zmiany w 1.0
+
+Błędy transportu są błędami SDK. Metoda publiczna nie przepuszcza już wyjątku
+`httpx`: żądanie, które nie dało użytecznej odpowiedzi, rzuca
+`KSeFTransportError` (`code = "TRANSPORT_ERROR"`) z `method`, `path` i
+`outcome_ambiguous`, a oryginalny wyjątek `httpx` pozostaje jako `__cause__`.
+Obejmuje każdy `httpx.RequestError`: błędy połączenia i timeouty, odpowiedź, której
+klient HTTP nie odkodował, oraz porzucony łańcuch przekierowań. Nie dziedziczy on
+po `httpx.HTTPError`, więc obsługujące je wcześniej bloki muszą wskazać klasę SDK;
+`KSeFException` obejmuje już każdy błąd SDK. Ponowienia, klasy błędów API oraz
+`KSeFAuthError` dla 401 albo 403 pozostają bez zmian.
+`KSeFExternalTransferError`, `KSeFBatchUploadError` i
+`KSeFAuthTokenRedemptionError` dziedziczą teraz po `KSeFTransportError` i zachowują
+własne kody oraz zachowanie odzyskiwania.
+Zobacz [przewodnik migracji](migration-1-0.md#błędy-transportu) i
+[referencję błędów](errors.md#atrybuty-błędu-transportu).
 
 ## Publiczne, ale niższopoziomowe
 

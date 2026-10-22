@@ -1,10 +1,8 @@
 """Public package facade for the KSeF 2 SDK."""
 
-import os
 from importlib.metadata import version
 
-
-_TRUE_ENV_VALUES = {"1", "true", "yes", "on"}
+from ksef2._core.runtime_checks import RUNTIME_CHECKS_ENABLED
 
 
 def _enable_runtime_checks() -> None:
@@ -35,7 +33,7 @@ def _enable_runtime_checks() -> None:
     )
 
 
-if os.environ.get("KSEF2_RUNTIME_CHECKS", "").lower() in _TRUE_ENV_VALUES:
+if RUNTIME_CHECKS_ENABLED:
     _enable_runtime_checks()
 
 from ksef2._clients.async_base import AsyncClient
@@ -76,13 +74,21 @@ from ksef2._core.exceptions import (
     KSeFOnlineSessionTimeoutError,
     KSeFInvoiceRenderingError,
     KSeFMetadataPaginationError,
+    KSeFNotFoundError,
+    KSeFServerError,
     KSeFNotReadyError,
+    KSeFPollingTimeoutError,
     KSeFPermissionOperationFailedError,
     KSeFPermissionOperationTimeoutError,
     KSeFRateLimitError,
+    KSeFSessionFailedError,
+    KSeFTokenActivationFailedError,
     KSeFSessionError,
     KSeFTokenStatusTimeoutError,
+    KSeFTransportError,
     KSeFUnsupportedEnvironmentError,
+    KSeFResponseValidationError,
+    KSeFProfileConfigError,
     KSeFValidationError,
     NoCertificateAvailableError,
 )
@@ -120,13 +126,21 @@ __all__ = [
     "KSeFOnlineSessionTimeoutError",
     "KSeFInvoiceRenderingError",
     "KSeFMetadataPaginationError",
+    "KSeFNotFoundError",
+    "KSeFServerError",
     "KSeFNotReadyError",
+    "KSeFPollingTimeoutError",
     "KSeFPermissionOperationFailedError",
     "KSeFPermissionOperationTimeoutError",
     "KSeFRateLimitError",
+    "KSeFSessionFailedError",
+    "KSeFTokenActivationFailedError",
     "KSeFSessionError",
     "KSeFTokenStatusTimeoutError",
+    "KSeFTransportError",
     "KSeFUnsupportedEnvironmentError",
+    "KSeFResponseValidationError",
+    "KSeFProfileConfigError",
     "KSeFValidationError",
     "NoCertificateAvailableError",
     "RetryConfig",

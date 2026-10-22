@@ -6,9 +6,15 @@
 from collections.abc import Callable, Generator, Iterator
 from typing import Generic, TypeVar
 
+from ksef2._clients._pagination_cursor import OffsetCursor
+from ksef2._core import exceptions
 from ksef2._core.polling import poll_until
+from ksef2._core.runtime_checks import check_return_against
+from ksef2._domain.models.pagination import Page
 
 _T = TypeVar("_T")
+
+_LEGACY_OPERATION = "pager.pages"
 
 
 class Pager(Generic[_T]):
@@ -19,33 +25,54 @@ class Pager(Generic[_T]):
     fetches only the first. Nothing is requested until the pager is consumed, and
     every iteration starts from the first page again.
 
+    ``page()`` is the resumable form of the same walk: it fetches one page and
+    returns it with ``next_cursor``, an opaque string that a later call, a
+    restarted process or another language binding passes back to continue where
+    this page ended. Keep the cursor as a string and treat its contents as SDK
+    state.
+
     Raises:
         KSeFApiError: If KSeF returns an API error response while a page is
             fetched.
         KSeFValidationError: If a KSeF response cannot be parsed into SDK models.
-        httpx.HTTPError: If the HTTP transport fails before KSeF returns a response.
+        KSeFTransportError: If the HTTP request fails to produce a usable response.
     """
 
     def __init__(
         self,
-        pages: Callable[[], Generator[list[_T], None]],
+        pages: Callable[[], Generator[list[_T], None]] | None = None,
         *,
         timeout_error: Callable[[float], BaseException] | None = None,
+        fetch_page: Callable[[str | None], Page[_T]] | None = None,
     ) -> None:
         """Create the pager.
 
         Args:
-            pages: Factory returning a fresh generator over the pages, each one a list of items.
+            pages: Factory returning a fresh generator over the pages, each one a list of items. Callers that already own a generator supply it here; SDK collections do not. When ``fetch_page`` is also supplied, the pager uses it and ignores this factory.
             timeout_error: Builds the exception ``wait()`` raises from its timeout; ``None`` raises ``TimeoutError``.
+            fetch_page: Fetches exactly one page for a cursor, where ``None`` asks for the first page. Every SDK collection supplies this, so paging never replays earlier requests.
+
+        Raises:
+            KSeFArgumentError: If neither ``pages`` nor ``fetch_page`` is supplied.
         """
-        self._pages = pages
+        if fetch_page is None:
+            if pages is None:
+                raise exceptions.KSeFArgumentError(
+                    "A pager needs a source of pages.",
+                    hint="Pass a pages factory or a fetch_page callback.",
+                )
+            self._pages = pages
+            self._fetch_page = self._build_legacy_page_source(pages)
+        else:
+            self._pages = None
+            self._fetch_page = fetch_page
         self._timeout_error = timeout_error
 
     def __iter__(self) -> Iterator[_T]:
         return self._items()
 
     def _items(self) -> Generator[_T, None]:
-        for page in self._pages():
+        for page in self.pages():
             for item in page:
                 yield item
 
@@ -55,6 +82,8 @@ class Pager(Generic[_T]):
         Returns:
             An iterator yielding the items of each page as a list, in order.
         """
+        if self._pages is None:
+            return self._pages_from_cursor()
         return self._pages()
 
     def first_page(self) -> list[_T]:
@@ -63,13 +92,52 @@ class Pager(Generic[_T]):
         Returns:
             The items of the first page; empty if the collection is empty.
         """
-        pages = self._pages()
+        pages = self._pages
+        if pages is None:
+            return self.page(None).items
+
+        generator = pages()
         try:
-            for page in pages:
+            for page in generator:
                 return page
             return []
         finally:
-            pages.close()
+            generator.close()
+
+    # Page[_T] here denotes the pager's own unresolved type variable, which no concrete
+    # page is an instance of, so runtime checks read this return against Page instead.
+    # The annotation below stays as callers read it, and cursor keeps its own check.
+    @check_return_against(public_hint=Page[_T], runtime_hint=Page)
+    def page(self, cursor: str | None = None) -> Page[_T]:
+        """Fetch one page and the cursor that resumes the collection after it.
+
+        Call it with ``None`` for the first page, then with the ``next_cursor`` of
+        the page just read. Any pager of the same collection operation, built in
+        another process or after a restart, accepts the cursor; a non-invoice
+        collection must be rebuilt with the same filters, identifiers and page
+        size, because its cursor carries only KSeF's continuation state. Passing
+        ``None`` as ``next_cursor`` means the collection ended.
+
+        Args:
+            cursor: Cursor from a previous page, or ``None`` for the first page.
+
+        Returns:
+            The requested page, with its items and the cursor for the page after it.
+
+        Raises:
+            KSeFArgumentError: If ``cursor`` was not issued by this collection operation.
+            KSeFApiError: If KSeF returns an API error response while the page is fetched.
+        """
+        return self._fetch_page(cursor)
+
+    def _pages_from_cursor(self) -> Generator[list[_T], None]:
+        cursor: str | None = None
+        while True:
+            page = self.page(cursor)
+            yield page.items
+            if page.next_cursor is None:
+                return
+            cursor = page.next_cursor
 
     def wait(
         self,
@@ -106,3 +174,55 @@ class Pager(Generic[_T]):
         if self._timeout_error is not None:
             return self._timeout_error(timeout)
         return TimeoutError(f"No items appeared after {timeout}s")
+
+    def _build_legacy_page_source(
+        self, pages: Callable[[], Generator[list[_T], None]]
+    ) -> Callable[[str | None], Page[_T]]:
+        """Adapt a caller-supplied generator to the cursor-based page source.
+
+        A generator has no way to name its next page, so this adapter counts pages
+        and stores the count in the cursor. Reading page N replays the caller's
+        generator up to page N, which a live KSeF collection never does.
+
+        Args:
+            pages: Factory returning a fresh generator over the caller's pages.
+
+        Returns:
+            A page source that resumes a generator-supplied collection by page index.
+        """
+        # Built through the same Page[_T] the annotations below denote, so a page this
+        # adapter returns is an instance of exactly the class runtime checks expect.
+        page_type = Page[_T]
+
+        def _page_by_index(cursor: str | None) -> Page[_T]:
+            index = (
+                0
+                if cursor is None
+                else OffsetCursor.decode(
+                    cursor, operation=_LEGACY_OPERATION
+                ).page_offset
+            )
+            items: list[_T] = []
+            has_next = False
+            generator = pages()
+            try:
+                seen = 0
+                for page in generator:
+                    seen += 1
+                    if seen == index + 1:
+                        items = list(page)
+                        continue
+                    if seen > index + 1:
+                        has_next = True
+                        break
+            finally:
+                generator.close()
+
+            return page_type(
+                items=items,
+                next_cursor=OffsetCursor.encode_next(
+                    operation=_LEGACY_OPERATION, page_offset=index, has_more=has_next
+                ),
+            )
+
+        return _page_by_index

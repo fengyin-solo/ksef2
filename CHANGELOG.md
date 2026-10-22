@@ -125,6 +125,56 @@ on the public API page for every alias and its replacement.
 
 ### Added
 
+- `PreparedBatch.to_sensitive_dict()` and `to_sensitive_json()` export a prepared
+  batch in full, including encrypted parts as URL-safe Base64 with `=` padding
+  and the AES material. Save the output in protected storage and restore it with
+  `PreparedBatch.from_sensitive_json()` for upload recovery after a restart.
+  The JSON-only envelope is `{"version": "1", "payload": {...}}`; dictionary export
+  uses the same shape and has a matching `from_sensitive_dict()` reader. Readers
+  reject unsupported or missing versions, unversioned development exports and
+  unknown fields with sanitized `ValueError` messages. Readers in 1.x
+  retain support for released persistence versions. Incompatible formats require
+  a new version and a documented migration. Every
+  persisted state (`format_version`) and this envelope now write the version as a
+  dotted string such as `"1"`. Readers accept any version with major `1`, such as
+  `"1.2"` or `"1.0.1"`, and still read the integer `1` that earlier releases wrote;
+  `true`, `1.0` and malformed strings are rejected. Pagination cursors keep
+  their integer `v`. A minor or patch version never adds or changes fields, so an
+  earlier 1.x reader can read it; additions that older readers cannot ignore
+  take a new major version.
+  Generic model dumps and repr still hide payload bytes and keys (#270).
+- Save and resume every handle KSeF finishes asynchronously. `resume_state()` on a
+  `GeneratedToken`, `CertificateEnrollment`, `PermissionOperation` or
+  `InvoiceSubmission` returns a versioned state model with `to_dict()`,
+  `to_json()`, `from_dict()` and `from_json()`, and
+  `auth.tokens.generation(state)`, `auth.certificates.enrollment(state)`,
+  `auth.permissions.operation(state)` or `session.submission(state=...)` builds the
+  handle again after a restart, so a background worker can keep
+  waiting without holding the client that started the operation. A resumed handle
+  polls the saved reference number and does not invent data: the one-time token
+  never appears in `GeneratedTokenResumeState`, in any of its exports or in `repr()`,
+  so a resumed token has no `token`, and a resumed enrollment has no `timestamp`.
+  `InvoiceSubmissionResumeState` also keeps the session reference, and
+  `submission(state=...)` rejects a state from another session, or a call that
+  passes both a reference and a state, with `KSeFArgumentError` (#266).
+
+- Restore a finished invoice export from plain archive bytes with
+  `ExportedInvoices.from_archive(archive, compression="zip")`. Use `"tar_gz"`
+  for TarGz archives. Persist `ExportedInvoices.archive` directly; metadata is
+  read lazily from `_metadata.json`, and no package status or download URLs are
+  persisted. Invoice iteration and safe extraction work for both formats, and
+  async `wait()` returns the same result type (#276).
+
+- Authenticate with `with_xades(nip=..., credentials=XAdESCredentials...)`.
+  `XAdESCredentials.from_pem`, `.from_der` and `.from_pkcs12` load certificate,
+  private-key or archive bytes with an optional password. The holder stores loaded
+  cryptography objects, retains no password or input bytes, and hides both objects
+  in `repr()`. It has no Pydantic schema or JSON serialization API. Construction
+  rejects unsupported keys and mismatched certificate/key pairs once, before any
+  request. Authentication and signing reuse the loaded objects without private-key
+  serialization or reparsing. The existing `cert=`/`private_key=` form is unchanged.
+  Passing both forms or neither raises `KSeFArgumentError` (#267, #277).
+
 - Read complete invoice search responses with `responses()` and `first_response()`,
   including the permanent-storage checkpoint on empty pages. Correct the English
   and Polish incremental-sync examples (#258).
@@ -168,6 +218,14 @@ on the public API page for every alias and its replacement.
   `KSeFPermissionOperationFailedError`, `KSeFPermissionOperationTimeoutError`,
   `KSeFCertificateEnrollmentFailedError` and
   `KSeFCertificateEnrollmentTimeoutError` (#162, #163, #165).
+- Narrower exception classes, so callers can catch what they mean instead of
+  checking `ksef_code`: `KSeFNotFoundError` (KSeF codes 21164, 21173, 21175, 25005,
+  25008 and 71001), `KSeFServerError` (21184), `KSeFResponseValidationError`,
+  `KSeFProfileConfigError`, `KSeFSessionFailedError` and
+  `KSeFTokenActivationFailedError`. Codes 21301, 21304 and 21308 raise
+  `KSeFAuthError` even on HTTP 400. Every polling timeout derives from
+  `KSeFPollingTimeoutError`, which exposes `timeout`. All of them subclass the
+  classes callers already catch (#273).
 - `tokens.get_status()`, `sessions.terminate(reference_number)` and
   `permissions.revoke()` (#163).
 - `KSeFApiError.ksef_code` (the raw KSeF code, also for codes the SDK does not
@@ -206,6 +264,22 @@ on the public API page for every alias and its replacement.
   maps it to `max_poll_attempts` and warns, instead of silently using the 60-second
   default (#150).
 - `typing-extensions` is now a direct dependency, for `@deprecated` (#150).
+- Page any collection one cursor at a time with `pager.page(cursor)`, which returns
+  a `Page` holding `items` and `next_cursor`. A cursor is opaque, versioned SDK
+  state, so a job that stops, restarts, or hands work to another process continues
+  with the next request instead of replaying the pages it already read. Every
+  `Pager`-returning collection answers `page()`, and `pages()` plus iteration follow
+  the same cursor chain. An invoice search cursor carries the filters, parameters
+  and truncation boundary of the page it resumes, so a search continues across KSeF
+  truncation after a restart, and records which search issued it. A cursor from
+  another collection, from a different search, or one this SDK cannot read,
+  raises `KSeFArgumentError` before any request is sent, without echoing the
+  cursor back. Resume a search cursor on a search built with the same filters,
+  page size and sort order. An explicit `date_to` must match the original end
+  date; an omitted default uses the bound saved in the cursor. The cursor shows those filters in readable form,
+  so keep it out of logs and URLs. A truncated page that cannot advance is still
+  returned with its invoices, and resuming its cursor raises
+  `KSeFMetadataPaginationError` without sending a request (#265).
 
 ### Changed
 
@@ -229,10 +303,21 @@ on the public API page for every alias and its replacement.
   or a closed online or batch session (#169).
 - `KSeFAuthError.exception_code` now reflects the KSeF code instead of always
   being `UNKNOWN_ERROR` (#167).
+- `auth.tokens.list_page()` is supported, not deprecated: it stays the single
+  request that takes KSeF's own continuation token, which resumable `page()`
+  paging does not replace. `auth.tokens.list_all()` remains deprecated in favour
+  of `auth.tokens.list()` (#265).
+- `FormSchema` is written to JSON as its member name, such as `"FA3"`, in model
+  dumps, saved state and pagination cursors, and reads back from that name or from
+  the list form earlier versions wrote. A model holding a `FormSchema` now survives a
+  JSON round trip, so an invoice search filtered by `invoice_schema` resumes from its
+  cursor, and its JSON Schema is a string enum of the member names (#265).
 
 ### KSeF API
 
-- Targets KSeF OpenAPI 2.8.1; API coverage is 100% of the 83 endpoints in the spec.
+- Targets KSeF OpenAPI 2.9.0; API coverage is 100% of the 83 endpoints in the spec.
+  The personal-permissions query response gains `ownerPermissions` and the
+  `OwnerPermissionScope` enum in the raw models (#264).
 - Policy: a breaking change forced by KSeF itself may ship in a minor release under
   a "KSeF API changes" heading. Breaking changes the SDK chooses to make need a
   new major version.
@@ -286,6 +371,22 @@ Two earlier versions never reached PyPI. v0.21.0 was bumped but never tagged; it
 changes (OpenAPI 2.8.1) shipped in v0.22.0. The v0.22.1 tag points at a commit whose
 project version was still 0.22.0, so the publish run failed its version check; its
 fix (#118) shipped in v0.22.2. PyPI goes 0.20.0, 0.22.0, 0.22.2, 1.0.0.
+
+### Breaking
+
+- Wrap failed HTTP requests in `KSeFTransportError` (`code = "TRANSPORT_ERROR"`),
+  so no public method lets an `httpx` exception escape and every SDK failure is a
+  `KSeFException`. It covers every `httpx.RequestError`, plus `httpx.InvalidURL` and `httpx.StreamError`: connection and timeout
+  failures, a response the HTTP client could not decode, and an abandoned redirect
+  chain. The error carries the request `method`, the URL pathname as `path`
+  (userinfo, host, query and fragment are dropped) and `outcome_ambiguous` for
+  requests that may have reached KSeF; the original `httpx` exception stays
+  available as `__cause__`. It does not subclass `httpx.HTTPError`, so handlers
+  that caught `httpx.HTTPError` must name `KSeFTransportError` instead. Retries,
+  retryable statuses and API error classification are unchanged, and
+  `KSeFExternalTransferError`, `KSeFBatchUploadError` and
+  `KSeFAuthTokenRedemptionError` now derive from `KSeFTransportError` while keeping
+  their own codes, attributes and recovery behaviour (#268).
 
 ## v0.22.2 (2026-09-25)
 

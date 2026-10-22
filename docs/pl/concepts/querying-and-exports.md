@@ -17,8 +17,12 @@ wynik lokalnie i zasilać widoki operacyjne z własnego magazynu.
 ## Metadane znajdują faktury
 
 `auth.invoices.search()` zwraca `InvoiceSearchPager` po wierszach
-`InvoiceMetadata`. Iteruj go albo użyj `pages()`, `first_page()` i `wait()`.
-Te operacje zachowują kontrakty ogólnego `Pager`. Użyj `responses()` dla pełnych,
+`InvoiceMetadata`. Iteruj go albo użyj `pages()`, `first_page()`, `page(cursor)`
+i `wait()`. Te operacje zachowują kontrakty ogólnego `Pager`. `page(cursor)`
+pobiera jedną stronę i zwraca `next_cursor`, który pozwala wznowić to samo
+wyszukiwanie później, nawet w innym procesie. Tylko `next_cursor` równe `None`
+kończy wyszukiwanie: strona może być pusta i nadal wskazywać stronę następną.
+Użyj `responses()` dla pełnych,
 typowanych stron albo `first_response()` dla jednej `QueryInvoicesMetadataResponse`
 z flagami paginacji i `permanent_storage_hwm_date`.
 
@@ -71,6 +75,31 @@ paczki. Aby przetrwać restart, zapisz `job.resume_state().to_json()` jak
 poświadczenie i przekaż do `auth.invoices.export(state=...)`; nigdy go nie loguj.
 :::
 
+## Każdy asynchroniczny uchwyt zapisuje swój stan
+
+Eksport to nie jedyna operacja, która przeżywa wywołanie, które ją zaczęło.
+Uchwyty wygenerowanego tokenu, zgłoszenia certyfikatu, operacji uprawnień i
+wysłanej faktury zapisują i wznawiają pracę tak samo: `resume_state()` zwraca
+stan, `to_json()` go zapisuje, a jedna metoda klienta czyta go z powrotem.
+
+| Uchwyt | Zapisz przez | Wznów przez |
+| --- | --- | --- |
+| `ExportJob` | `job.resume_state()` | `auth.invoices.export(state=...)` |
+| `GeneratedToken` | `token.resume_state()` | `auth.tokens.generation(state)` |
+| `CertificateEnrollment` | `enrollment.resume_state()` | `auth.certificates.enrollment(state)` |
+| `PermissionOperation` | `operation.resume_state()` | `auth.permissions.operation(state)` |
+| `InvoiceSubmission` | `submission.resume_state()` | `session.submission(state=...)` |
+
+Tylko `ExportResumeState` zawiera sekrety. Pozostałe cztery stany trzymają numer
+referencyjny KSeF, a stan wysłania faktury dodatkowo wskazuje sesję, do której
+faktura trafiła, dlatego ich `to_dict()` i `to_json()` to zwykłe dane, a nie
+poświadczenie. W szczególności `GeneratedTokenResumeState` nigdy nie zawiera
+tokenu jednorazowego: to poświadczenie zapisuj osobno, jak wyżej.
+
+Wznowiony uchwyt odpytuje ten sam numer referencyjny co oryginalny. Nie wymyśla
+danych, których nie zapisano, więc wznowiony token nie ma `token`, a wznowione
+zgłoszenie certyfikatu nie ma `timestamp`.
+
 ## HWM jest granicą synchronizacji
 
 Dla automatycznej synchronizacji kluczowym pojęciem jest HWM: High Water Mark.
@@ -119,8 +148,9 @@ if next_checkpoint is not None:
 
 Pusta, zakończona odpowiedź również może zawierać granicę synchronizacji.
 Jeśli KSeF nie zwróci HWM albo ostatnia odpowiedź jest ucięta, zachowaj poprzednią
-granicę. W kodzie async użyj `async for page in pager.responses()` oraz
-`page = await pager.first_response()`.
+granicę. W kodzie async użyj `async for page in pager.responses()`,
+`page = await pager.first_response()` oraz
+`page = await pager.page(cursor)`, aby odczytać jedną stronę wraz z kursorem.
 
 `responses()` automatycznie obsługuje granice stron i uciętych wyników metadanych.
 Dla uciętej paczki eksportu kontynuuj od jej `last_permanent_storage_date`,

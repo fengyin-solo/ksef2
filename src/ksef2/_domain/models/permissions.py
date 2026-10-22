@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 
 from pydantic import Field, BaseModel
 
-from ksef2._domain.models.base import KSeFBaseModel
+from ksef2._domain.models.base import KSeFBaseModel, KSeFResumeState
 
 # ---------------------------------------------------------------------------
 # Type aliases (replace StrEnums)
@@ -276,6 +276,16 @@ class GrantPermissionsResponse(KSeFBaseModel):
 
     reference_number: str
     """KSeF reference number of the operation or resource."""
+
+
+class PermissionOperationResumeState(KSeFResumeState):
+    """Serializable state needed to resume a permission operation after a restart.
+
+    ``AsyncPermissionOperation.resume_state()`` returns it and
+    ``auth.permissions.operation(state)`` turns it back into a handle. The
+    reference number is all KSeF returned for the operation, so nothing else is
+    stored.
+    """
 
 
 class GrantPersonPermissionsRequest(KSeFBaseModel):

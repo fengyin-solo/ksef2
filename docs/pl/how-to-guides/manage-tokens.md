@@ -50,6 +50,26 @@ Timeout albo błąd transportu z `wait()` nie odrzuca zapisanego wcześniej
 credentiala. Wznów sprawdzanie później przez
 `auth.tokens.get_status(reference_number=...)`.
 
+### Wznów uchwyt po restarcie
+
+`token.resume_state()` zwraca `GeneratedTokenResumeState`: numer referencyjny
+tokena i nic więcej. Zapisz go przez `to_json()` i przekaż do
+`auth.tokens.generation()`, gdy pracownik kolejki albo restartowany proces
+przejmuje zadanie ponownie.
+
+```python
+zapisany_stan = token.resume_state().to_json()
+
+# Później, w tym samym lub innym procesie:
+token = auth.tokens.generation(zapisany_stan)
+status = token.wait(timeout=60.0, poll_interval=1.0)
+```
+
+`generation()` przyjmuje obiekt stanu albo jego JSON i zwraca uchwyt odpytujący
+ten sam numer referencyjny. Token jednorazowy nigdy nie trafia do stanu: ani w
+`to_json()`, ani w `to_dict()`, `model_dump()` czy `repr()`, dlatego wznowiony
+uchwyt nie ma `token` ani `response`. To poświadczenie zapisuj osobno sam.
+
 ## Listuj tokeny
 
 `list()` zwraca `Pager`: iteruj po nim, by dostać każdy token, wywołaj
@@ -83,6 +103,28 @@ first = auth.tokens.list().first_page()
 for page in auth.tokens.list().pages():
     print(len(page), "tokens on this page")
 ```
+
+### Wznów od kursora
+
+`.page()` zwraca jedną stronę `Page`: jej `items` oraz `next_cursor`, czyli
+napis wskazujący stronę następną. Zapisz ten napis i przekaż go później do
+`.page()`, w tym albo w nowym procesie, aby kontynuować bez ponownego pobierania
+tokenów już odczytanych.
+
+```python
+first = auth.tokens.list().page()
+cursor = first.next_cursor
+
+# Later, after a restart.
+if cursor is not None:
+    second = auth.tokens.list().page(cursor)
+```
+
+Odtwórz pager z tymi samymi parametrami: ten kursor zawiera stan kontynuacji
+KSeF dla tej kolekcji, a nie filtry. `.pages()` oraz zwykła iteracja korzystają
+z tego samego łańcucha kursorów, a `next_cursor` ma wartość `None` dopiero po
+ostatniej stronie. Sama pusta strona nie kończy przechodzenia po kolekcji. W kodzie
+async to samo odczytanie to `second = await auth.tokens.list().page(cursor)`.
 
 ## Sprawdź albo cofnij jeden token
 

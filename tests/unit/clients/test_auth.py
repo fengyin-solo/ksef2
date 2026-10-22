@@ -1,4 +1,5 @@
 import datetime
+import json
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -6,9 +7,16 @@ import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.serialization import (
+    Encoding,
+    NoEncryption,
+    PrivateFormat,
+)
+from cryptography.x509 import Certificate
 from cryptography.x509.oid import NameOID, ObjectIdentifier
 from polyfactory import BaseFactory
 
+from ksef2._clients.async_authenticated import AsyncAuthenticatedClient
 from ksef2._clients.auth import AuthClient
 from ksef2._clients.authenticated import AuthenticatedClient
 from ksef2._clients.session_management import SessionManagementClient
@@ -18,8 +26,10 @@ from ksef2._core.exceptions import (
     KSeFAuthError,
     KSeFAuthPollingTimeoutError,
     KSeFAuthTokenRedemptionError,
+    KSeFArgumentError,
+    KSeFTransportError,
     KSeFUnsupportedEnvironmentError,
-    KSeFValidationError,
+    KSeFProfileConfigError,
     NoCertificateAvailableError,
 )
 from ksef2._core.routes import AuthRoutes
@@ -28,9 +38,16 @@ from ksef2._domain.models import auth as domain_auth
 from ksef2._domain.models.encryption import PublicKeyCertificate
 from ksef2._infra.schema.api.supp.auth import InitTokenAuthenticationRequest
 from ksef2._infra.schema.api import spec
+from ksef2.xades import XAdESCredentials, XAdESPrivateKey
 from tests.unit.fakes.transport import FakeTransport
+from tests.unit.flavors import Flavor
 from tests.unit.helpers import VALID_BASE64
 from tests.unit.helpers import legacy_api
+from tests.unit.xades_material import (
+    CredentialFormat,
+    build_credentials,
+    public_key_der,
+)
 
 
 def _generate_ec_test_certificate(
@@ -145,10 +162,20 @@ class TestAuthClient:
             "Authorization": f"Bearer {init_response.authenticationToken.token}"
         }
 
+    @pytest.mark.parametrize(
+        ("failure", "message"),
+        [
+            (httpx.ReadError, "redemption response lost"),
+            (httpx.DecodingError, "redemption body undecodable"),
+        ],
+        ids=["read", "decoding"],
+    )
     @patch("ksef2._clients.auth.encrypt_token", return_value=VALID_BASE64)
     def test_with_token_reports_ambiguous_lost_redemption_response(
         self,
         _mock_encrypt_token: MagicMock,
+        failure: type[httpx.RequestError],
+        message: str,
         fake_transport: FakeTransport,
         domain_public_key_cert: BaseFactory[PublicKeyCertificate],
         auth_challenge_resp: BaseFactory[spec.AuthenticationChallengeResponse],
@@ -161,7 +188,7 @@ class TestAuthClient:
         status_response = auth_status_resp.build(
             status=spec.StatusInfo(code=200, description="Authenticated")
         )
-        transport_error = httpx.ReadError("redemption response lost")
+        transport_error = failure(message)
         fake_transport.enqueue(
             auth_challenge_resp.build(timestampMs=1735689600000).model_dump(mode="json")
         )
@@ -354,6 +381,144 @@ class TestAuthClient:
 
         assert isinstance(result, AuthenticatedClient)
         assert len(fake_transport.calls) == 4
+
+    @pytest.mark.parametrize("credential_format", ["pem", "der", "pkcs12"])
+    @pytest.mark.parametrize("encrypted", [False, True], ids=["plain", "password"])
+    @patch("ksef2.xades.sign_xades")
+    @patch(
+        "ksef2.xades.build_auth_token_request_xml",
+        return_value=b"<AuthTokenRequest />",
+    )
+    def test_with_xades_accepts_data_credentials(
+        self,
+        _mock_build_xml: MagicMock,
+        mock_sign_xades: MagicMock,
+        credential_format: CredentialFormat,
+        encrypted: bool,
+        flavor: Flavor,
+        domain_public_key_cert: BaseFactory[PublicKeyCertificate],
+        auth_challenge_resp: BaseFactory[spec.AuthenticationChallengeResponse],
+        auth_init_resp: BaseFactory[spec.AuthenticationInitResponse],
+        auth_status_resp: BaseFactory[spec.AuthenticationOperationStatusResponse],
+        auth_tokens_resp: BaseFactory[spec.AuthenticationTokensResponse],
+    ) -> None:
+        client = flavor.auth_client(
+            _token_store(domain_public_key_cert.build(usage=["ksef_token_encryption"])),
+        )
+        challenge = auth_challenge_resp.build()
+        init_response = auth_init_resp.build()
+        status_response = auth_status_resp.build(
+            status=spec.StatusInfo(code=200, description="Authenticated")
+        )
+        tokens_response = auth_tokens_resp.build()
+        for response in (challenge, init_response, status_response, tokens_response):
+            flavor.transport.enqueue(response.model_dump(mode="json"))
+        cert, private_key = generate_test_certificate("1234567890")
+        password = b"data-credentials-password" if encrypted else None
+        credentials = build_credentials(
+            cert, private_key, credential_format, password=password
+        )
+        signed_with: list[tuple[Certificate, XAdESPrivateKey]] = []
+
+        def record_and_sign(
+            xml_bytes: bytes, signing_cert: Certificate, signing_key: XAdESPrivateKey
+        ) -> bytes:
+            signed_with.append((signing_cert, signing_key))
+            return b"<SignedXML />"
+
+        mock_sign_xades.side_effect = record_and_sign
+
+        with patch(
+            "ksef2._domain.models.xades._usable_pair",
+            side_effect=AssertionError("credentials were validated again"),
+        ):
+            result = flavor.run(
+                client.with_xades(
+                    nip="1234567890",
+                    credentials=credentials,
+                    verify_chain=True,
+                )
+            )
+
+        assert isinstance(
+            result, AsyncAuthenticatedClient if flavor.is_async else AuthenticatedClient
+        )
+        assert len(flavor.transport.calls) == 4
+        assert len(signed_with) == 1
+        used_cert, used_key = signed_with[0]
+        assert used_cert is credentials.certificate
+        assert used_key is credentials.private_key
+        assert used_cert.public_bytes(Encoding.DER) == cert.public_bytes(Encoding.DER)
+        assert public_key_der(used_key) == public_key_der(private_key)
+        xades_call = flavor.transport.calls[1]
+        assert xades_call.path == AuthRoutes.XADES_SIGNATURE
+        assert xades_call.content == b"<SignedXML />"
+        assert xades_call.params is not None
+        assert xades_call.params["verifyCertificateChain"] == "true"
+
+    def test_with_xades_rejects_mixed_or_incomplete_credentials(
+        self,
+        flavor: Flavor,
+    ) -> None:
+        client = flavor.auth_client()
+        cert, private_key = generate_test_certificate("1234567890")
+        credentials = XAdESCredentials.from_pem(
+            cert.public_bytes(Encoding.PEM),
+            private_key.private_bytes(
+                Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()
+            ),
+        )
+
+        # Both forms, one form with a leftover half of the other, and neither form.
+        with pytest.raises(KSeFArgumentError):
+            _ = flavor.run(
+                client.with_xades(
+                    nip="1234567890",
+                    credentials=credentials,
+                    cert=cert,
+                    private_key=private_key,
+                )
+            )
+        with pytest.raises(KSeFArgumentError):
+            _ = flavor.run(
+                client.with_xades(nip="1234567890", credentials=credentials, cert=cert)
+            )
+        with pytest.raises(KSeFArgumentError):
+            _ = flavor.run(
+                client.with_xades(
+                    nip="1234567890", credentials=credentials, private_key=private_key
+                )
+            )
+        with pytest.raises(KSeFArgumentError):
+            _ = flavor.run(client.with_xades(nip="1234567890"))
+        with pytest.raises(KSeFArgumentError):
+            _ = flavor.run(client.with_xades(nip="1234567890", cert=cert))
+        with pytest.raises(KSeFArgumentError):
+            _ = flavor.run(client.with_xades(nip="1234567890", private_key=private_key))
+
+        assert flavor.transport.calls == []
+
+    @pytest.mark.parametrize("invalid", ["unreadable", "mismatched"])
+    def test_with_xades_rejects_invalid_credentials_before_challenge(
+        self, invalid: str, flavor: Flavor
+    ) -> None:
+        client = flavor.auth_client()
+        cert, _ = generate_test_certificate("1234567890")
+        _, other_key = generate_test_certificate("1234567890")
+        cert_pem = (
+            b"junk" if invalid == "unreadable" else cert.public_bytes(Encoding.PEM)
+        )
+        key_pem = other_key.private_bytes(
+            Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()
+        )
+        with pytest.raises(KSeFArgumentError):
+            flavor.run(
+                client.with_xades(
+                    nip="1234567890",
+                    credentials=XAdESCredentials.from_pem(cert_pem, key_pem),
+                )
+            )
+        assert flavor.transport.calls == []
 
     def test_refresh(
         self,
@@ -564,7 +729,7 @@ class TestAuthClient:
         )
         client = _build_auth_client(fake_transport, environment=Environment.TEST)
 
-        with pytest.raises(KSeFValidationError, match="profile 'prod-token' uses"):
+        with pytest.raises(KSeFProfileConfigError, match="profile 'prod-token' uses"):
             _ = client.with_profile("prod-token", config_path=config_path)
 
     def test_with_profile_requires_token_environment_variable(
@@ -589,7 +754,7 @@ class TestAuthClient:
         monkeypatch.delenv("KSEF2_TOKEN", raising=False)
         client = _build_auth_client(fake_transport, environment=Environment.PRODUCTION)
 
-        with pytest.raises(KSeFValidationError, match="KSEF2_TOKEN is not set"):
+        with pytest.raises(KSeFProfileConfigError, match="KSEF2_TOKEN is not set"):
             _ = client.with_profile("prod-token", config_path=config_path)
 
 
@@ -666,3 +831,86 @@ class TestSessionManagementClient:
         assert call.path == AuthRoutes.TERMINATE_AUTH_SESSION.format(
             referenceNumber="ref-123"
         )
+
+
+@pytest.mark.parametrize(
+    ("failure", "message"),
+    [
+        (httpx.ReadError, "redemption response lost"),
+        (httpx.DecodingError, "redemption body undecodable"),
+    ],
+    ids=["read", "decoding"],
+)
+def test_redemption_transport_error_keeps_the_redemption_contract(
+    flavor: Flavor,
+    failure: type[httpx.RequestError],
+    message: str,
+    domain_public_key_cert: BaseFactory[PublicKeyCertificate],
+    auth_challenge_resp: BaseFactory[spec.AuthenticationChallengeResponse],
+    auth_init_resp: BaseFactory[spec.AuthenticationInitResponse],
+    auth_status_resp: BaseFactory[spec.AuthenticationOperationStatusResponse],
+) -> None:
+    """The wrapped request failure still ends as the one-shot redemption error."""
+    requests: list[httpx.Request] = []
+    challenge = auth_challenge_resp.build(timestampMs=1735689600000).model_dump(
+        mode="json"
+    )
+    init = auth_init_resp.build().model_dump(mode="json")
+    status = auth_status_resp.build(
+        status=spec.StatusInfo(code=200, description="Authenticated")
+    ).model_dump(mode="json")
+
+    def _handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        path = request.url.path
+        if path.endswith(AuthRoutes.REDEEM_TOKEN.path):
+            raise failure(message, request=request)
+        if path.endswith(AuthRoutes.CHALLENGE.path):
+            return httpx.Response(200, json=challenge, request=request)
+        if path.endswith(AuthRoutes.TOKEN_AUTH.path):
+            return httpx.Response(200, json=init, request=request)
+        if request.method == "GET":
+            return httpx.Response(200, json=status, request=request)
+        raise AssertionError(f"unexpected request {request.method} {path}")
+
+    store = CertificateStore()
+    _ = store.load([domain_public_key_cert.build(usage=["ksef_token_encryption"])])
+
+    http_client = (httpx.AsyncClient if flavor.is_async else httpx.Client)(
+        base_url=Environment.PRODUCTION.base_url,
+        transport=httpx.MockTransport(_handle),
+    )
+    client = flavor.root_client(
+        environment=Environment.PRODUCTION,
+        http_client=http_client,
+        certificate_store=store,
+    )
+    auth_module = "async_auth" if flavor.is_async else "auth"
+    try:
+        with patch(
+            f"ksef2._clients.{auth_module}.encrypt_token", return_value=VALID_BASE64
+        ):
+            with pytest.raises(KSeFAuthTokenRedemptionError) as exc_info:
+                _ = flavor.run(
+                    client.authentication.with_token(
+                        ksef_token="ksef-token", nip="1234567890"
+                    )
+                )
+    finally:
+        flavor.close(client)
+        flavor.close(http_client)
+
+    error = exc_info.value
+    assert isinstance(error, KSeFTransportError)
+    assert isinstance(error.__cause__, failure)
+    assert error.outcome_ambiguous is True
+    assert error.method == "POST"
+    assert error.path == AuthRoutes.REDEEM_TOKEN.path
+    redemption_requests = [
+        request
+        for request in requests
+        if request.url.path.endswith(AuthRoutes.REDEEM_TOKEN.path)
+    ]
+    assert len(redemption_requests) == 1
+    assert "ksef-token" not in str(error)
+    assert "ksef-token" not in json.dumps(error.context, default=str)

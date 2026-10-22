@@ -2,10 +2,15 @@
 
 from typing import Any, Literal, override
 from pydantic import BaseModel
+from urllib.parse import urlsplit
 from enum import IntEnum
 
+from ksef2._core import routes
 from ksef2._domain.models.batch import PreparedBatch
-from ksef2._domain.models.session import SessionInvoiceStatusResponse
+from ksef2._domain.models.session import (
+    SessionInvoiceStatusResponse,
+    SessionStatusResponse,
+)
 
 
 class ExceptionCode(IntEnum):
@@ -188,6 +193,96 @@ class KSeFException(Exception):
         return f"{message}\nHint: {self.hint}"
 
 
+class KSeFPollingTimeoutError(KSeFException):
+    """Base error for workflows that exceed their polling timeout.
+
+    Args:
+        message: Human-readable timeout message.
+        timeout: Number of seconds waited.
+        hint: Next step for this occurrence; overrides the class default.
+        **context: Additional structured workflow details.
+    """
+
+    code: str = "POLLING_TIMEOUT"
+    hint: str | None = None
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        timeout: float,
+        hint: str | None = None,
+        **context: Any,  # pyright: ignore[reportAny, reportExplicitAny]
+    ) -> None:
+        self.timeout = timeout
+        super().__init__(message, hint=hint, timeout=timeout, **context)
+
+
+def _pathname(request_target: str) -> str:
+    """Return the URL pathname of a request target, dropping every other part.
+
+    Userinfo, host, query and fragment are removed, so a presigned URL or a path
+    carrying a token in its query string cannot be kept in an error payload. A
+    target the parser rejects keeps no path at all.
+    """
+    try:
+        return urlsplit(request_target).path or "/"
+    except ValueError:
+        return "/"
+
+
+class KSeFTransportError(KSeFException):
+    """Raised when an HTTP request produces no response the SDK can use.
+
+    The request may have failed on the way to KSeF, returned a response the HTTP
+    client could not decode, or followed a redirect chain it gave up on. Retryable
+    requests are retried first, so this error means the retries were used up or the
+    request was not safe to retry. The original ``httpx`` exception is the
+    ``__cause__`` and may repeat request details that are not in ``message``,
+    ``str(exc)`` or ``context``: read it only in a protected log, never put it in a
+    message shown to a user or in a generic error dump.
+
+    Args:
+        message: Human-readable error message.
+        hint: Next step for this occurrence; overrides the class default.
+        method: HTTP method of the failed request, ``None`` when the SDK does not know it.
+        path: Request target, kept as its URL pathname; userinfo, host, query and fragment are dropped.
+        outcome_ambiguous: Whether the request may have reached KSeF despite the failure.
+        **context: Additional structured details, stored in ``context``. ``code`` is
+            reserved: it always reports the code of the exception class.
+
+    Attributes:
+        method: HTTP method of the failed request, or ``None``.
+        path: Pathname of the failed request, or ``None`` when the SDK did not record one.
+        outcome_ambiguous: Whether KSeF may have processed the request despite the failure. Read it before sending the request again; it does not say the retry is safe.
+    """
+
+    code: str = "TRANSPORT_ERROR"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        hint: str | None = None,
+        method: str | None = None,
+        path: str | None = None,
+        outcome_ambiguous: bool = False,
+        **context: object,
+    ) -> None:
+        self.method = method
+        self.path = None if path is None else _pathname(path)
+        self.outcome_ambiguous = outcome_ambiguous
+        super().__init__(message, hint=hint)
+        # ``code`` belongs to the class, so extra context must not replace it.
+        _ = context.pop("code", None)
+        self.context.update(context)
+        if method is not None:
+            self.context["method"] = method
+        if self.path is not None:
+            self.context["path"] = self.path
+        self.context["outcome_ambiguous"] = outcome_ambiguous
+
+
 class KSeFClientClosedError(KSeFException):
     """Raised when an SDK client is used after it has been closed."""
 
@@ -210,6 +305,18 @@ class KSeFValidationError(KSeFException):
     """
 
     code: str = "VALIDATION_ERROR"
+
+
+class KSeFResponseValidationError(KSeFValidationError):
+    """Raised when a response or exported metadata fails SDK model validation."""
+
+    code: str = "RESPONSE_VALIDATION_ERROR"
+
+
+class KSeFProfileConfigError(KSeFValidationError):
+    """Raised when profile configuration or credentials cannot be loaded or saved."""
+
+    code: str = "PROFILE_CONFIG_ERROR"
 
 
 class KSeFArgumentError(KSeFValidationError, TypeError):  # pyright: ignore[reportUnsafeMultipleInheritance]
@@ -294,6 +401,54 @@ class KSeFApiError(KSeFException):
             trace_id=trace_id,
             details=self.details,
         )
+
+
+class KSeFTokenActivationFailedError(KSeFApiError):
+    """Raised when a generated token fails activation or is revoked.
+
+    Args:
+        reference_number: Reference number of the generated token.
+        token_status: Terminal activation status returned by KSeF.
+        hint: Next step for this occurrence; overrides the class default.
+    """
+
+    code: str = "TOKEN_ACTIVATION_FAILED"
+    hint: str | None = (
+        "Generate a new token with `generate()`, or inspect the token status with `get_status()`."
+    )
+
+    def __init__(
+        self,
+        reference_number: str,
+        token_status: str,
+        *,
+        hint: str | None = None,
+    ) -> None:
+        self.reference_number = reference_number
+        self.token_status = token_status
+        super().__init__(
+            0,
+            ExceptionCode.UNKNOWN_ERROR,
+            f"Token activation failed: status={token_status}",
+            hint=hint,
+        )
+        self.context.update(
+            reference_number=reference_number, token_status=token_status
+        )
+
+
+class KSeFNotFoundError(KSeFApiError):
+    """Raised when KSeF cannot find a requested resource."""
+
+    code: str = "NOT_FOUND"
+    hint: str | None = None
+
+
+class KSeFServerError(KSeFApiError):
+    """Raised when KSeF is unavailable or reports a server failure."""
+
+    code: str = "SERVER_ERROR"
+    hint: str | None = None
 
 
 class KSeFNotReadyError(KSeFApiError):
@@ -450,15 +605,20 @@ class KSeFRateLimitError(KSeFApiError):
         self.context["retry_after"] = retry_after
 
 
-class KSeFExternalTransferError(KSeFException):
+class KSeFExternalTransferError(KSeFTransportError):
     """Raised when a presigned external-storage transfer fails.
+
+    It subclasses ``KSeFTransportError``, so one handler covers rejected answers
+    and requests that produced no usable response. Storage answers are classified
+    here and not as KSeF API errors: a storage ``403`` does not raise
+    ``KSeFAuthError``.
 
     Args:
         operation: Direction of the failed transfer, ``upload`` or ``download``.
         host: Host of the presigned URL.
         reference_number: KSeF reference number the transfer belongs to.
         part_ordinal: One-based number of the part being transferred.
-        status_code: HTTP status code returned by external storage; ``None`` if no response was received.
+        status_code: HTTP status code returned by external storage; ``None`` when the transfer produced no usable response.
         outcome_ambiguous: Whether the transfer may have succeeded despite the failure.
 
     Attributes:
@@ -468,6 +628,8 @@ class KSeFExternalTransferError(KSeFException):
         part_ordinal: One-based number of the part being transferred.
         status_code: HTTP status code returned by external storage, or ``None``.
         outcome_ambiguous: Whether the transfer may have succeeded despite the failure.
+        method: Always ``None``; the signed URL is never kept as a request path.
+        path: Always ``None``; the signed URL is never kept as a request path.
     """
 
     code: str = "EXTERNAL_TRANSFER_ERROR"
@@ -490,9 +652,7 @@ class KSeFExternalTransferError(KSeFException):
         self.outcome_ambiguous = outcome_ambiguous
 
         status = (
-            f"status {status_code}"
-            if status_code is not None
-            else "no response received"
+            f"status {status_code}" if status_code is not None else "no usable response"
         )
         super().__init__(
             f"External storage {operation} failed for host {host} "
@@ -606,9 +766,55 @@ class KSeFSessionError(KSeFException):
         super().__init__(f"{self.code}: {message}", hint=hint)
 
 
+class KSeFSessionFailedError(KSeFSessionError):
+    """Raised when online or batch session processing reaches a failed status.
+
+    Args:
+        reference_number: Reference number of the failed session.
+        status: Session status response returned by KSeF.
+        session_kind: Session workflow named in the failure message.
+        hint: Next step for this occurrence; overrides the class default.
+
+    Attributes:
+        reference_number: Reference number of the failed session.
+        status: Original session status response.
+        session_status_code: KSeF session status code, not an HTTP status.
+        description: KSeF description of the failed status.
+        details: Copy of the status detail messages.
+    """
+
+    code: str = "SESSION_FAILED"
+    hint: str | None = "See why invoices failed with `list_failed_invoices()`."
+
+    def __init__(
+        self,
+        reference_number: str,
+        status: SessionStatusResponse,
+        *,
+        session_kind: Literal["Online", "Batch"] = "Online",
+        hint: str | None = None,
+    ) -> None:
+        self.reference_number = reference_number
+        self.status = status
+        self.session_status_code = status.status.code
+        self.description = status.status.description
+        self.details = list(status.status.details or [])
+        super().__init__(
+            f"{session_kind} session processing failed: "
+            f"{reference_number} ({self.session_status_code}: {self.description})",
+            hint=hint,
+        )
+        self.context.update(
+            reference_number=reference_number,
+            session_status_code=self.session_status_code,
+            description=self.description,
+            details=self.details,
+        )
+
+
 _DUPLICATE_INVOICE_HINT = (
     "KSeF already holds this invoice (status 440). `extensions` carries "
-    "`originalKsefNumber`: fetch it with `download()` and compare it with what you sent."
+    "`originalKsefNumber`: fetch it with `auth.invoices.download()` and compare it with what you sent."
 )
 
 
@@ -692,7 +898,7 @@ class NoCertificateAvailableError(KSeFException):
         super().__init__(f"{self.code}: {message}")
 
 
-class KSeFExportTimeoutError(KSeFException):
+class KSeFExportTimeoutError(KSeFPollingTimeoutError):
     """Raised when polling for an export package exceeds the timeout.
 
     Args:
@@ -815,7 +1021,7 @@ class KSeFPermissionOperationFailedError(KSeFException):
         )
 
 
-class KSeFPermissionOperationTimeoutError(KSeFException):
+class KSeFPermissionOperationTimeoutError(KSeFPollingTimeoutError):
     """Raised when polling for a permission operation to finish exceeds the timeout.
 
     Args:
@@ -900,7 +1106,7 @@ class KSeFCertificateEnrollmentFailedError(KSeFException):
         )
 
 
-class KSeFCertificateEnrollmentTimeoutError(KSeFException):
+class KSeFCertificateEnrollmentTimeoutError(KSeFPollingTimeoutError):
     """Raised when polling for a certificate to be issued exceeds the timeout.
 
     Args:
@@ -932,7 +1138,7 @@ class KSeFCertificateEnrollmentTimeoutError(KSeFException):
         )
 
 
-class KSeFAuthPollingTimeoutError(KSeFException):
+class KSeFAuthPollingTimeoutError(KSeFPollingTimeoutError):
     """Raised when polling for authentication completion exceeds the timeout.
 
     Args:
@@ -965,25 +1171,33 @@ class KSeFAuthPollingTimeoutError(KSeFException):
         )
 
 
-class KSeFAuthTokenRedemptionError(KSeFException):
-    """Raised when a one-shot authentication token redemption loses its response.
+class KSeFAuthTokenRedemptionError(KSeFTransportError):
+    """Raised when a one-shot authentication token redemption gets no usable response.
+
+    It subclasses ``KSeFTransportError``, so handlers of request failures catch it
+    too. Only the redemption request is recorded: the one-shot token is never part
+    of the message, ``str(exc)`` or ``context``.
 
     Attributes:
+        method: Always ``POST``; the HTTP method of the redemption request.
+        path: Always ``/auth/token/redeem``; the pathname of the redemption request.
         outcome_ambiguous: Always ``True``; the redemption may have succeeded.
     """
 
     code: str = "AUTH_TOKEN_REDEMPTION_ERROR"
 
     def __init__(self) -> None:
-        self.outcome_ambiguous = True
         super().__init__(
-            "Authentication token redemption may have succeeded, but its response "
-            "was lost. Do not retry the one-shot redemption automatically.",
+            "Authentication token redemption may have succeeded, but it produced "
+            "no usable response. Do not retry the one-shot redemption "
+            "automatically.",
+            method=routes.AuthRoutes.REDEEM_TOKEN.method,
+            path=routes.AuthRoutes.REDEEM_TOKEN.path,
             outcome_ambiguous=True,
         )
 
 
-class KSeFTokenStatusTimeoutError(KSeFException):
+class KSeFTokenStatusTimeoutError(KSeFPollingTimeoutError):
     """Raised when polling for a token status change exceeds the timeout.
 
     Args:
@@ -1015,7 +1229,7 @@ class KSeFTokenStatusTimeoutError(KSeFException):
         )
 
 
-class KSeFInvoiceQueryTimeoutError(KSeFException):
+class KSeFInvoiceQueryTimeoutError(KSeFPollingTimeoutError):
     """Raised when polling for invoices to appear exceeds the timeout.
 
     Args:
@@ -1045,7 +1259,7 @@ class KSeFMetadataPaginationError(KSeFException):
     code: str = "METADATA_PAGINATION_ERROR"
 
 
-class KSeFInvoiceDownloadTimeoutError(KSeFException):
+class KSeFInvoiceDownloadTimeoutError(KSeFPollingTimeoutError):
     """Raised when polling for an invoice download exceeds the timeout.
 
     Args:
@@ -1073,7 +1287,7 @@ class KSeFInvoiceDownloadTimeoutError(KSeFException):
         )
 
 
-class KSeFInvoiceProcessingTimeoutError(KSeFException):
+class KSeFInvoiceProcessingTimeoutError(KSeFPollingTimeoutError):
     """Raised when polling for a session invoice to finish processing exceeds the timeout.
 
     Args:
@@ -1103,7 +1317,7 @@ class KSeFInvoiceProcessingTimeoutError(KSeFException):
         )
 
 
-class KSeFOnlineSessionTimeoutError(KSeFException):
+class KSeFOnlineSessionTimeoutError(KSeFPollingTimeoutError):
     """Raised when polling for an online session to finish processing exceeds the timeout.
 
     Args:
@@ -1132,7 +1346,7 @@ class KSeFOnlineSessionTimeoutError(KSeFException):
         )
 
 
-class KSeFBatchSessionTimeoutError(KSeFException):
+class KSeFBatchSessionTimeoutError(KSeFPollingTimeoutError):
     """Raised when polling for a batch session to finish processing exceeds the timeout.
 
     Args:

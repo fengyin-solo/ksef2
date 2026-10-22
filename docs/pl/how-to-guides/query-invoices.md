@@ -81,6 +81,54 @@ for invoice in auth.invoices.search(filters, params):
     print(invoice.ksef_number, invoice.invoice_number)
 ```
 
+## Wznów od kursora
+
+`page()` pobiera jedną stronę i zwraca obiekt `Page`: jego `items` oraz
+`next_cursor`, czyli napis wskazujący stronę następną. Zapisz ten napis i
+przekaż go później do `page()`, w tym samym albo w nowym procesie, a
+wyszukiwanie będzie kontynuowane w miejscu przerwania, bez ponownego pobierania
+stron już odczytanych.
+
+```python
+params = InvoiceMetadataParams(page_size=100, sort_order="asc")
+
+first = auth.invoices.search(filters, params).page()
+cursor = first.next_cursor
+
+for invoice in first.items:
+    print(invoice.ksef_number, invoice.invoice_number)
+
+# Later, after a restart, with the cursor you kept.
+if cursor is not None:
+    second = auth.invoices.search(filters, params).page(cursor)
+
+    for invoice in second.items:
+        print(invoice.ksef_number, invoice.invoice_number)
+```
+
+Kursor wyszukiwania faktur zawiera całe następne żądanie: filtr, rozmiar strony,
+kolejność sortowania oraz granicę obcięcia, na której zatrzymał się KSeF, więc
+wznowione wyszukiwanie zachowuje pozycję nawet wtedy, gdy KSeF zawęził zakres
+dat. Wznów je na wyszukiwaniu zbudowanym z tym samym filtrem, rozmiarem strony i
+kolejnością sortowania. Jawnie podane `date_to` musi odpowiadać pierwotnej dacie
+końcowej. Jeśli je pominiesz, wznowione wyszukiwanie użyje daty zapisanej w kursorze. Kursor z innego wyszukiwania zgłasza `KSeFArgumentError`
+przed wysłaniem jakiegokolwiek żądania. Kursor pokazuje te filtry, w tym numery
+NIP i numery faktur, w czytelnej postaci, więc nie zapisuj go w logach ani w
+adresach URL. `next_cursor` ma wartość `None` dopiero po
+przeczytaniu ostatniej strony; strona może być pusta i nadal przekazywać kursor
+następnej. W kodzie async to samo odczytanie to
+`second = await auth.invoices.search(filters, params).page(cursor)`.
+
+`pages()` oraz zwykła iteracja korzystają z tego samego łańcucha kursorów, więc
+kursorami zajmujesz się tylko wtedy, gdy chcesz przerwać i kontynuować później.
+
+:::note[Kursory są nieprzezroczyste]
+Kursor to stan SDK, a nie numer strony, który obliczasz. Kursor z innej
+kolekcji albo taki, którego SDK nie potrafi odczytać, zgłasza
+`KSeFArgumentError` przed wysłaniem jakiegokolwiek żądania, a komunikat nie
+powtarza wtedy tego kursora.
+:::
+
 ## Znajdź konkretną fakturę
 
 Jeśli znasz własny numer faktury, dodaj go do filtra. Jeśli masz już numer KSeF,

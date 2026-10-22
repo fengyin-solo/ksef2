@@ -9,8 +9,9 @@ from typing import final
 from typing_extensions import deprecated
 
 from ksef2._clients._pager import Pager
+from ksef2._clients._pagination_cursor import OffsetCursor
 from ksef2._core.protocols import Middleware
-from ksef2._domain.models.pagination import OffsetPaginationParams
+from ksef2._domain.models.pagination import OffsetPaginationParams, Page
 from ksef2._domain.models.peppol import ListPeppolProvidersResponse, PeppolProvider
 from ksef2._endpoints.peppol import PeppolEndpoints
 from ksef2._infra.mappers.peppol import from_spec
@@ -21,14 +22,14 @@ class PeppolClient:
     """Service for querying Peppol service providers.
 
     Catch ``KSeFException`` for SDK-classified failures raised by this branch,
-    and ``httpx.HTTPError`` for transport failures.
+    including ``KSeFTransportError`` for transport failures.
 
     Raises:
         KSeFApiError: If KSeF returns an API error response. Catch
             ``KSeFAuthError`` for authentication or authorization failures and
             ``KSeFRateLimitError`` for throttling.
         KSeFValidationError: If a KSeF response cannot be parsed into SDK models.
-        httpx.HTTPError: If the HTTP transport fails before KSeF returns a response.
+        KSeFTransportError: If the HTTP request fails to produce a usable response.
     """
 
     def __init__(self, transport: Middleware):
@@ -113,8 +114,8 @@ class PeppolClient:
         """List the registered Peppol service providers.
 
         Nothing is requested until the result is consumed. Iterate it for every
-        provider, call ``pages()`` for page-sized lists or ``first_page()`` for one
-        request only.
+        provider, call ``pages()`` for page-sized lists, ``first_page()`` for one
+        request only, or ``page()`` to walk it with a resumable cursor.
 
         Args:
             params: Page size and offset of the first page; defaults are used when ``None``.
@@ -128,9 +129,24 @@ class PeppolClient:
                 print(provider.id, provider.name)
             ```
         """
+        parameters = params or OffsetPaginationParams()
 
-        def _provider_pages() -> Generator[list[PeppolProvider], None]:
-            for page in self._pages(params):
-                yield page.providers
+        def _fetch_page(cursor: str | None) -> Page[PeppolProvider]:
+            page_params = (
+                parameters
+                if cursor is None
+                else parameters.with_page_offset(
+                    OffsetCursor.decode(cursor, operation="peppol.list").page_offset
+                )
+            )
+            response = self._query(params=page_params)
+            return Page[PeppolProvider](
+                items=response.providers,
+                next_cursor=OffsetCursor.encode_next(
+                    operation="peppol.list",
+                    page_offset=page_params.page_offset,
+                    has_more=response.has_more,
+                ),
+            )
 
-        return Pager(_provider_pages)
+        return Pager(fetch_page=_fetch_page)

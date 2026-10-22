@@ -38,7 +38,8 @@ historia sesji faktur służą do inspekcji albo administracji.
 
 Sesja online jest interaktywną ścieżką wysyłki. Otwiera się ją dla schematu
 formularza, na przykład `FormSchema.FA3`, a potem wysyła faktury pojedynczo do
-tej sesji.
+tej sesji. W formacie JSON (zrzuty modeli, zapisany stan i kursory stronicowania)
+`FormSchema` jest zapisywany jako nazwa elementu, np. `"FA3"`.
 
 Otwarcie sesji jest lekką operacją. SDK ładuje publiczny certyfikat szyfrowania
 KSeF, tworzy materiał szyfrowania sesji, otwiera zdalną sesję i zwraca
@@ -156,6 +157,34 @@ w chronionym magazynie zapewnionym przez aplikację. Ogólne repr i model_dump
 pomijają bajty paczki i klucze. JSON stanu celowo zawiera sekrety i URL-e uploadu,
 ale nie bajty przygotowanej paczki. Starsze stany bez skrótu paczki nadal
 umożliwiają pobieranie statusu i UPO, lecz nie dołączenie paczki do uploadu.
+
+Aby zachować przygotowaną paczkę po restarcie, zapisz
+`prepared.to_sensitive_json()` w chronionym magazynie. Odtwórz ją przez
+`PreparedBatch.from_sensitive_json(saved)` i przekaż jako `prepared_batch=` razem
+z zapisanym stanem sesji. Eksport stanowi materiał uwierzytelniający: zawiera klucz
+AES i zaszyfrowane faktury. Ogólne dumpy modeli i repr nigdy ich nie zawierają.
+
+```python
+from ksef2.models import PreparedBatch
+
+# Zapisz oba ciągi w chronionym magazynie przed restartem.
+saved = prepared.to_sensitive_json()
+saved_state = session.resume_state().to_json()
+
+# Po restarcie odczytaj oba ciągi z chronionego magazynu.
+restored = PreparedBatch.from_sensitive_json(saved)
+with auth.batch_session(state=saved_state, prepared_batch=restored) as session:
+    session.upload_parts()
+```
+
+Format zapisu to `{"version": "1", "payload": {...}}`. Obie metody eksportu sekretów
+zwracają tę samą strukturę zgodną z JSON, z zaszyfrowanymi częściami jako Base64
+bezpieczne dla URL z dopełnieniem. Dla słownika użyj `from_sensitive_dict()`.
+Wersje to łańcuchy liczb rozdzielonych kropkami, np. `"1"` lub `"1.2"`; czytniki przyjmują wersję główną 1 oraz liczbę `1`. Czytniki odrzucają brak wersji, błędne wersje, wyższe wersje główne i nieznane pola przez
+`ValueError` bez ujawniania zapisanych wartości. Niewersjonowane eksporty
+z wersji rozwojowej nie są obsługiwane. Czytniki w serii 1.x zachowują obsługę wydanych wersji zapisu. Niezgodne
+formaty wymagają nowej wersji i udokumentowanej migracji. Ogólna walidacja Pydantic nie
+odczytuje tego formatu. Stany wznowienia sesji zachowują dotychczasowy format.
 
 ## Stan, status i historia
 

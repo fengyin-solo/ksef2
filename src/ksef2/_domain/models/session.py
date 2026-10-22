@@ -23,7 +23,12 @@ from pydantic.json_schema import JsonSchemaValue
 from pydantic_core import core_schema
 from typing_extensions import deprecated
 
-from ksef2._domain.models.base import KSeFBaseModel, KSeFPersistedModel
+from ksef2._domain.models.base import (
+    CURRENT_FORMAT_VERSION,
+    KSeFBaseModel,
+    KSeFPersistedModel,
+    PersistedFormatVersion,
+)
 
 
 def _validate_encoded_session_secret(
@@ -442,8 +447,8 @@ class BaseSessionResumeState(KSeFPersistedModel):
         The alias ``BaseSessionState`` may be removed no earlier than ksef2 2.0.0; use ``BaseSessionResumeState``. An ``access_token`` key in restored state is ignored and also deprecated; persist ``AuthenticationResumeState`` separately instead.
     """
 
-    format_version: Literal[1] = 1
-    """Version of the serialized state format; currently always ``1``."""
+    format_version: PersistedFormatVersion = CURRENT_FORMAT_VERSION
+    """Version of the serialized state format, a dotted number; currently ``"1"``."""
 
     reference_number: str
     """Reference number of the session."""

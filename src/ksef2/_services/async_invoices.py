@@ -16,9 +16,15 @@ from ksef2._clients._async_handles import AsyncOperationHandle
 from ksef2._clients._async_pager import AsyncPager
 from ksef2._clients._metadata_pagination import (
     MetadataBoundary,
+    metadata_stall,
+    metadata_stall_error,
     next_metadata_page_request,
 )
-from ksef2._clients._pagination_cursor import CURSOR_VERSION, InvoiceSearchCursor
+from ksef2._clients._pagination_cursor import (
+    CURSOR_VERSION,
+    InvoiceSearchCursor,
+    search_fingerprint,
+)
 from ksef2._clients.async_invoices import AsyncInvoicesClient
 from ksef2._clients.exported_invoices import ExportedInvoices
 from ksef2._core import exceptions
@@ -164,9 +170,16 @@ class AsyncInvoiceSearchPager(AsyncPager[InvoiceMetadata]):
     consumption starts a fresh query; no responses are cached.
 
     A search cursor holds the whole next request: its filters, its parameters and
-    the truncation boundary the previous page stopped at. Resuming from
-    ``page(cursor)`` therefore keeps working when KSeF shifts the date range, and
-    takes precedence over the values this pager was built with.
+    the truncation boundary the previous page stopped at, so resuming from
+    ``page(cursor)`` keeps working when KSeF shifts the date range. The cursor
+    also records which search issued it. Resume it on a pager built with the same
+    filters, page size and sort order. An explicit ``date_to`` must match the
+    original upper bound; an omitted default uses the bound saved in the cursor. A cursor from another search
+    raises ``KSeFArgumentError`` before any request is sent. The cursor shows the
+    filters in readable form, so keep it out of logs and URLs.
+
+    When KSeF reports a truncated page that cannot advance, the page is still
+    returned and the pagination error is raised when its cursor is resumed.
     """
 
     def __init__(
@@ -185,6 +198,7 @@ class AsyncInvoiceSearchPager(AsyncPager[InvoiceMetadata]):
         self._client = client
         self._filters = filters
         self._params = params
+        self._search = search_fingerprint(filters, params or InvoiceMetadataParams())
         super().__init__(
             fetch_page=self._fetch_metadata_page,
             timeout_error=lambda timeout: exceptions.KSeFInvoiceQueryTimeoutError(
@@ -202,19 +216,55 @@ class AsyncInvoiceSearchPager(AsyncPager[InvoiceMetadata]):
             The requested metadata page, with a cursor for the next page or ``None`` when the search ended.
 
         Raises:
-            KSeFMetadataPaginationError: If KSeF reports a truncated page that cannot advance safely.
+            KSeFArgumentError: If ``cursor`` was issued by a different search or operation.
+            KSeFMetadataPaginationError: If ``cursor`` follows a truncated page that cannot advance safely.
         """
         if cursor is None:
             filters = self._filters
+            search_date_to = filters.date_to
             params = self._params or InvoiceMetadataParams()
             previous_truncation_boundary: MetadataBoundary | None = None
         else:
-            state = InvoiceSearchCursor.decode(cursor, operation="invoices.search")
+            state = InvoiceSearchCursor.decode_search(
+                cursor,
+                operation="invoices.search",
+                search=self._search,
+                date_to=self._filters.date_to
+                if "date_to" in self._filters.model_fields_set
+                else None,
+            )
             filters = state.filters
+            search_date_to = state.search_date_to
             params = state.params
             previous_truncation_boundary = state.previous_truncation_boundary
+            if state.stalled is not None:
+                raise metadata_stall_error(
+                    state.stalled,
+                    filters=filters,
+                    params=params,
+                    boundary=previous_truncation_boundary,
+                )
 
         response = await self._client.query_metadata(filters=filters, params=params)
+        stalled = metadata_stall(
+            filters=filters,
+            response=response,
+            previous_truncation_boundary=previous_truncation_boundary,
+        )
+        if stalled is not None:
+            return Page[InvoiceMetadata](
+                items=list(response.invoices),
+                next_cursor=InvoiceSearchCursor(
+                    v=CURSOR_VERSION,
+                    operation="invoices.search",
+                    search=self._search,
+                    search_date_to=search_date_to,
+                    filters=filters,
+                    params=params,
+                    previous_truncation_boundary=previous_truncation_boundary,
+                    stalled=stalled,
+                ).encode(),
+            )
         next_request = next_metadata_page_request(
             filters=filters,
             params=params,
@@ -232,6 +282,8 @@ class AsyncInvoiceSearchPager(AsyncPager[InvoiceMetadata]):
             next_cursor=InvoiceSearchCursor(
                 v=CURSOR_VERSION,
                 operation="invoices.search",
+                search=self._search,
+                search_date_to=search_date_to,
                 filters=next_filters,
                 params=next_params,
                 previous_truncation_boundary=next_boundary,

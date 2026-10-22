@@ -257,12 +257,17 @@ class OnlineSessionClient:
             KSeFArgumentError: If both or neither of ``reference_number`` and ``state`` are given, or ``state`` names another session.
             ValidationError: If ``state`` is JSON that is not a saved submission state.
         """
-        if (reference_number is None) == (state is None):
-            raise exceptions.KSeFArgumentError(
-                "Pass exactly one of reference_number or state."
-            )
-
-        if state is not None:
+        if state is None:
+            if reference_number is None:
+                raise exceptions.KSeFArgumentError(
+                    "Pass exactly one of reference_number or state."
+                )
+            submission_reference = reference_number
+        else:
+            if reference_number is not None:
+                raise exceptions.KSeFArgumentError(
+                    "Pass exactly one of reference_number or state."
+                )
             restored = (
                 state
                 if isinstance(state, InvoiceSubmissionResumeState)
@@ -274,11 +279,10 @@ class OnlineSessionClient:
                     f"{restored.session_reference_number}, not "
                     f"{self.reference_number}."
                 )
-            reference_number = restored.reference_number
+            submission_reference = restored.reference_number
 
-        assert reference_number is not None
         return InvoiceSubmission(
-            self, invoices.SendInvoiceResponse(reference_number=reference_number)
+            self, invoices.SendInvoiceResponse(reference_number=submission_reference)
         )
 
     def send_invoice(self, invoice_xml: bytes | str) -> InvoiceSubmission:
@@ -522,11 +526,11 @@ class OnlineSessionClient:
             The UPO as XML bytes.
 
         Raises:
-            KSeFValidationError: If both or neither of ``ksef_number`` and ``reference_number`` are given.
+            KSeFArgumentError: If both or neither of ``ksef_number`` and ``reference_number`` are given.
         """
         self._ensure_open()
         if (ksef_number is None) == (reference_number is None):
-            raise exceptions.KSeFValidationError(
+            raise exceptions.KSeFArgumentError(
                 "Pass exactly one of ksef_number or reference_number."
             )
         if ksef_number is not None:
@@ -594,10 +598,8 @@ class OnlineSessionClient:
 
     def _raise_if_failed(self, status: SessionStatusResponse) -> None:
         if status.status.code >= 400:
-            raise exceptions.KSeFSessionError(
-                "Online session processing failed: "
-                f"{self.reference_number} ({status.status.code}: {status.status.description})",
-                hint="See why invoices failed with `list_failed_invoices()`.",
+            raise exceptions.KSeFSessionFailedError(
+                self.reference_number, status, session_kind="Online"
             )
 
     def wait(
@@ -619,7 +621,8 @@ class OnlineSessionClient:
             The final successful session status, including the session UPO references.
 
         Raises:
-            KSeFSessionError: If the session is still open, or if KSeF reports a failed terminal status.
+            KSeFSessionError: If the session is still open.
+            KSeFSessionFailedError: If KSeF reports a failed terminal status.
             KSeFOnlineSessionTimeoutError: If polling exceeds ``timeout``.
         """
         if not self._closed and not self._resumed:

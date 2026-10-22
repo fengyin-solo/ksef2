@@ -40,6 +40,19 @@ module in the repository.
 
 For the exact compatibility boundary, use the public API contract page.
 
+
+`PreparedBatch.to_sensitive_dict()` and `to_sensitive_json()` persist the full
+prepared batch as `{"version": "1", "payload": {...}}`, with encrypted parts as
+URL-safe padded Base64. Restore it with `from_sensitive_dict()` or
+`from_sensitive_json()` and the saved batch session state. These readers reject
+missing or unsupported versions, unversioned development exports and unknown
+fields with sanitized `ValueError` messages. Store this output as
+credential material; generic dumps and repr exclude keys and payload bytes.
+Readers in 1.x retain support for released persistence versions. Incompatible
+formats require a new version and a documented migration. Session and operation resume states now write `format_version` as the string
+`"1"`; readers also accept the integer `1` written by earlier releases.
+Pagination cursors retain a separate integer version field.
+
 ## Breaking in 1.0
 
 Transport failures are SDK errors. A public method no longer lets an `httpx`

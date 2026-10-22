@@ -9,7 +9,7 @@ from typing import cast, final, override
 
 from typing_extensions import deprecated
 
-from ksef2._clients._handles import OperationHandle
+from ksef2._clients._handles import OperationHandle, not_after_resume
 from ksef2._clients._pager import Pager
 from ksef2._clients._pagination_cursor import ContinuationCursor
 from ksef2._core import exceptions
@@ -26,14 +26,6 @@ from ksef2._domain.models.tokens import (
 )
 from ksef2._endpoints.tokens import TokenEndpoints
 from ksef2._infra.mappers.tokens import from_spec, to_spec
-
-
-def _not_after_resume(owner: str, name: str) -> AttributeError:
-    """Build the error for data a saved state never held."""
-    return AttributeError(
-        f"{owner!r} object has no attribute {name!r}: a handle rebuilt from"
-        " resume state only knows the reference number"
-    )
 
 
 @final
@@ -75,9 +67,11 @@ class GeneratedToken(OperationHandle[TokenStatusResponse, TokenStatusResponse]):
         self._response = response
 
     def __getattr__(self, name: str) -> object:
-        if name in GenerateTokenResponse.model_fields:
+        # A property that raises AttributeError falls through to here, so "response" is
+        # answered here too and keeps its resume message.
+        if name in GenerateTokenResponse.model_fields or name == "response":
             if self._response is None:
-                raise _not_after_resume(type(self).__name__, name)
+                raise not_after_resume(type(self).__name__, name)
             return cast(object, getattr(self._response, name))
         raise AttributeError(
             f"{type(self).__name__!r} object has no attribute {name!r}"
@@ -86,7 +80,7 @@ class GeneratedToken(OperationHandle[TokenStatusResponse, TokenStatusResponse]):
     def _generation_response(self, name: str) -> GenerateTokenResponse:
         """Return the generation response, refusing to invent one after a resume."""
         if self._response is None:
-            raise _not_after_resume(type(self).__name__, name)
+            raise not_after_resume(type(self).__name__, name)
         return self._response
 
     def resume_state(self) -> GeneratedTokenResumeState:
@@ -153,10 +147,8 @@ class GeneratedToken(OperationHandle[TokenStatusResponse, TokenStatusResponse]):
     @override
     def _check_status(self, status: TokenStatusResponse) -> None:
         if status.status in ("failed", "revoked"):
-            raise exceptions.KSeFApiError(
-                0,
-                exceptions.ExceptionCode.UNKNOWN_ERROR,
-                f"Token activation failed: status={status.status}",
+            raise exceptions.KSeFTokenActivationFailedError(
+                self.reference_number, status.status
             )
 
     @override
@@ -186,7 +178,7 @@ class GeneratedToken(OperationHandle[TokenStatusResponse, TokenStatusResponse]):
             The first status response that reports the token as active.
 
         Raises:
-            KSeFApiError: If activation ends in a terminal failure state.
+            KSeFTokenActivationFailedError: If activation ends in a terminal failure state.
             KSeFTokenStatusTimeoutError: If polling exceeds ``timeout``.
         """
         return self._wait(timeout, poll_interval)
@@ -250,7 +242,7 @@ class TokensClient:
             The first status response that reports the token as active.
 
         Raises:
-            KSeFApiError: If activation ends in a terminal failure state.
+            KSeFTokenActivationFailedError: If activation ends in a terminal failure state.
             KSeFTokenStatusTimeoutError: If polling exceeds ``timeout``.
             KSeFTransportError: If a status request fails to produce a usable response.
         """

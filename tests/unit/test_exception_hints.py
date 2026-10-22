@@ -1,10 +1,17 @@
 """Hints on SDK exceptions, and backward compatibility of the exception hierarchy."""
 
+from datetime import UTC, datetime
+
+import functools
 import inspect
 import pickle
 import re
+import typing
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 
@@ -12,7 +19,11 @@ import ksef2
 import ksef2.clients as public_clients
 from ksef2._core import exceptions, response_errors
 from ksef2._core.exceptions import ExceptionCode
-from ksef2._domain.models.session import SessionInvoiceStatusResponse
+from ksef2._domain.models.session import (
+    SessionInvoiceStatusResponse,
+    SessionStatusResponse,
+)
+from ksef2._domain.models.session import StatusInfo
 
 
 def _all_exception_classes() -> list[type[exceptions.KSeFException]]:
@@ -37,6 +48,7 @@ _DUMMY_ARGUMENTS: dict[str, Any] = {
     "operation": "upload",
     "host": "storage.example",
     "part_ordinal": 1,
+    "token_status": "failed",
 }
 
 
@@ -123,13 +135,193 @@ class TestHintsNameRealMethods:
         assert _method_names_in("Call `get_state()` first.") == {"get_state"}
 
 
-class TestHintCoverage:
-    TIMEOUTS = [
-        c for c in _all_exception_classes() if c.__name__.endswith("TimeoutError")
+# --- calls named in hints, followed along their chain ---------------------
+
+
+@dataclass(frozen=True)
+class _Segment:
+    name: str
+    keywords: tuple[str, ...]
+
+
+_ROOTS: dict[str, type] = {
+    "client": ksef2.Client,
+    "auth": public_clients.AuthenticatedClient,
+}
+_CHAIN = re.compile(r"(?:[A-Za-z_]\w*(?:\([^)]*\))?\.)*[A-Za-z_]\w*\([^)]*\)")
+_SEGMENT = re.compile(r"([A-Za-z_]\w*)(?:\(([^)]*)\))?(?:\.|$)")
+
+
+def _calls_in(hint: str) -> list[str]:
+    """Code spans in a hint that end in a call, such as ``auth.batch.prepare()``."""
+    spans = re.findall(r"`([^`]+)`", hint)
+    return [span for span in spans if _CHAIN.fullmatch(span)]
+
+
+def _segments(call: str) -> list[_Segment]:
+    return [
+        _Segment(name, tuple(re.findall(r"(\w+)=", arguments or "")))
+        for name, arguments in _SEGMENT.findall(call)
     ]
 
+
+def _public_classes() -> list[type]:
+    classes = [getattr(public_clients, name) for name in public_clients.__all__]
+    return [c for c in classes if inspect.isclass(c)] + [
+        ksef2.Client,
+        ksef2.AsyncClient,
+    ]
+
+
+def _function_of(member: object) -> Callable[..., Any] | None:
+    if isinstance(member, property):
+        return member.fget
+    if isinstance(member, functools.cached_property):
+        return member.func  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+    return member if callable(member) else None
+
+
+def _return_class(function: Callable[..., Any]) -> type | None:
+    try:
+        returned = typing.get_type_hints(function).get("return")
+    except (NameError, TypeError):
+        return None
+    returned = typing.get_origin(returned) or returned
+    return returned if inspect.isclass(returned) else None
+
+
+def _resolve(call: str) -> tuple[list[Callable[..., Any]], list[str]]:
+    """Follow ``call`` from its root, returning what its last segment can be.
+
+    A call that starts with ``client.`` or ``auth.`` begins at that client; any
+    other call may begin at any public class. Every segment has to exist, not be
+    deprecated, and accept the keyword arguments the hint passes to it. The next
+    segment is looked up on what the previous one returns.
+    """
+    segments = _segments(call)
+    owners: list[type] = _public_classes()
+    if segments[0].name in _ROOTS:
+        owners = [_ROOTS[segments.pop(0).name]]
+    found: list[Callable[..., Any]] = []
+    for segment in segments:
+        found = []
+        for owner in owners:
+            function = _function_of(getattr(owner, segment.name, None))
+            if function is None or getattr(function, "__deprecated__", None):
+                continue
+            if not set(segment.keywords) <= set(inspect.signature(function).parameters):
+                continue
+            found.append(function)
+        if not found:
+            keywords = (
+                f" accepting {', '.join(segment.keywords)}" if segment.keywords else ""
+            )
+            return [], [f"`{call}`: no current `{segment.name}`{keywords} here"]
+        owners = [c for c in map(_return_class, found) if c is not None]
+    return found, []
+
+
+def _accepts_timeout(call: str) -> bool:
+    functions, _ = _resolve(call)
+    return bool(functions) and all(
+        "timeout" in inspect.signature(function).parameters for function in functions
+    )
+
+
+def _call_problems(hint: str) -> list[str]:
+    problems = [problem for call in _calls_in(hint) for problem in _resolve(call)[1]]
+    if "`timeout`" in hint and not any(map(_accepts_timeout, _calls_in(hint))):
+        problems.append(
+            "it asks for a larger `timeout`, but no call it names takes one"
+        )
+    return problems
+
+
+class TestHintCallsResolve:
+    """Beyond the method names: dotted paths, keyword arguments and ``timeout``."""
+
+    @pytest.mark.parametrize(("owner", "hint"), _all_hints(), ids=lambda v: str(v)[:60])
+    def test_every_call_in_a_hint_resolves_the_way_it_is_written(
+        self, owner: str, hint: str
+    ) -> None:
+        assert not _call_problems(hint), owner
+
+    @pytest.mark.parametrize(
+        "call",
+        [
+            "auth.batch.prepare()",
+            "client.authentication.with_xades()",
+            "submission(reference_number).wait()",
+            "online_session(state=...)",
+            "export(state=...)",
+        ],
+    )
+    def test_calls_that_exist_resolve(self, call: str) -> None:
+        assert _resolve(call)[1] == []
+
+    @pytest.mark.parametrize(
+        "call",
+        [
+            "auth.prepare()",  # prepare() lives on auth.batch, not on auth
+            "client.authentication.sign_in()",
+            "online_session(statee=...)",
+            "submission(reference_number).wait_forever()",
+            "get_state()",  # deprecated alias of resume_state()
+        ],
+    )
+    def test_calls_that_drifted_are_caught(self, call: str) -> None:
+        assert _resolve(call)[1] != []
+
+    def test_a_larger_timeout_needs_a_call_that_takes_one(self) -> None:
+        assert _call_problems("Call `wait()` again with a larger `timeout`.") == []
+        assert _call_problems("Call `get_status()` with a larger `timeout`.") != []
+
+    def test_the_helper_finds_calls_in_a_real_hint(self) -> None:
+        hint = exceptions.KSeFAuthPollingTimeoutError.hint
+
+        assert hint is not None
+        assert _calls_in(hint) == [
+            "client.authentication.with_xades()",
+            "client.authentication.with_token()",
+        ]
+
+
+class TestHintsAreDocumented:
+    DOCS = [
+        Path(__file__).parents[2] / "docs" / lang / "reference" / "errors.md"
+        for lang in ("en", "pl")
+    ]
+    HINTS = [(owner, hint) for owner, hint in _all_hints() if "(instance)" not in owner]
+
+    @pytest.mark.parametrize("path", DOCS, ids=lambda p: p.parts[-3])
+    def test_every_hint_is_in_the_error_reference_word_for_word(
+        self, path: Path
+    ) -> None:
+        text = path.read_text(encoding="utf-8")
+
+        missing = [owner for owner, hint in self.HINTS if hint not in text]
+        assert not missing, f"{path.parts[-3]} errors.md lacks the hints of {missing}"
+
+
+class TestHintCoverage:
+    TIMEOUTS = [
+        c
+        for c in _all_exception_classes()
+        if c.__name__.endswith("TimeoutError")
+        and c is not exceptions.KSeFPollingTimeoutError
+    ]
+
+    @pytest.mark.parametrize("cls", TIMEOUTS, ids=lambda c: c.__name__)
+    def test_workflow_timeouts_share_base_and_timeout(
+        self, cls: type[exceptions.KSeFException]
+    ) -> None:
+        error = _build(cls)
+        assert isinstance(error, exceptions.KSeFPollingTimeoutError)
+        assert error.timeout == 3.0
+        assert error.context["timeout"] == 3.0
+
     def test_there_are_timeout_classes_to_check(self) -> None:
-        assert len(self.TIMEOUTS) >= 10
+        assert len(self.TIMEOUTS) == 10
 
     @pytest.mark.parametrize("cls", TIMEOUTS, ids=lambda c: c.__name__)
     def test_every_timeout_error_says_how_to_keep_waiting(
@@ -151,6 +343,7 @@ class TestHintCoverage:
             exceptions.KSeFPermissionOperationFailedError,
             exceptions.KSeFCertificateEnrollmentFailedError,
             exceptions.KSeFArgumentError,
+            exceptions.KSeFTokenActivationFailedError,
         ],
         ids=lambda c: c.__name__,
     )
@@ -171,9 +364,14 @@ class TestHintCoverage:
     def test_hints_are_only_set_when_the_cause_is_known(self) -> None:
         for cls in (
             exceptions.KSeFException,
+            exceptions.KSeFPollingTimeoutError,
             exceptions.KSeFApiError,
+            exceptions.KSeFNotFoundError,
+            exceptions.KSeFServerError,
             exceptions.KSeFSessionError,
             exceptions.KSeFValidationError,
+            exceptions.KSeFResponseValidationError,
+            exceptions.KSeFProfileConfigError,
             exceptions.KSeFEncryptionError,
             exceptions.KSeFClientClosedError,
             exceptions.KSeFMetadataPaginationError,
@@ -261,6 +459,59 @@ class TestBackwardCompatibility:
         assert ksef2.KSeFNotReadyError is exceptions.KSeFNotReadyError
         assert "KSeFNotReadyError" in ksef2.__all__
 
+    @pytest.mark.parametrize(
+        ("cls", "base"),
+        [
+            (exceptions.KSeFPollingTimeoutError, exceptions.KSeFException),
+            (exceptions.KSeFResponseValidationError, exceptions.KSeFValidationError),
+            (exceptions.KSeFProfileConfigError, exceptions.KSeFValidationError),
+            (exceptions.KSeFSessionFailedError, exceptions.KSeFSessionError),
+            (exceptions.KSeFTokenActivationFailedError, exceptions.KSeFApiError),
+            (exceptions.KSeFNotFoundError, exceptions.KSeFApiError),
+            (exceptions.KSeFServerError, exceptions.KSeFApiError),
+        ],
+    )
+    def test_new_errors_preserve_base_and_public_export(
+        self, cls: type[exceptions.KSeFException], base: type[exceptions.KSeFException]
+    ) -> None:
+        assert issubclass(cls, base)
+        assert getattr(ksef2, cls.__name__) is cls
+        assert cls.__name__ in ksef2.__all__
+
+    @pytest.mark.parametrize("session_kind", ["Online", "Batch"])
+    def test_session_failure_keeps_status_and_context(
+        self, session_kind: Literal["Online", "Batch"]
+    ) -> None:
+        status = SessionStatusResponse(
+            date_created=datetime(2026, 1, 1, tzinfo=UTC),
+            date_updated=datetime(2026, 1, 1, tzinfo=UTC),
+            status=StatusInfo(
+                code=450, description="Rejected", details=["bad invoice"]
+            ),
+        )
+        error = exceptions.KSeFSessionFailedError(
+            "session-ref", status, session_kind=session_kind
+        )
+        assert error.status is status
+        assert error.reference_number == "session-ref"
+        assert error.session_status_code == 450
+        assert error.description == "Rejected"
+        assert error.details == ["bad invoice"]
+        assert error.details is not status.status.details
+        assert error.context == {
+            "code": "SESSION_FAILED",
+            "hint": error.hint,
+            "reference_number": "session-ref",
+            "session_status_code": 450,
+            "description": "Rejected",
+            "details": ["bad invoice"],
+        }
+        assert (
+            f"{session_kind} session processing failed: session-ref (450: Rejected)"
+            in str(error)
+        )
+        assert error.hint == "See why invoices failed with `list_failed_invoices()`."
+
     def test_old_constructors_and_attributes_still_work(self) -> None:
         api = exceptions.KSeFApiError(404, ExceptionCode.UPO_NOT_FOUND, "gone", None)
         auth = exceptions.KSeFAuthError(401, "denied")
@@ -316,6 +567,8 @@ class TestPickling:
         [
             exceptions.KSeFException("plain", answer=42),
             exceptions.KSeFValidationError("invalid"),
+            exceptions.KSeFResponseValidationError("invalid response"),
+            exceptions.KSeFProfileConfigError("invalid profile"),
             exceptions.KSeFArgumentError("bad arguments"),
             exceptions.KSeFArgumentError("bad arguments", hint="Do this."),
             exceptions.KSeFAuthenticationExpiredError(),

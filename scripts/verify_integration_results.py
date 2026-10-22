@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 REQUIRED_WORKFLOWS: tuple[str, ...] = (
     "test_open_batch_session",
     "test_get_session_upo_by_reference",
+    "test_download_upo_after_restart_from_stored_references",
     "test_example_quickstart",
     "test_example_send_invoice",
     "test_example_send_query_export_download",

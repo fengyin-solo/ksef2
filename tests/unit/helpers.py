@@ -12,7 +12,7 @@ VALID_PUBLIC_KEY_ID = b64encode(b"public-key-id-32-byte-value-000").decode()
 # Marks tests that keep covering the behaviour of a deprecated alias. The warning
 # itself is asserted in tests/unit/test_deprecated_apis.py.
 legacy_api = pytest.mark.filterwarnings(
-    "ignore:.*is deprecated and will be removed in ksef2 1.10.0:DeprecationWarning"
+    "ignore:.*is deprecated and will be removed no earlier than ksef2 2.0.0:DeprecationWarning"
 )
 
 

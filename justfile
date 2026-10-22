@@ -25,6 +25,12 @@ test-runtime-checks:
     KSEF2_RUNTIME_CHECKS=1 uv run --extra runtime-checks python -m pytest tests/unit/ -q
 
 
+# Sync/async parity must hold with runtime type checking both off and on
+test-parity:
+    uv run python -m pytest tests/unit/test_sync_async_parity.py -q
+    KSEF2_RUNTIME_CHECKS=1 uv run --extra runtime-checks python -m pytest tests/unit/test_sync_async_parity.py -q
+
+
 test-fa3-contracts:
     uv run python -m pytest tests/integration/builders/fa3/ -m integration -q
 
@@ -75,15 +81,25 @@ release-check:
     uv build
 
 
+# Deprecated-API compatibility gate. Deliberately outside release-check: it
+# installs each published baseline from PyPI and builds throwaway environments
+# around the wheel, so it runs as its own labelled CI job instead
+# (.github/workflows/legacy-compat.yml).
+check-legacy-compat:
+    rm -f dist/ksef2-*-py3-none-any.whl
+    uv build --wheel
+    uv run python scripts/check_legacy_compat.py
+
+
 coverage:
     uv run python scripts/api_coverage.py
 
 
 lint:
-    uv run ruff check src/ tests/ scripts/api_coverage.py scripts/gen_sync.py scripts/sync_generated_artifacts.py scripts/test_coverage_badge.py scripts/validate_docs_markdown.py scripts/validate_docs_paths.py scripts/validate_examples.py scripts/verify_integration_results.py scripts/verify_release.py
+    uv run ruff check src/ tests/ scripts/api_coverage.py scripts/gen_sync.py scripts/sync_generated_artifacts.py scripts/test_coverage_badge.py scripts/validate_docs_markdown.py scripts/validate_docs_paths.py scripts/validate_examples.py scripts/verify_integration_results.py scripts/verify_release.py scripts/check_legacy_compat.py
 
 format-check:
-    uv run ruff format --check src/ tests/ scripts/api_coverage.py scripts/gen_sync.py scripts/sync_generated_artifacts.py scripts/test_coverage_badge.py scripts/validate_docs_markdown.py scripts/validate_docs_paths.py scripts/validate_examples.py scripts/verify_integration_results.py scripts/verify_release.py
+    uv run ruff format --check src/ tests/ scripts/api_coverage.py scripts/gen_sync.py scripts/sync_generated_artifacts.py scripts/test_coverage_badge.py scripts/validate_docs_markdown.py scripts/validate_docs_paths.py scripts/validate_examples.py scripts/verify_integration_results.py scripts/verify_release.py scripts/check_legacy_compat.py
 
 gen-sync:
     uv run --group codegen python scripts/gen_sync.py
@@ -94,6 +110,7 @@ check-gen-sync:
 typecheck:
     GITHUB_ACTIONS= uv run --extra runtime-checks basedpyright src --level warning --warnings
     GITHUB_ACTIONS= uv run --extra runtime-checks basedpyright tests --level error
+    GITHUB_ACTIONS= uv run --extra runtime-checks basedpyright scripts/check_legacy_compat.py --level warning --warnings
     GITHUB_ACTIONS= uv run --extra runtime-checks --group codegen basedpyright scripts/api_coverage.py scripts/gen_sync.py scripts/sync_generated_artifacts.py scripts/test_coverage_badge.py scripts/validate_docs_markdown.py scripts/validate_docs_paths.py scripts/validate_examples.py scripts/verify_integration_results.py scripts/verify_release.py --level warning --warnings
 
 

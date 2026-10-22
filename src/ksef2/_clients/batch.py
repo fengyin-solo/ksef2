@@ -84,14 +84,14 @@ class BatchSessionClient:
 
     @property
     @deprecated(
-        "`BatchSessionClient.access_token` is deprecated and will be removed in "
-        "ksef2 1.10.0; use `AuthenticatedClient.access_token` instead."
+        "`BatchSessionClient.access_token` is deprecated and will be removed no earlier than "
+        "ksef2 2.0.0; use `AuthenticatedClient.access_token` instead."
     )
     def access_token(self) -> str:
         """Deprecated compatibility accessor for the current bearer token.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``AuthenticatedClient.access_token`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``AuthenticatedClient.access_token`` instead.
 
         Returns:
             The bearer access token the session was opened with.
@@ -146,14 +146,14 @@ class BatchSessionClient:
         return self._state
 
     @deprecated(
-        "`get_state()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`get_state()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `resume_state()` instead."
     )
     def get_state(self) -> BatchSessionResumeState:
         """Deprecated compatibility wrapper for ``resume_state()``.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``resume_state()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``resume_state()`` instead.
 
         Returns:
             The same state as ``resume_state()``.
@@ -219,14 +219,14 @@ class BatchSessionClient:
         )
 
     @deprecated(
-        "`get_upo()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`get_upo()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `download_upo()` instead."
     )
     def get_upo(self, *, upo_reference_number: str) -> bytes:
         """Deprecated: download one page of the collective UPO for the batch session.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``download_upo()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``download_upo()`` instead.
 
         Args:
             upo_reference_number: Reference number of the UPO, taken from the session status.
@@ -344,7 +344,7 @@ class BatchSessionClient:
             KSeFValidationError: If the session has no prepared batch payload attached.
             KSeFBatchUploadError: If external storage rejects an upload or its
                 outcome cannot be determined. Call ``recovery_state()`` on the error
-                to deliberately recover the sensitive batch state.
+                and ``recovery_prepared_batch()`` to resume with the original sensitive payload.
         """
         self._ensure_open()
 
@@ -391,6 +391,7 @@ class BatchSessionClient:
                 raise exceptions.KSeFBatchUploadError(
                     transfer_error=exc,
                     recovery_state=self._state,
+                    prepared_batch=self._prepared_batch,
                 ) from exc
 
     def close(self) -> None:

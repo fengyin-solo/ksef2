@@ -65,14 +65,13 @@ Zasada jest prosta: **ścieżka modułu bez podkreślenia jest publiczna, a każ
 ze znakiem podkreślenia jest prywatna.** `ksef2._core`, `ksef2._clients.base` i
 `ksef2.raw._facade` są prywatne, podobnie jak każdy moduł poniżej nich.
 
-Moduły prywatne mogą się zmienić lub zniknąć w dowolnym wydaniu, także
-poprawkowym, i nie należą do kontraktu kompatybilności. Pakiety, które wcześniejsze
-wersje przedpremierowe udostępniały bez podkreślenia (`core`, `domain`, `infra`,
-`endpoints`, `services`, moduły implementacji klientów, `config` i `logging`),
-nie istnieją już pod tymi nazwami; ich import zgłasza `ImportError`. Te same
-nazwy importuj z publicznych ścieżek powyżej, na przykład modele z
-`ksef2.models`, klientów i typy usług workflow z `ksef2.clients`, a konfigurację
-i wyjątki z `ksef2`.
+Moduły prywatne mogą zmieniać się bez wydania major. Dawne ścieżki `core`,
+`domain`, `infra` i `services` pozostają jako wycofywane aliasy przez całe 1.x.
+Emitują ostrzeżenie raz dla danej rodziny pakietów, wskazując zamienniki,
+i używają tych samych modułów oraz klas. Usunięcie jest możliwe nie wcześniej
+niż w 2.0.0.
+
+Przykłady przed i po zmianie zawiera [poradnik migracji do 1.0](migration-1-0.md).
 
 `scripts/*` to narzędzia repozytorium, nie API pakietu.
 
@@ -101,12 +100,9 @@ nie loguj i nie commituj.
 
 ## Reguła kompatybilności
 
-Po 1.0 usunięcie albo zmiana nazwy stabilnej ścieżki importu wymaga major
-version bump, z jednym wyjątkiem: wycofane API jest usuwane w wydaniu 1.x, które
-wskazuje jego deprecation. Dodatkowe API może wejść w minor release. Patch
-release powinien zachować udokumentowane importy i zachowanie poza poprawkami
-błędów. Poniżej opisano dwa przypadki: zmiany wymuszone przez KSeF oraz
-deprecation inicjowane przez SDK.
+Usunięcie lub zmiana nazwy stabilnych importów SDK wymaga wydania major.
+Wycofywane API działa przez całe 1.x. Nowe API może wejść w wydaniu minor.
+Wydania patch zachowują udokumentowane działanie poza poprawkami błędów.
 
 ### Zmiany wymuszone przez KSeF
 
@@ -117,62 +113,58 @@ SDK. Zmiany łamiące, które SDK inicjuje samo, nadal wymagają major version b
 
 ### Polityka wycofywania
 
-W obrębie 1.x wszystko, co SDK samo chce wycofać, jest najpierw oznaczane jako
-deprecated w wydaniu minor: dostaje `@deprecated` (albo ostrzeżenie na poziomie
-modułu dla aliasów), komunikat w formie „`X` is deprecated and will be removed in
-ksef2 1.10.0; use `Y` instead." oraz wpis w changelogu. Komunikat i tabela
-[wycofywanego API](#wycofywane-api) podają wydanie 1.x, które usuwa dane API,
-więc możesz zaplanować migrację. Każde wycofanie z listy poniżej jest usuwane w
-**ksef2 1.10.0**; do tego czasu każde zachowuje dotychczasowe działanie i typ
-zwracany. Kolejne wycofania wskażą własne wydanie 1.x, nigdy wersję major.
+Wycofywane API SDK używa PEP 702 `@deprecated` lub ostrzeżenia przy imporcie
+aliasu modułu i wskazuje zamiennik. Usunięcie jest decyzją dla 2.0, a nie
+zaplanowaną zmianą w 1.x. Komunikat "will be removed no earlier than ksef2
+2.0.0" podaje najwcześniejszą wersję, nie obiecuje usunięcia w 2.0.
 
 ## Wycofywane API
 
 Te API działają przez całe 1.x. Każde z nich emituje `DeprecationWarning` raz na
 wywołanie, jest oznaczone PEP 702 `@deprecated`, więc type checkery i IDE
-wskazują miejsca użycia, i zostanie usunięte w ksef2 1.10.0. Python ukrywa
+wskazują miejsca użycia, i może zostać usunięte nie wcześniej niż w ksef2 2.0.0. Python ukrywa
 `DeprecationWarning` poza `__main__` i runnerami testów, więc uruchom testy z
 `python -W error::DeprecationWarning`, żeby je znaleźć.
 
 | Wycofane | Użyj zamiast | Usunięte w |
 | --- | --- | --- |
-| `Client.authenticated(tokens)` i `AsyncClient.authenticated(tokens)` | `client.authentication.resume(AuthenticationResumeState.from_tokens(tokens))` | 1.10.0 |
-| `get_state()` w klientach sesji online i wsadowej | `resume_state()` | 1.10.0 |
-| `BatchSessionClient.access_token` | `AuthenticatedClient.access_token` klienta nadrzędnego | 1.10.0 |
-| `dump_state()` w stanie wznowienia sesji | `to_dict()` | 1.10.0 |
-| `model_dump_sensitive()` w stanie wznowienia sesji | `to_dict()` | 1.10.0 |
-| `model_dump_sensitive_json()` w stanie wznowienia sesji | `to_json()` | 1.10.0 |
-| `from_state()` w stanie wznowienia sesji | `from_dict()` | 1.10.0 |
-| `BaseSessionState`, `OnlineSessionState`, `BatchSessionState` | `BaseSessionResumeState`, `OnlineSessionResumeState`, `BatchSessionResumeState` | 1.10.0 |
-| argument `access_token=` w `from_encoded()` stanu wznowienia sesji (ignorowany) | Zapisuj `AuthenticationResumeState` osobno | 1.10.0 |
-| klucz `access_token` w zapisanym stanie wznowienia sesji (ignorowany; stare pliki nadal się wczytują) | Zapisuj `AuthenticationResumeState` osobno | 1.10.0 |
-| klucz `auth_timeout` w profilu zapisanym przez ksef2-cli 0.0.2 | `max_poll_attempts` (i opcjonalnie `poll_interval`) | 1.10.0 |
-| `send_invoice_and_wait()` i `wait_for_invoice_ready()` w sesji online | `send_invoice(...).wait()` | 1.10.0 |
-| `get_invoice_upo_by_ksef_number()` i `get_invoice_upo_by_reference()` w sesji online | `download_invoice_upo(ksef_number=...)` albo `download_invoice_upo(reference_number=...)` | 1.10.0 |
-| `BatchSessionClient.get_upo(upo_reference_number=...)` | `download_upo()` | 1.10.0 |
-| `auth.batch.prepare_batch()` i `prepare_batch_from_paths()` | `auth.batch.prepare()` | 1.10.0 |
-| `auth.batch.submit_batch()`, `submit_prepared_batch()` i `open_session()` | `auth.batch.submit()` albo `auth.batch_session(...)` | 1.10.0 |
-| `auth.batch.get_status()`, `list_invoices()`, `list_failed_invoices()`, `get_upo()` i `wait_for_completion()` (z `session=`) | Te same operacje na kliencie sesji, z `wait()` i `download_upo()` | 1.10.0 |
-| `auth.open_batch_session(aes_key=..., iv=..., ...)` | `auth.raw` | 1.10.0 |
-| `auth.resume_online_session(state)` i `auth.resume_batch_session(state)` | `auth.online_session(state=...)` i `auth.batch_session(state=...)` | 1.10.0 |
-| `auth.invoices.query_metadata()`, `query_metadata_pages()`, `all_metadata()` i `wait_for_invoices()` | `auth.invoices.search(...)` z `.pages()`, `.first_page()` i `.wait()` | 1.10.0 |
-| `auth.invoices.download_invoice()` i `wait_for_invoice_download()` | `auth.invoices.download(...)` | 1.10.0 |
-| `auth.invoices.schedule_export()`, `get_export_status()`, `wait_for_export_package()`, `fetch_package()`, `fetch_package_bytes()` i `export_and_download()` | `auth.invoices.export(...)`, potem `ExportJob.wait()` | 1.10.0 |
-| `auth.tokens.wait_for_activation(reference_number=...)` | `auth.tokens.generate(...).wait()` | 1.10.0 |
-| `auth.tokens.status()` | `auth.tokens.get_status()` | 1.10.0 |
-| `auth.tokens.list_page()` i `list_all()` | `auth.tokens.list(...)` z `.pages()` i `.first_page()` | 1.10.0 |
-| `auth.certificates.query()` i `all()` | `auth.certificates.list(...)` | 1.10.0 |
-| `client.peppol.query()` i `all()` | `client.peppol.list(...)` | 1.10.0 |
-| `auth.sessions.query()` i `all()` | `auth.sessions.list(...)` | 1.10.0 |
-| `auth.sessions.close(reference_number=...)` | `auth.sessions.terminate(reference_number)` | 1.10.0 |
-| `auth.invoice_sessions.query()` i `all()` | `auth.invoice_sessions.list(session_type, ...)` | 1.10.0 |
-| `auth.collective_identifiers.query()` i `query_all()` | `auth.collective_identifiers.list(filters)` | 1.10.0 |
-| `auth.collective_identifiers.query_by_ksef_number()` i `query_all_by_ksef_number()` | `auth.collective_identifiers.list_for_invoice(ksef_number)` | 1.10.0 |
-| `auth.collective_identifiers.list_all_invoices()` | `auth.collective_identifiers.list_invoices(numbers)` | 1.10.0 |
-| `auth.permissions.query_persons()`, `query_entities()`, `query_authorizations()`, `query_eu_entities()`, `query_personal()`, `query_subunits()` i `query_subordinate_entities()` | `auth.permissions.list_persons(query)`, `list_entities(query)`, `list_authorizations(query)`, `list_eu_entities(query)`, `list_personal(query)`, `list_subunits(query)` i `list_subordinate_entities(query)` | 1.10.0 |
-| `auth.permissions.get_entity_roles()` | `auth.permissions.list_entity_roles()` | 1.10.0 |
-| `auth.permissions.revoke_common()` | `auth.permissions.revoke()` | 1.10.0 |
-| `InvoicesClient` i `AsyncInvoicesClient` importowane z `ksef2.clients` | `auth.invoices` (`InvoicesService`) | 1.10.0 |
+| `Client.authenticated(tokens)` i `AsyncClient.authenticated(tokens)` | `client.authentication.resume(AuthenticationResumeState.from_tokens(tokens))` | 2.0.0 lub później |
+| `get_state()` w klientach sesji online i wsadowej | `resume_state()` | 2.0.0 lub później |
+| `BatchSessionClient.access_token` | `AuthenticatedClient.access_token` klienta nadrzędnego | 2.0.0 lub później |
+| `dump_state()` w stanie wznowienia sesji | `to_dict()` | 2.0.0 lub później |
+| `model_dump_sensitive()` w stanie wznowienia sesji | `to_dict()` | 2.0.0 lub później |
+| `model_dump_sensitive_json()` w stanie wznowienia sesji | `to_json()` | 2.0.0 lub później |
+| `from_state()` w stanie wznowienia sesji | `from_dict()` | 2.0.0 lub później |
+| `BaseSessionState`, `OnlineSessionState`, `BatchSessionState` | `BaseSessionResumeState`, `OnlineSessionResumeState`, `BatchSessionResumeState` | 2.0.0 lub później |
+| argument `access_token=` w `from_encoded()` stanu wznowienia sesji (ignorowany) | Zapisuj `AuthenticationResumeState` osobno | 2.0.0 lub później |
+| klucz `access_token` w zapisanym stanie wznowienia sesji (ignorowany; stare pliki nadal się wczytują) | Zapisuj `AuthenticationResumeState` osobno | 2.0.0 lub później |
+| klucz `auth_timeout` w profilu zapisanym przez ksef2-cli 0.0.2 | `max_poll_attempts` (i opcjonalnie `poll_interval`) | 2.0.0 lub później |
+| `send_invoice_and_wait()` i `wait_for_invoice_ready()` w sesji online | `send_invoice(...).wait()` | 2.0.0 lub później |
+| `get_invoice_upo_by_ksef_number()` i `get_invoice_upo_by_reference()` w sesji online | `download_invoice_upo(ksef_number=...)` albo `download_invoice_upo(reference_number=...)` | 2.0.0 lub później |
+| `BatchSessionClient.get_upo(upo_reference_number=...)` | `download_upo()` | 2.0.0 lub później |
+| `auth.batch.prepare_batch()` i `prepare_batch_from_paths()` | `auth.batch.prepare()` | 2.0.0 lub później |
+| `auth.batch.submit_batch()`, `submit_prepared_batch()` i `open_session()` | `auth.batch.submit()` albo `auth.batch_session(...)` | 2.0.0 lub później |
+| `auth.batch.get_status()`, `list_invoices()`, `list_failed_invoices()`, `get_upo()` i `wait_for_completion()` (z `session=`) | Te same operacje na kliencie sesji, z `wait()` i `download_upo()` | 2.0.0 lub później |
+| `auth.open_batch_session(aes_key=..., iv=..., ...)` | `auth.raw` | 2.0.0 lub później |
+| `auth.resume_online_session(state)` i `auth.resume_batch_session(state)` | `auth.online_session(state=...)` i `auth.batch_session(state=...)` | 2.0.0 lub później |
+| `auth.invoices.query_metadata()`, `query_metadata_pages()`, `all_metadata()` i `wait_for_invoices()` | `auth.invoices.search(...)` z `.responses()`, `.first_response()`, `.pages()`, `.first_page()` i `.wait()` | 2.0.0 lub później |
+| `auth.invoices.download_invoice()` i `wait_for_invoice_download()` | `auth.invoices.download(...)` | 2.0.0 lub później |
+| `auth.invoices.schedule_export()`, `get_export_status()`, `wait_for_export_package()`, `fetch_package()`, `fetch_package_bytes()` i `export_and_download()` | `auth.invoices.export(...)`, potem `ExportJob.wait()` | 2.0.0 lub później |
+| `auth.tokens.wait_for_activation(reference_number=...)` | `auth.tokens.generate(...).wait()` | 2.0.0 lub później |
+| `auth.tokens.status()` | `auth.tokens.get_status()` | 2.0.0 lub później |
+| `auth.tokens.list_page()` i `list_all()` | `auth.tokens.list(...)` z `.pages()` i `.first_page()` | 2.0.0 lub później |
+| `auth.certificates.query()` i `all()` | `auth.certificates.list(...)` | 2.0.0 lub później |
+| `client.peppol.query()` i `all()` | `client.peppol.list(...)` | 2.0.0 lub później |
+| `auth.sessions.query()` i `all()` | `auth.sessions.list(...)` | 2.0.0 lub później |
+| `auth.sessions.close(reference_number=...)` | `auth.sessions.terminate(reference_number)` | 2.0.0 lub później |
+| `auth.invoice_sessions.query()` i `all()` | `auth.invoice_sessions.list(session_type, ...)` | 2.0.0 lub później |
+| `auth.collective_identifiers.query()` i `query_all()` | `auth.collective_identifiers.list(filters)` | 2.0.0 lub później |
+| `auth.collective_identifiers.query_by_ksef_number()` i `query_all_by_ksef_number()` | `auth.collective_identifiers.list_for_invoice(ksef_number)` | 2.0.0 lub później |
+| `auth.collective_identifiers.list_all_invoices()` | `auth.collective_identifiers.list_invoices(numbers)` | 2.0.0 lub później |
+| `auth.permissions.query_persons()`, `query_entities()`, `query_authorizations()`, `query_eu_entities()`, `query_personal()`, `query_subunits()` i `query_subordinate_entities()` | `auth.permissions.list_persons(query)`, `list_entities(query)`, `list_authorizations(query)`, `list_eu_entities(query)`, `list_personal(query)`, `list_subunits(query)` i `list_subordinate_entities(query)` | 2.0.0 lub później |
+| `auth.permissions.get_entity_roles()` | `auth.permissions.list_entity_roles()` | 2.0.0 lub później |
+| `auth.permissions.revoke_common()` | `auth.permissions.revoke()` | 2.0.0 lub później |
+| `InvoicesClient` i `AsyncInvoicesClient` importowane z `ksef2.clients` | `auth.invoices` (`InvoicesService`) | 2.0.0 lub później |
 
 `session.send_invoice()` zachowuje nazwę i przyjmuje XML pozycyjnie jako `bytes`
 albo `str`. Zwraca teraz uchwyt `InvoiceSubmission`, który udostępnia każde pole

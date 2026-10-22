@@ -2,6 +2,7 @@
 
 import base64
 import binascii
+import hashlib
 import warnings
 from typing import TYPE_CHECKING, Literal, Self, override
 
@@ -200,7 +201,7 @@ class BatchPreparedPart(KSeFBaseModel):
 
     ordinal_number: int
     """One-based position of the part in the package."""
-    content: bytes
+    content: bytes = Field(exclude=True, repr=False)
     """Encrypted part bytes to upload."""
     file_size: int
     """Size of the encrypted part in bytes."""
@@ -217,12 +218,42 @@ class PreparedBatch(KSeFBaseModel):
     """Whether the invoices were issued in offline mode."""
     batch_file: BatchFileInfo
     """Size, hash and part metadata of the whole batch file."""
-    parts: list[BatchPreparedPart]
+    parts: list[BatchPreparedPart] = Field(exclude=True, repr=False)
     """Encrypted parts to upload."""
-    encryption: BatchEncryptionData
+    encryption: BatchEncryptionData = Field(exclude=True, repr=False)
     """Encryption material used for the parts."""
     invoices: list[BatchInvoiceHash]
     """Hash of each invoice in the package, keyed by ZIP entry name."""
+
+    def recovery_digest(self) -> str:
+        """Bind recovery to the exact prepared payload without exporting secrets.
+
+        Returns:
+            SHA-256 digest of package metadata, encryption material and part bytes.
+        """
+        digest = hashlib.sha256()
+        values = [
+            self.form_code.name.encode(),
+            str(self.offline_mode).encode(),
+            self.batch_file.model_dump_json().encode(),
+            self.encryption.aes_key.encode(),
+            self.encryption.iv.encode(),
+            self.encryption.encrypted_key.encode(),
+            str(self.encryption.public_key_id).encode(),
+        ]
+        for value in values:
+            digest.update(len(value).to_bytes(8, "big"))
+            digest.update(value)
+        for part in self.parts:
+            for value in (
+                str(part.ordinal_number).encode(),
+                str(part.file_size).encode(),
+                part.file_hash.encode(),
+                part.content,
+            ):
+                digest.update(len(value).to_bytes(8, "big"))
+                digest.update(value)
+        return digest.hexdigest()
 
 
 class OpenBatchSessionRequest(KSeFBaseModel):
@@ -286,8 +317,8 @@ class OpenBatchSessionResponse(KSeFBaseModel):
 class BatchSessionResumeState(BaseSessionResumeState):
     """Serializable resume state of a batch session.
 
-    This class holds all information needed to resume a batch session
-    or to upload file parts. Use ``to_json()`` when
+    This class holds information needed to resume a batch session handle.
+    Upload recovery also requires the exact original ``PreparedBatch``. Use ``to_json()`` when
     intentionally exporting resumable JSON containing encryption material and
     presigned upload URLs.
 
@@ -296,8 +327,11 @@ class BatchSessionResumeState(BaseSessionResumeState):
     - get_aes_key_bytes(), get_iv_bytes() helper methods
 
     Deprecated:
-        The alias ``BatchSessionState`` is removed in ksef2 1.10.0; use ``BatchSessionResumeState``.
+        The alias ``BatchSessionState`` may be removed no earlier than ksef2 2.0.0; use ``BatchSessionResumeState``.
     """
+
+    prepared_batch_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    """Digest binding upload recovery to its original payload; absent in older states."""
 
     part_upload_requests: list[PartUploadRequest] = Field(exclude=True, repr=False)
     """Upload instructions for each file part."""
@@ -355,7 +389,7 @@ class BatchSessionResumeState(BaseSessionResumeState):
             warnings.warn(
                 "The `access_token` argument of "
                 "`BatchSessionResumeState.from_encoded()` is deprecated and will "
-                "be removed in ksef2 1.10.0; it is ignored, persist "
+                "be removed no earlier than ksef2 2.0.0; it is ignored, persist "
                 "`AuthenticationResumeState` separately instead.",
                 DeprecationWarning,
                 stacklevel=2,

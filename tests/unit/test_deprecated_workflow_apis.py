@@ -45,13 +45,13 @@ from tests.unit.payloads import (
     session_status,
 )
 
-SUFFIX = "will be removed in ksef2 1.10.0; use `{new}` instead."
+SUFFIX = "will be removed no earlier than ksef2 2.0.0; use `{new}` instead."
 KEY = b"k" * 32
 IV = b"v" * 16
 
 
 def _once(flavor: Flavor, call: Callable[[], Any], old: str, new: str) -> Any:
-    """Call, drain, and assert exactly one DeprecationWarning with the 1.10.0 message."""
+    """Call, drain, and assert exactly one DeprecationWarning with the 2.0.0 minimum-removal message."""
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         value = call()
@@ -473,7 +473,7 @@ class TestInvoicesServiceAliases:
             flavor,
             lambda: service.query_metadata(filters=_filters()),
             "query_metadata()",
-            "search()",
+            "search().first_response()",
         )
 
         assert len(page.invoices) == 2
@@ -492,7 +492,7 @@ class TestInvoicesServiceAliases:
             flavor,
             lambda: service.query_metadata_pages(filters=_filters()),
             "query_metadata_pages()",
-            "search()",
+            "search().responses()",
         )
 
         assert [len(page.invoices) for page in pages] == [2]

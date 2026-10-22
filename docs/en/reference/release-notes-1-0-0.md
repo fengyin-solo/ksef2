@@ -4,8 +4,8 @@ description: Stability boundary and the documented public surface of the first s
 ---
 
 > Release preparation is in progress. The release date is not set.
-> Compatibility work in [#171](https://github.com/stacking-hq/ksef2/issues/171)
-> must land before release; the aliases described below are a release requirement.
+> Compatibility aliases from [#171](https://github.com/stacking-hq/ksef2/issues/171)
+> are included and covered by the legacy compatibility gate.
 
 ksef2 1.0.0 is the first release that treats documented application-facing
 imports as a compatibility contract for the 1.x line.
@@ -115,12 +115,14 @@ Do not build application code on these paths:
 - repository `scripts/*`;
 - generated schema internals outside `ksef2.raw.spec` and `ksef2.raw.supp`.
 
-The former internal packages (`ksef2.core`, `ksef2.domain`, `ksef2.infra`,
-`ksef2.endpoints`, `ksef2.services`, the client implementation modules,
-`ksef2.config` and `ksef2.logging`) moved to underscore-prefixed implementations.
-#171 must keep the old imports as deprecated compatibility aliases through 1.x,
-with warnings naming their public replacements. Use the documented public paths
-for new code. Private implementations can change within 1.x.
+The former paths `ksef2.core`, `ksef2.domain`, `ksef2.infra` and
+`ksef2.services`, including their submodules, remain as deprecated aliases.
+They emit `DeprecationWarning` once per package family, naming replacements. Existing method aliases
+also remain available throughout 1.x, with removal no earlier than 2.0.0.
+The private-module rename does not remove these legacy imports in 1.0.
+
+See the [migration guide](migration-1-0.md) for imports, send/wait/UPO and search
+examples. Python normally hides these warnings, so enable them in your tests.
 
 ## Related pages
 

@@ -16,8 +16,11 @@ result locally, and serve operational views from your own store.
 
 ## Metadata finds invoices
 
-`auth.invoices.search()` returns a `Pager` over `InvoiceMetadata` rows, not
-invoice XML. Iterate it, or use `pages()`, `first_page()` and `wait()`.
+`auth.invoices.search()` returns an `InvoiceSearchPager` over `InvoiceMetadata`
+rows. Iterate it, or use `pages()`, `first_page()` and `wait()`. These retain
+the generic `Pager` contracts. Use `responses()` for complete typed pages or
+`first_response()` for a single `QueryInvoicesMetadataResponse` with pagination
+flags and `permanent_storage_hwm_date`.
 
 Metadata is useful for lists, reconciliation, polling after submission, and
 deciding what to download later. A metadata row can include identifiers, dates,
@@ -87,8 +90,13 @@ Use `date_type="permanent_storage"` when your goal is incremental sync. Use
 `restrict_to_permanent_storage_hwm_date=True` so KSeF clips the result to the
 safe completed boundary.
 
+The example assumes an authenticated `auth`, a saved `last_synced_at`, and your
+`persist_metadata(invoice)` and `save_checkpoint(datetime)` storage functions.
+Make metadata writes durable and deduplicate by `ksef_number`. Save the checkpoint
+only after every page has been consumed and persisted successfully.
+
 ```python
-from ksef2.models import InvoicesFilter
+from ksef2.models import InvoiceMetadataParams, InvoicesFilter
 
 filters = InvoicesFilter.for_buyer(
     date_type="permanent_storage",
@@ -96,27 +104,28 @@ filters = InvoicesFilter.for_buyer(
     restrict_to_permanent_storage_hwm_date=True,
 )
 
-page = auth.invoices.search(filters).first_page()
+next_checkpoint = None
+for page in auth.invoices.search(
+    filters, InvoiceMetadataParams(sort_order="asc")
+).responses():
+    for invoice in page.invoices:
+        persist_metadata(invoice)
+    if not page.has_more and not page.is_truncated:
+        next_checkpoint = page.permanent_storage_hwm_date
 
-# QueryInvoicesMetadataResponse
-# {
-#   "has_more": false,
-#   "is_truncated": false,
-#   "permanent_storage_hwm_date": "2026-06-25T10:00:00Z",
-#   "invoices": [
-#     {
-#       "ksef_number": "1234567890-20260625-...",
-#       "invoice_number": "FV/42/2026",
-#       "permanent_storage_date": "2026-06-25T09:58:21Z"
-#     }
-#   ]
-# }
+if next_checkpoint is not None:
+    save_checkpoint(next_checkpoint)
 ```
 
-If a metadata page or export package is truncated, continue from the returned
-last date, such as `last_permanent_storage_date`, rather than assuming your
-requested end of the window was fully covered. Deduplicate persisted records by
-`ksef_number` when windows overlap.
+An empty, completed response can still provide a checkpoint. If KSeF omits
+the HWM, or the final response is truncated, keep the previous checkpoint.
+In async code, use `async for page in pager.responses()` and
+`page = await pager.first_response()`.
+
+`responses()` follows metadata page and truncation boundaries automatically.
+For a truncated export package, continue from its `last_permanent_storage_date`
+rather than assuming the requested window was fully covered. Deduplicate
+persisted records by `ksef_number` when windows overlap.
 
 Export packages can also include `_metadata.json`, which helps reconcile the
 downloaded XML package contents with the metadata rows you store.

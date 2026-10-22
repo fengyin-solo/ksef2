@@ -3,7 +3,7 @@
 ksef2 1.0.0 is being prepared as the first stable release. It targets KSeF
 OpenAPI 2.8.1 and starts the 1.x compatibility contract. Collective-identifier
 invoice queries change because KSeF replaced the endpoint. Old SDK import paths
-and method names must remain functional through 1.x under #171. Read
+and method names remain functional throughout 1.x (#171). Read
 [Breaking changes](#breaking-changes) and [Deprecated](#deprecated) before upgrading.
 
 ### Highlights
@@ -70,11 +70,18 @@ and method names must remain functional through 1.x under #171. Read
 
 ### Deprecated
 
+- Keep the former `ksef2.core`, `domain`, `infra` and `services` imports,
+  including submodules, as deprecated aliases throughout 1.x (#171). The first
+  import loads the canonical package tree and warns once per package family.
+- Keep deprecated call names, including invoice send/wait/UPO, metadata search,
+  download and export aliases, through 1.x. Removal is a 2.0 decision and may
+  happen no earlier than 2.0.0, replacing the former 1.10.0 removal schedule.
+- Add English and Polish migration examples for legacy imports and workflows.
+
 - **Former implementation imports (#153, #171).** Implementations moved to
-  private `_`-prefixed paths. The old paths must remain as deprecated aliases
-  through 1.x, warning with the public replacement. #171 supplies those aliases
-  and the migration examples; it is a release dependency, not implemented by
-  this release PR. Use documented public modules rather than the private paths
+  private `_`-prefixed paths. The old paths remain as deprecated aliases
+  throughout 1.x, warning with the public replacement. #171 supplies those aliases
+  and the migration examples. Use documented public modules rather than the private paths
   in the table below for new code.
 
   | Old import | Private implementation |
@@ -117,6 +124,21 @@ on the public API page for every alias and its replacement.
   (#150, #162).
 
 ### Added
+
+- Read complete invoice search responses with `responses()` and `first_response()`,
+  including the permanent-storage checkpoint on empty pages. Correct the English
+  and Polish incremental-sync examples (#258).
+
+- Download a UPO after a restart from a stored session reference with
+  `auth.invoice_sessions.download_upo()`, selecting it by invoice reference,
+  KSeF number or session UPO reference. No open session is needed, and a UPO
+  KSeF has not issued raises `KSeFNotReadyError` (#172).
+- Resume a failed batch upload with
+  `auth.batch_session(state=..., prepared_batch=...)`. `KSeFBatchUploadError` keeps
+  the exact prepared payload and returns it from `recovery_prepared_batch()`, so a
+  batch prepared inside `submit(invoices)` recovers too. A payload that no longer
+  matches the session is rejected before anything is uploaded, and part bytes plus
+  encryption material stay out of repr and model dumps (#256).
 
 - Handles with `.wait()` for operations KSeF finishes asynchronously, each exposing
   the fields of the response it replaces: `InvoiceSubmission` from
@@ -237,8 +259,8 @@ on the public API page for every alias and its replacement.
   import from a module path with an underscore-prefixed component;
   `scripts/validate_docs_paths.py` and the OpenAPI-version check cover the docs
   pages (#148, #153, #136).
-- Public-module visibility checks cover the documented imports. #171 must
-  replace the old-path rejection checks with compatibility checks before release.
+- Public-module visibility checks cover the documented imports. The legacy
+  compatibility gate checks the retained import paths and methods (#171).
 - A docstring test and ruff pydocstyle keep every public API documented (#159).
 - `scripts/validate_docs_markdown.py` checks the docs Markdown (#158).
 - Remove the in-repo CLI script and its integration test; the CLI lives in the

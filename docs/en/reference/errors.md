@@ -26,7 +26,7 @@ log it, but do not parse it.
 | `KSeFAuthenticationExpiredError` | `KSeFAuthError` | `AUTHENTICATION_EXPIRED` | API error attributes |
 | `KSeFRateLimitError` | `KSeFApiError` | `RATE_LIMIT_ERROR` | `retry_after` and the API error attributes |
 | `KSeFExternalTransferError` | `KSeFException` | `EXTERNAL_TRANSFER_ERROR` | `operation`, `host`, `reference_number`, `part_ordinal`, `status_code`, `outcome_ambiguous` |
-| `KSeFBatchUploadError` | `KSeFExternalTransferError` | `BATCH_UPLOAD_ERROR` | External-transfer attributes plus `recovery_state()` |
+| `KSeFBatchUploadError` | `KSeFExternalTransferError` | `BATCH_UPLOAD_ERROR` | External-transfer attributes plus `recovery_state()` and `recovery_prepared_batch()` |
 | `KSeFInvoiceRejectedError` | `KSeFSessionError` | `INVOICE_REJECTED` | `invoice_reference_number`, `invoice_status_code`, `description`, `details`, `extensions`, `status` |
 
 Catch narrower subclasses before `KSeFException` when the workflow has a
@@ -91,10 +91,13 @@ ordinal, status code, and ambiguity flag; the signed URL is not included.
 | `outcome_ambiguous` | `bool` | `True` when an upload may have reached storage despite a lost response. |
 
 `KSeFBatchUploadError.recovery_state()` deliberately reveals the sensitive
-`BatchSessionResumeState` required for recovery. It is excluded from the error
-message and `context` because it contains encryption material and presigned
-URLs. Store it only in protected credential storage, and do not blindly retry
-an upload when `outcome_ambiguous` is `True`.
+`BatchSessionResumeState` required for recovery, and
+`recovery_prepared_batch()` reveals the exact `PreparedBatch` the failed upload
+used, including a batch prepared inside `submit()`. Pass both to
+`auth.batch_session(state=..., prepared_batch=...)`. Neither value is included in
+the error message or `context` because both contain encryption material and,
+in the state, presigned URLs. Store them only in protected credential storage,
+and do not blindly retry an upload when `outcome_ambiguous` is `True`.
 
 The original `httpx` failure remains available through `__cause__`. Avoid
 logging the cause indiscriminately because raw HTTP diagnostics can include the

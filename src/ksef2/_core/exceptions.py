@@ -4,6 +4,7 @@ from typing import Any, Literal, override
 from pydantic import BaseModel
 from enum import IntEnum
 
+from ksef2._domain.models.batch import PreparedBatch
 from ksef2._domain.models.session import SessionInvoiceStatusResponse
 
 
@@ -511,6 +512,7 @@ class KSeFBatchUploadError[RecoveryStateT](KSeFExternalTransferError):
     Args:
         transfer_error: The underlying external transfer failure.
         recovery_state: Sensitive batch state kept for deliberate recovery; read it with ``recovery_state()``.
+        prepared_batch: Original sensitive payload, accessible through ``recovery_prepared_batch()``.
     """
 
     code: str = "BATCH_UPLOAD_ERROR"
@@ -520,8 +522,10 @@ class KSeFBatchUploadError[RecoveryStateT](KSeFExternalTransferError):
         *,
         transfer_error: KSeFExternalTransferError,
         recovery_state: RecoveryStateT,
+        prepared_batch: PreparedBatch | None = None,
     ) -> None:
         self._recovery_state = recovery_state
+        self._prepared_batch = prepared_batch
         super().__init__(
             operation=transfer_error.operation,
             host=transfer_error.host,
@@ -541,6 +545,25 @@ class KSeFBatchUploadError[RecoveryStateT](KSeFExternalTransferError):
             The batch state captured when the upload failed.
         """
         return self._recovery_state
+
+    def recovery_prepared_batch(self) -> PreparedBatch:
+        """Return the original sensitive payload, including internally prepared batches.
+
+        Pass it with ``recovery_state()`` to ``auth.batch_session()``. It contains
+        encryption material and invoice payloads. Keep it in protected storage;
+        never log it or rebuild it from the original invoices for recovery.
+
+        Returns:
+            The exact prepared batch used by the failed upload.
+
+        Raises:
+            KSeFValidationError: If this error was created without a prepared batch.
+        """
+        if self._prepared_batch is None:
+            raise KSeFValidationError(
+                "Batch upload error has no prepared payload attached."
+            )
+        return self._prepared_batch
 
 
 class KSeFEncryptionError(KSeFException):

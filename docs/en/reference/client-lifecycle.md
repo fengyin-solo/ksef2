@@ -74,7 +74,7 @@ token pair.
 | `resume_state()` | `AuthenticationResumeState` | Serializable authentication state containing access and refresh tokens. |
 | `online_session(form_code=... \| state=...)` | Online session client | Opens one online invoice session, or resumes one from saved state (object or JSON). Async returns an awaitable async context-manager wrapper. |
 | `resume_online_session(state)` | Online session client | Deprecated; use `online_session(state=...)`. |
-| `batch_session(prepared_batch= \| batch_file= \| state=)` | Batch session client | Opens a batch session from a prepared batch or declared batch file, or resumes one from saved state. |
+| `batch_session(prepared_batch= \| batch_file= \| state=)` | Batch session client | Opens a batch session from a prepared batch or declared batch file, or resumes one from saved state. Passing `state=` with the original `prepared_batch=` recovers a failed upload. |
 | `open_batch_session(...)` | Batch session client | Opens a batch session when caller owns encryption metadata. |
 | `resume_batch_session(state)` | Batch session client | Deprecated; use `batch_session(state=...)`. |
 | `invoices` | `InvoicesService` | Metadata, direct download, export, package download, and waiting helpers. |
@@ -83,7 +83,7 @@ token pair.
 | `tokens` | `TokensClient` | Token generation, status, listing, and revocation. |
 | `certificates` | `CertificatesClient` | Certificate enrollment, retrieval, query, limits, and revocation. |
 | `sessions` | `SessionManagementClient` | Authentication session listing and termination. |
-| `invoice_sessions` | `InvoiceSessionsClient` | Online and batch invoice-session history. |
+| `invoice_sessions` | `InvoiceSessionsClient` | Online and batch invoice-session history and UPO downloads from stored references. |
 | `permissions` | `PermissionsClient` | Permission grants, queries, revokes, and operation status. |
 | `raw` | `RawAuthenticatedClient` | Low-level authenticated endpoint groups. |
 

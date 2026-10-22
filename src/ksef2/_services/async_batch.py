@@ -178,7 +178,7 @@ class AsyncBatchService:
                 fails.
             KSeFBatchUploadError: If external storage rejects an upload or its
                 outcome cannot be determined. Call ``recovery_state()`` on the error
-                to deliberately recover the sensitive batch state.
+                and ``recovery_prepared_batch()`` to resume with the original sensitive payload.
 
         Example:
             ```python
@@ -201,7 +201,7 @@ class AsyncBatchService:
         return session
 
     @deprecated(
-        "`prepare_batch()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`prepare_batch()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `prepare()` instead."
     )
     def prepare_batch(
@@ -215,7 +215,7 @@ class AsyncBatchService:
         """Deprecated: build a ZIP package, split it, and encrypt each upload part.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``prepare()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``prepare()`` instead.
 
         Args:
             invoices: Invoice XML payloads to include in the batch package.
@@ -241,8 +241,8 @@ class AsyncBatchService:
         )
 
     @deprecated(
-        "`prepare_batch_from_paths()` is deprecated and will be removed in "
-        "ksef2 1.10.0; use `prepare()` instead."
+        "`prepare_batch_from_paths()` is deprecated and will be removed no earlier than "
+        "ksef2 2.0.0; use `prepare()` instead."
     )
     def prepare_batch_from_paths(
         self,
@@ -255,7 +255,7 @@ class AsyncBatchService:
         """Deprecated: load invoice XML files from disk and prepare a batch package.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``prepare()`` with ``Path`` items instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``prepare()`` with ``Path`` items instead.
 
         Args:
             invoice_paths: Paths to XML files that should be added to the batch.
@@ -297,7 +297,7 @@ class AsyncBatchService:
         )
 
     @deprecated(
-        "`open_session()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`open_session()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `auth.batch_session()` instead."
     )
     def open_session(
@@ -308,7 +308,7 @@ class AsyncBatchService:
         """Deprecated: open a batch session for an already prepared package.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``auth.batch_session(prepared_batch=...)`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``auth.batch_session(prepared_batch=...)`` instead.
 
         Args:
             prepared_batch: Prepared batch payload returned by ``prepare()``.
@@ -365,7 +365,7 @@ class AsyncBatchService:
                 instructions.
             KSeFBatchUploadError: If external storage rejects an upload or its
                 outcome cannot be determined. Call ``recovery_state()`` on the error
-                to deliberately recover the sensitive batch state.
+                and ``recovery_prepared_batch()`` to resume with the original sensitive payload.
         """
         upload_requests = {
             request.ordinal_number: request for request in session.part_upload_requests
@@ -402,10 +402,11 @@ class AsyncBatchService:
                 raise exceptions.KSeFBatchUploadError(
                     transfer_error=exc,
                     recovery_state=session.resume_state(),
+                    prepared_batch=prepared_batch,
                 ) from exc
 
     @deprecated(
-        "`submit_prepared_batch()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`submit_prepared_batch()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `submit()` instead."
     )
     def submit_prepared_batch(
@@ -416,7 +417,7 @@ class AsyncBatchService:
         """Deprecated: open, upload, and close a batch session for a prepared package.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``submit()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``submit()`` instead.
 
         Args:
             prepared_batch: Prepared batch payload returned by ``prepare()``.
@@ -429,7 +430,7 @@ class AsyncBatchService:
             KSeFValidationError: If the prepared batch cannot be opened or uploaded.
             KSeFBatchUploadError: If external storage rejects an upload or its
                 outcome cannot be determined. Call ``recovery_state()`` on the error
-                to deliberately recover the sensitive batch state.
+                and ``recovery_prepared_batch()`` to resume with the original sensitive payload.
         """
         return self._submit_prepared_batch(prepared_batch=prepared_batch)
 
@@ -441,7 +442,7 @@ class AsyncBatchService:
         return (await self.submit(prepared_batch)).resume_state()
 
     @deprecated(
-        "`submit_batch()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`submit_batch()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `submit()` instead."
     )
     def submit_batch(
@@ -455,7 +456,7 @@ class AsyncBatchService:
         """Deprecated: prepare and submit a batch in one call.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``submit()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``submit()`` instead.
 
         Args:
             invoices: Invoice XML payloads to include in the batch package.
@@ -474,7 +475,7 @@ class AsyncBatchService:
                 fails.
             KSeFBatchUploadError: If external storage rejects an upload or its
                 outcome cannot be determined. Call ``recovery_state()`` on the error
-                to deliberately recover the sensitive batch state.
+                and ``recovery_prepared_batch()`` to resume with the original sensitive payload.
         """
         return self._submit_batch(
             invoices=invoices,
@@ -500,7 +501,7 @@ class AsyncBatchService:
         return (await self.submit(prepared_batch)).resume_state()
 
     @deprecated(
-        "`get_status()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`get_status()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `BatchSessionClient.get_status()` instead."
     )
     def get_status(
@@ -511,7 +512,7 @@ class AsyncBatchService:
         """Deprecated: fetch the current status of a batch session.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``BatchSessionClient.get_status()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``BatchSessionClient.get_status()`` instead.
 
         Args:
             session: Session reference number, persisted state, or open session client.
@@ -533,7 +534,7 @@ class AsyncBatchService:
         )
 
     @deprecated(
-        "`list_invoices()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`list_invoices()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `BatchSessionClient.list_invoices()` instead."
     )
     def list_invoices(
@@ -546,7 +547,7 @@ class AsyncBatchService:
         """Deprecated: fetch one page of accepted invoices from a batch session.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``BatchSessionClient.list_invoices()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``BatchSessionClient.list_invoices()`` instead.
 
         Args:
             session: Session reference number, persisted state, or open session client.
@@ -576,7 +577,7 @@ class AsyncBatchService:
         )
 
     @deprecated(
-        "`list_failed_invoices()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`list_failed_invoices()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `BatchSessionClient.list_failed_invoices()` instead."
     )
     def list_failed_invoices(
@@ -589,7 +590,7 @@ class AsyncBatchService:
         """Deprecated: fetch one page of failed invoices from a batch session.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``BatchSessionClient.list_failed_invoices()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``BatchSessionClient.list_failed_invoices()`` instead.
 
         Args:
             session: Session reference number, persisted state, or open session client.
@@ -619,7 +620,7 @@ class AsyncBatchService:
         )
 
     @deprecated(
-        "`get_upo()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`get_upo()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `BatchSessionClient.download_upo()` instead."
     )
     def get_upo(
@@ -631,7 +632,7 @@ class AsyncBatchService:
         """Deprecated: download the collective UPO for a batch session.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``BatchSessionClient.download_upo()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``BatchSessionClient.download_upo()`` instead.
 
         Args:
             session: Session reference number, persisted state, or open session client.
@@ -646,7 +647,7 @@ class AsyncBatchService:
         )
 
     @deprecated(
-        "`wait_for_completion()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`wait_for_completion()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `BatchSessionClient.wait()` instead."
     )
     def wait_for_completion(
@@ -659,7 +660,7 @@ class AsyncBatchService:
         """Deprecated: poll a batch session until KSeF reports a terminal status.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``BatchSessionClient.wait()`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``BatchSessionClient.wait()`` instead.
 
         Args:
             session: Session reference number, persisted state, or open session client.

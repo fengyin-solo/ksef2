@@ -75,7 +75,7 @@ kontekstem KSeF i jedną parą tokenów.
 | `resume_state()` | `AuthenticationResumeState` | Serializowalny stan uwierzytelnienia zawierający access i refresh token. |
 | `online_session(form_code=... \| state=...)` | Klient sesji online | Otwiera jedną sesję online faktur albo wznawia ją z zapisanego stanu (obiekt lub JSON). Async zwraca awaitable wrapper context managera. |
 | `resume_online_session(state)` | Klient sesji online | Wycofane; użyj `online_session(state=...)`. |
-| `batch_session(prepared_batch= \| batch_file= \| state=)` | Klient sesji batch | Otwiera sesję batch z przygotowanego batcha albo deklaracji pliku batch, albo wznawia ją z zapisanego stanu. |
+| `batch_session(prepared_batch= \| batch_file= \| state=)` | Klient sesji batch | Otwiera sesję batch z przygotowanego batcha albo deklaracji pliku batch, albo wznawia ją z zapisanego stanu. `state=` razem z oryginalnym `prepared_batch=` odzyskuje nieudany upload. |
 | `open_batch_session(...)` | Klient sesji batch | Otwiera sesję batch, gdy caller posiada metadane szyfrowania. |
 | `resume_batch_session(state)` | Klient sesji batch | Wycofane; użyj `batch_session(state=...)`. |
 | `invoices` | `InvoicesService` | Metadane, pobrania bezpośrednie, eksporty, pobieranie paczek i wait helpery. |
@@ -84,7 +84,7 @@ kontekstem KSeF i jedną parą tokenów.
 | `tokens` | `TokensClient` | Generowanie, status, lista i unieważnianie tokenów. |
 | `certificates` | `CertificatesClient` | Enrollment, pobranie, query, limity i unieważnianie certyfikatów. |
 | `sessions` | `SessionManagementClient` | Lista i zamykanie sesji uwierzytelnienia. |
-| `invoice_sessions` | `InvoiceSessionsClient` | Historia sesji online i batch faktur. |
+| `invoice_sessions` | `InvoiceSessionsClient` | Historia sesji online i batch faktur oraz pobieranie UPO po zapisanych referencjach. |
 | `permissions` | `PermissionsClient` | Nadawanie, query, cofanie i status operacji uprawnień. |
 | `raw` | `RawAuthenticatedClient` | Niskopoziomowe, uwierzytelnione grupy endpointów. |
 

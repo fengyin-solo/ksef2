@@ -4,8 +4,8 @@ description: Granica stabilności i udokumentowana publiczna powierzchnia pierws
 ---
 
 > Trwają przygotowania do wydania. Data wydania nie jest ustalona.
-> Przed wydaniem musi zostać ukończone [#171](https://github.com/stacking-hq/ksef2/issues/171).
-> Opisane poniżej aliasy są wymaganiem wydania.
+> Aliasy kompatybilności z [#171](https://github.com/stacking-hq/ksef2/issues/171)
+> są już dostępne i objęte kontrolą zgodności dawnych API.
 
 ksef2 1.0.0 to pierwsze wydanie, które traktuje udokumentowane, aplikacyjne
 ścieżki importu jako kontrakt kompatybilności dla linii 1.x.
@@ -116,11 +116,14 @@ Nie buduj kodu aplikacji na tych ścieżkach:
 - repozytoryjnych `scripts/*`;
 - internali wygenerowanych schem poza `ksef2.raw.spec` i `ksef2.raw.supp`.
 
-Dawne pakiety implementacyjne przeniesiono pod ścieżki z prefiksem `_`.
-#171 musi zachować stare importy jako przestarzałe aliasy przez całą linię 1.x,
-z ostrzeżeniami wskazującymi publiczne zamienniki. Nowy kod powinien używać
-udokumentowanych publicznych ścieżek. Prywatne implementacje mogą się zmieniać
-w ramach 1.x.
+Dawne ścieżki `ksef2.core`, `ksef2.domain`, `ksef2.infra` i `ksef2.services`,
+wraz z podmodułami, nadal działają jako wycofywane aliasy. Emitują
+`DeprecationWarning` raz dla danej rodziny pakietów, wskazując zamienniki. Dawne nazwy metod także
+działają przez całe 1.x. Usunięcie jest możliwe nie wcześniej niż w 2.0.0.
+Zmiana nazw modułów prywatnych nie usuwa dawnych importów w 1.0.
+
+[Poradnik migracji](migration-1-0.md) pokazuje importy, wysyłkę/oczekiwanie/UPO
+oraz wyszukiwanie. Python zwykle ukrywa ostrzeżenia, więc włącz je w testach.
 
 ## Powiązane strony
 

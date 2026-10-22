@@ -278,8 +278,8 @@ class AsyncAuthenticatedClient:
         )
 
     @deprecated(
-        "`resume_online_session()` is deprecated and will be removed in "
-        "ksef2 1.10.0; use `online_session(state=...)` instead."
+        "`resume_online_session()` is deprecated and will be removed no earlier than "
+        "ksef2 2.0.0; use `online_session(state=...)` instead."
     )
     def resume_online_session(
         self,
@@ -288,7 +288,7 @@ class AsyncAuthenticatedClient:
         """Deprecated: rebind an existing serialized online session state to this client.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``online_session(state=...)`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``online_session(state=...)`` instead.
 
         Args:
             state: State previously exported from an online session client.
@@ -319,6 +319,7 @@ class AsyncAuthenticatedClient:
         self,
         *,
         state: BatchSessionResumeState | str,
+        prepared_batch: PreparedBatch | None = None,
     ) -> _AwaitableSession[AsyncBatchSessionClient]: ...
 
     def batch_session(
@@ -333,10 +334,11 @@ class AsyncAuthenticatedClient:
         """Open a batch session for upload work, or resume one from saved state.
 
         Pass exactly one of ``prepared_batch``, ``batch_file`` (open a new
-        session) or ``state`` (resume). When resuming, everything comes from the
-        state, including the form code, keys and part upload requests. Leaving the
-        ``with`` block closes the session in every case; closing an already-closed
-        session is a no-op.
+        session) or ``state`` (resume). To recover an upload, pass ``state``
+        together with the exact original ``prepared_batch``. State supplies the
+        form code, keys and upload requests; the prepared batch supplies the bytes.
+        Leaving the ``with`` block closes the session on successful exit;
+        closing an already-closed session is a no-op.
 
         Args:
             prepared_batch: Prepared batch payload created by ``auth.batch.prepare()``.
@@ -349,11 +351,13 @@ class AsyncAuthenticatedClient:
             A bound batch session client exposing presigned upload instructions.
 
         Raises:
-            KSeFArgumentError: If not exactly one of ``prepared_batch``, ``batch_file`` and ``state`` is given, or ``form_code`` or ``offline_mode`` is combined with ``prepared_batch`` or ``state``.
+            KSeFArgumentError: If inputs conflict, or ``form_code`` or ``offline_mode`` is combined with ``prepared_batch`` or ``state``.
             NoCertificateAvailableError: If certificate-backed encryption material is
                 needed but no valid certificate is available.
             KSeFEncryptionError: If symmetric-key encryption fails.
-            KSeFValidationError: If ``state`` is not valid batch session state.
+            KSeFValidationError: If ``state`` is invalid or the recovery payload differs
+                from the original. Older states without a payload digest can resume
+                a session handle but cannot reattach upload payloads.
 
         Example:
             ```python
@@ -379,10 +383,10 @@ class AsyncAuthenticatedClient:
             )
             if value is not None
         ]
-        if len(given) != 1:
+        if len(given) != 1 and set(given) != {"state", "prepared_batch"}:
             raise exceptions.KSeFArgumentError(
                 "batch_session() takes exactly one of prepared_batch, batch_file "
-                f"or state; got {', '.join(given) if given else 'none'}."
+                f"or state, with an optional prepared_batch for recovery; got {', '.join(given) if given else 'none'}."
             )
         if batch_file is None and (form_code is not None or offline_mode is not None):
             raise exceptions.KSeFArgumentError(
@@ -390,7 +394,9 @@ class AsyncAuthenticatedClient:
                 "prepared batch or saved state already carries them."
             )
         if state is not None:
-            return _AwaitableSession(self._resume_batch_session_async(state))
+            return _AwaitableSession(
+                self._resume_batch_session_async(state, prepared_batch)
+            )
         return _AwaitableSession(
             self._open_batch_session_from_input(
                 prepared_batch=prepared_batch,
@@ -401,21 +407,39 @@ class AsyncAuthenticatedClient:
         )
 
     async def _resume_batch_session_async(
-        self, state: BatchSessionResumeState | str
+        self,
+        state: BatchSessionResumeState | str,
+        prepared_batch: PreparedBatch | None = None,
     ) -> AsyncBatchSessionClient:
-        return self._rebind_batch_session(state)
+        return self._rebind_batch_session(state, prepared_batch)
 
     def _rebind_batch_session(
-        self, state: BatchSessionResumeState | str
+        self,
+        state: BatchSessionResumeState | str,
+        prepared_batch: PreparedBatch | None = None,
     ) -> AsyncBatchSessionClient:
         resume = (
             BatchSessionResumeState.from_json(state)
             if isinstance(state, str)
             else state
         )
+        if prepared_batch is not None:
+            if (
+                resume.prepared_batch_digest is None
+                or prepared_batch.recovery_digest() != resume.prepared_batch_digest
+                or prepared_batch.encryption.get_aes_key_bytes()
+                != resume.get_aes_key_bytes()
+                or prepared_batch.encryption.get_iv_bytes() != resume.get_iv_bytes()
+                or prepared_batch.form_code != resume.form_code
+            ):
+                raise exceptions.KSeFValidationError(
+                    "Recovery requires the original prepared batch and matching session state.",
+                    reference_number=resume.reference_number,
+                )
         return AsyncBatchSessionClient(
             transport=self._authed_transport,
             state=resume,
+            prepared_batch=prepared_batch,
             upload_transport=self._transfer_transport,
             access_token=self.access_token,
             resumed=True,
@@ -490,6 +514,8 @@ class AsyncAuthenticatedClient:
             form_code=form_code,
             part_upload_requests=session_response.part_upload_requests,
         )
+        if prepared_batch is not None:
+            state.prepared_batch_digest = prepared_batch.recovery_digest()
         return AsyncBatchSessionClient(
             transport=self._authed_transport,
             state=state,
@@ -526,7 +552,7 @@ class AsyncAuthenticatedClient:
         )
 
     @deprecated(
-        "`open_batch_session()` is deprecated and will be removed in ksef2 1.10.0; "
+        "`open_batch_session()` is deprecated and will be removed no earlier than ksef2 2.0.0; "
         "use `raw` instead."
     )
     def open_batch_session(
@@ -544,7 +570,7 @@ class AsyncAuthenticatedClient:
         """Deprecated: open a batch session using caller-prepared encryption metadata.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``auth.batch_session()`` for the standard flow, or ``raw`` for caller-supplied encryption material.
+            May be removed no earlier than ksef2 2.0.0. Use ``auth.batch_session()`` for the standard flow, or ``raw`` for caller-supplied encryption material.
 
         Args:
             batch_file: Declared ZIP package metadata and encrypted part metadata.
@@ -575,8 +601,8 @@ class AsyncAuthenticatedClient:
         )
 
     @deprecated(
-        "`resume_batch_session()` is deprecated and will be removed in "
-        "ksef2 1.10.0; use `batch_session(state=...)` instead."
+        "`resume_batch_session()` is deprecated and will be removed no earlier than "
+        "ksef2 2.0.0; use `batch_session(state=...)` instead."
     )
     def resume_batch_session(
         self,
@@ -585,7 +611,7 @@ class AsyncAuthenticatedClient:
         """Deprecated: rebind an existing serialized batch session state to this client.
 
         Deprecated:
-            Will be removed in ksef2 1.10.0. Use ``batch_session(state=...)`` instead.
+            May be removed no earlier than ksef2 2.0.0. Use ``batch_session(state=...)`` instead.
 
         Args:
             state: State previously exported from a batch session client.

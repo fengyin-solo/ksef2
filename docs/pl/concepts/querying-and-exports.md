@@ -16,8 +16,11 @@ wynik lokalnie i zasilać widoki operacyjne z własnego magazynu.
 
 ## Metadane znajdują faktury
 
-`auth.invoices.search()` zwraca `Pager` po wierszach `InvoiceMetadata`, a nie po
-XML faktury. Iteruj go albo użyj `pages()`, `first_page()` i `wait()`.
+`auth.invoices.search()` zwraca `InvoiceSearchPager` po wierszach
+`InvoiceMetadata`. Iteruj go albo użyj `pages()`, `first_page()` i `wait()`.
+Te operacje zachowują kontrakty ogólnego `Pager`. Użyj `responses()` dla pełnych,
+typowanych stron albo `first_response()` dla jednej `QueryInvoicesMetadataResponse`
+z flagami paginacji i `permanent_storage_hwm_date`.
 
 Metadane są przydatne do list, uzgodnień, pollingu po wysyłce i decyzji, co
 pobrać później. Wiersz metadanych może zawierać identyfikatory, daty, dane
@@ -87,8 +90,13 @@ Użyj `date_type="permanent_storage"`, gdy celem jest synchronizacja
 przyrostowa. Użyj `restrict_to_permanent_storage_hwm_date=True`, żeby KSeF
 ograniczył wynik do bezpiecznej, zakończonej granicy.
 
+Przykład zakłada uwierzytelnionego klienta `auth`, zapisany `last_synced_at` oraz
+Twoje funkcje zapisu `persist_metadata(invoice)` i `save_checkpoint(datetime)`.
+Zapisuj metadane trwale i deduplikuj po `ksef_number`. Zapisz granicę dopiero
+po pomyślnym odczytaniu i zapisaniu wszystkich stron.
+
 ```python
-from ksef2.models import InvoicesFilter
+from ksef2.models import InvoiceMetadataParams, InvoicesFilter
 
 filters = InvoicesFilter.for_buyer(
     date_type="permanent_storage",
@@ -96,26 +104,27 @@ filters = InvoicesFilter.for_buyer(
     restrict_to_permanent_storage_hwm_date=True,
 )
 
-page = auth.invoices.search(filters).first_page()
+next_checkpoint = None
+for page in auth.invoices.search(
+    filters, InvoiceMetadataParams(sort_order="asc")
+).responses():
+    for invoice in page.invoices:
+        persist_metadata(invoice)
+    if not page.has_more and not page.is_truncated:
+        next_checkpoint = page.permanent_storage_hwm_date
 
-# QueryInvoicesMetadataResponse
-# {
-#   "has_more": false,
-#   "is_truncated": false,
-#   "permanent_storage_hwm_date": "2026-06-25T10:00:00Z",
-#   "invoices": [
-#     {
-#       "ksef_number": "1234567890-20260625-...",
-#       "invoice_number": "FV/42/2026",
-#       "permanent_storage_date": "2026-06-25T09:58:21Z"
-#     }
-#   ]
-# }
+if next_checkpoint is not None:
+    save_checkpoint(next_checkpoint)
 ```
 
-Jeśli strona metadanych albo paczka eksportu jest ucięta, kontynuuj od
-zwróconej ostatniej daty, na przykład `last_permanent_storage_date`, zamiast
-zakładać, że pokryto cały żądany koniec okna. Przy nakładających się oknach
+Pusta, zakończona odpowiedź również może zawierać granicę synchronizacji.
+Jeśli KSeF nie zwróci HWM albo ostatnia odpowiedź jest ucięta, zachowaj poprzednią
+granicę. W kodzie async użyj `async for page in pager.responses()` oraz
+`page = await pager.first_response()`.
+
+`responses()` automatycznie obsługuje granice stron i uciętych wyników metadanych.
+Dla uciętej paczki eksportu kontynuuj od jej `last_permanent_storage_date`,
+zamiast zakładać, że pokryto całe żądane okno. Przy nakładających się oknach
 deduplikuj zapisane rekordy po `ksef_number`.
 
 Paczki eksportu mogą też zawierać `_metadata.json`, co pomaga uzgodnić pobraną

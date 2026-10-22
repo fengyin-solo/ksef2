@@ -49,8 +49,9 @@ missing or unsupported versions, unversioned development exports and unknown
 fields with sanitized `ValueError` messages. Store this output as
 credential material; generic dumps and repr exclude keys and payload bytes.
 Readers in 1.x retain support for released persistence versions. Incompatible
-formats require a new version and a documented migration. Existing session and
-operation resume states and cursors keep their current formats.
+formats require a new version and a documented migration. Session and operation resume states now write `format_version` as the string
+`"1"`; readers also accept the integer `1` written by earlier releases.
+Pagination cursors retain a separate integer version field.
 
 ## Breaking in 1.0
 

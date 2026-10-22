@@ -78,8 +78,8 @@
   another collection, from a different search, or one this SDK cannot read,
   raises `KSeFArgumentError` before any request is sent, without echoing the
   cursor back. Resume a search cursor on a search built with the same filters,
-  page size and sort order (`date_to` is not compared, because it defaults to the
-  time the filters were built). The cursor shows those filters in readable form,
+  page size and sort order. An explicit `date_to` must match the original end
+  date; an omitted default uses the bound saved in the cursor. The cursor shows those filters in readable form,
   so keep it out of logs and URLs. A truncated page that cannot advance is still
   returned with its invoices, and resuming its cursor raises
   `KSeFMetadataPaginationError` without sending a request (#265).

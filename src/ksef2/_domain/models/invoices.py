@@ -744,15 +744,12 @@ class InvoicesFilter(KSeFBaseModel):
             filters = InvoicesFilter.for_buyer(date_from="2026-01-01T00:00:00+01:00")
             ```
         """
-        effective_date_to = (
-            date_to if date_to is not None else datetime.now(timezone.utc)
-        )
         return cls.model_validate(
             {
                 "role": "buyer",
                 "date_type": date_type,
                 "date_from": date_from,
-                "date_to": effective_date_to,
+                **({"date_to": date_to} if date_to is not None else {}),
                 "restrict_to_permanent_storage_hwm_date": (
                     restrict_to_permanent_storage_hwm_date
                 ),
@@ -833,15 +830,12 @@ class InvoicesFilter(KSeFBaseModel):
             filters = InvoicesFilter.for_seller(date_from="2026-01-01T00:00:00+01:00")
             ```
         """
-        effective_date_to = (
-            date_to if date_to is not None else datetime.now(timezone.utc)
-        )
         return cls.model_validate(
             {
                 "role": "seller",
                 "date_type": date_type,
                 "date_from": date_from,
-                "date_to": effective_date_to,
+                **({"date_to": date_to} if date_to is not None else {}),
                 "restrict_to_permanent_storage_hwm_date": (
                     restrict_to_permanent_storage_hwm_date
                 ),

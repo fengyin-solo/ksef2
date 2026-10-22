@@ -158,6 +158,8 @@ class InvoiceSearchCursor(_PaginationCursor):
     """Fingerprint of the search that issued this cursor, from ``search_fingerprint``.
     It stays the same while the search narrows its own date range, so a pager can refuse
     a cursor that belongs to another search."""
+    search_date_to: datetime
+    """Original search upper bound, retained even when truncation narrows the request."""
     filters: InvoicesFilter
     """Criteria selecting the invoices for the page to fetch."""
     params: InvoiceMetadataParams
@@ -170,13 +172,21 @@ class InvoiceSearchCursor(_PaginationCursor):
     instead of sending a request, so the failure is reported after the invoices are."""
 
     @classmethod
-    def decode_search(cls, cursor: str, *, operation: str, search: str) -> Self:
+    def decode_search(
+        cls,
+        cursor: str,
+        *,
+        operation: str,
+        search: str,
+        date_to: datetime | None = None,
+    ) -> Self:
         """Read a cursor and check that the given search issued it.
 
         Args:
             cursor: Cursor string returned by ``encode``.
             operation: Operation the caller is resuming.
             search: Fingerprint of the search the caller is resuming, from ``search_fingerprint``.
+            date_to: Explicit upper bound of the receiving search; omitted defaults use the saved bound.
 
         Returns:
             The decoded cursor state.
@@ -185,7 +195,9 @@ class InvoiceSearchCursor(_PaginationCursor):
             KSeFArgumentError: If the cursor is malformed, belongs to another operation, or was issued by a different search. The cursor itself is never echoed back.
         """
         decoded = cls.decode(cursor, operation=operation)
-        if decoded.search != search:
+        if decoded.search != search or (
+            date_to is not None and decoded.search_date_to != date_to
+        ):
             raise _invalid_cursor(
                 "it was issued by a different search than the one this pager runs"
             )
@@ -221,7 +233,8 @@ def search_fingerprint(filters: InvoicesFilter, params: InvoiceMetadataParams) -
     The fingerprint covers the filters, the page size and the sort order. It leaves out
     the page offset, which moves with every page, and ``date_to``, which defaults to the
     moment the filters were built, so a pager rebuilt after a restart with the same
-    criteria still recognises its own cursors.
+    criteria still recognises its own cursors. Explicit upper bounds are checked
+    separately against the original ``search_date_to`` stored in the cursor.
 
     Args:
         filters: Filters the search started with.

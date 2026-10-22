@@ -641,7 +641,7 @@ class TestSearchCursors:
         )
 
         # A search rebuilt after a restart resumes the original request, whatever page
-        # offset or ``date_to`` it was rebuilt with.
+        # offset it was rebuilt with.
         flavor.transport.enqueue(
             _boundary_page(
                 inv_query_metadata_resp,
@@ -652,9 +652,7 @@ class TestSearchCursors:
         )
         resumed = flavor.run(
             service.search(
-                filters.model_copy(
-                    update={"date_to": datetime(2030, 1, 1, tzinfo=UTC)}
-                ),
+                filters,
                 InvoiceMetadataParams(page_size=20, page_offset=99, sort_order="desc"),
             ).page(cursor)
         )
@@ -878,3 +876,57 @@ class TestSearchCursors:
         assert result["count"] == 1
         assert result["next_cursor"] is None
         assert result["date_from"] == "2026-01-01T00:00:00Z"
+
+
+@pytest.mark.parametrize("factory", ["direct", "buyer", "seller"])
+def test_resume_checks_explicit_end_date(
+    flavor: Flavor,
+    inv_query_metadata_resp: BaseFactory[spec.QueryInvoicesMetadataResponse],
+    factory: str,
+) -> None:
+    def build(end: datetime | None = None) -> InvoicesFilter:
+        start = datetime(2026, 1, 1, tzinfo=UTC)
+        if factory == "buyer":
+            return InvoicesFilter.for_buyer(date_from=start, date_to=end)
+        if factory == "seller":
+            return InvoicesFilter.for_seller(date_from=start, date_to=end)
+        if end is None:
+            return InvoicesFilter(
+                role="seller", date_type="issue_date", date_from=start
+            )
+        return InvoicesFilter(
+            role="seller", date_type="issue_date", date_from=start, date_to=end
+        )
+
+    service = flavor.invoices_service()
+    original = build(datetime(2026, 2, 1, tzinfo=UTC))
+    flavor.transport.enqueue(
+        metadata_page(inv_query_metadata_resp, count=1, has_more=True)
+    )
+    first = flavor.run(service.search(original).page())
+    assert first.next_cursor is not None
+    with pytest.raises(KSeFArgumentError, match="different search"):
+        flavor.run(
+            service.search(build(datetime(2026, 3, 1, tzinfo=UTC))).page(
+                first.next_cursor
+            )
+        )
+    assert len(flavor.transport.calls) == 1
+
+    # An omitted upper bound after restart resumes the saved bound, not today's date.
+    flavor.transport.enqueue(
+        metadata_page(inv_query_metadata_resp, count=1, has_more=True)
+    )
+    second = flavor.run(service.search(build()).page(first.next_cursor))
+    assert second.next_cursor is not None
+    assert (
+        _request_date_range(flavor.transport.calls[-1])["to"] == "2026-02-01T00:00:00Z"
+    )
+
+    # Saving and reloading the original filters makes the end date explicit again.
+    restored = InvoicesFilter.model_validate_json(original.model_dump_json())
+    flavor.transport.enqueue(
+        metadata_page(inv_query_metadata_resp, count=1, has_more=False)
+    )
+    flavor.run(service.search(restored).page(second.next_cursor))
+    assert len(flavor.transport.calls) == 3

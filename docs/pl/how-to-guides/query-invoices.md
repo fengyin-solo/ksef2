@@ -110,8 +110,8 @@ Kursor wyszukiwania faktur zawiera całe następne żądanie: filtr, rozmiar str
 kolejność sortowania oraz granicę obcięcia, na której zatrzymał się KSeF, więc
 wznowione wyszukiwanie zachowuje pozycję nawet wtedy, gdy KSeF zawęził zakres
 dat. Wznów je na wyszukiwaniu zbudowanym z tym samym filtrem, rozmiarem strony i
-kolejnością sortowania; `date_to` nie jest porównywane, bo domyślnie oznacza
-chwilę zbudowania filtra. Kursor z innego wyszukiwania zgłasza `KSeFArgumentError`
+kolejnością sortowania. Jawnie podane `date_to` musi odpowiadać pierwotnej dacie
+końcowej. Jeśli je pominiesz, wznowione wyszukiwanie użyje daty zapisanej w kursorze. Kursor z innego wyszukiwania zgłasza `KSeFArgumentError`
 przed wysłaniem jakiegokolwiek żądania. Kursor pokazuje te filtry, w tym numery
 NIP i numery faktur, w czytelnej postaci, więc nie zapisuj go w logach ani w
 adresach URL. `next_cursor` ma wartość `None` dopiero po

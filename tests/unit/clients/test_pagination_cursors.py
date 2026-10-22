@@ -195,6 +195,7 @@ def _invoice_search_cursor(
         v=CURSOR_VERSION,
         operation="invoices.search",
         search=SEARCH,
+        search_date_to=datetime(2026, 2, 1, tzinfo=timezone.utc),
         filters=InvoicesFilter(
             role="seller",
             date_type="issue_date",
@@ -573,6 +574,7 @@ class TestInvoiceSearchCursorState:
             v=CURSOR_VERSION,
             operation="invoices.search",
             search=SEARCH,
+            search_date_to=datetime(2026, 2, 1, tzinfo=timezone.utc),
             filters=filters,
             params=InvoiceMetadataParams(),
         )
@@ -691,6 +693,7 @@ class TestSearchFingerprint:
                 v=CURSOR_VERSION,
                 operation="invoices.search",
                 search=search,
+                search_date_to=self.FILTERS.date_to,
                 filters=self.FILTERS,
                 params=InvoiceMetadataParams(),
             )

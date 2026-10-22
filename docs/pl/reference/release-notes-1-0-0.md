@@ -50,7 +50,9 @@ eksporty rozwojowe i nieznane pola przez `ValueError` bez ujawniania
 zapisanych wartości. Przechowuj ten wynik jak poświadczenia; ogólne dumpy i repr
 pomijają klucze i bajty paczki. Czytniki w serii 1.x zachowują obsługę wydanych
 wersji zapisu. Niezgodne formaty wymagają nowej wersji i udokumentowanej migracji.
-Istniejące stany wznowienia sesji i operacji oraz kursory zachowują swoje formaty.
+Stany wznowienia sesji i operacji zapisują teraz `format_version` jako tekst
+`"1"`; czytniki przyjmują także liczbę całkowitą `1` zapisywaną przez wcześniejsze
+wydania. Kursory stronicowania zachowują osobne pole wersji całkowitej.
 
 ## Przełomowe zmiany w 1.0
 

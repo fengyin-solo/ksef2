@@ -173,8 +173,8 @@ class AsyncInvoiceSearchPager(AsyncPager[InvoiceMetadata]):
     the truncation boundary the previous page stopped at, so resuming from
     ``page(cursor)`` keeps working when KSeF shifts the date range. The cursor
     also records which search issued it. Resume it on a pager built with the same
-    filters, page size and sort order; ``date_to`` is not compared because it
-    defaults to the moment the filters were built. A cursor from another search
+    filters, page size and sort order. An explicit ``date_to`` must match the
+    original upper bound; an omitted default uses the bound saved in the cursor. A cursor from another search
     raises ``KSeFArgumentError`` before any request is sent. The cursor shows the
     filters in readable form, so keep it out of logs and URLs.
 
@@ -221,13 +221,20 @@ class AsyncInvoiceSearchPager(AsyncPager[InvoiceMetadata]):
         """
         if cursor is None:
             filters = self._filters
+            search_date_to = filters.date_to
             params = self._params or InvoiceMetadataParams()
             previous_truncation_boundary: MetadataBoundary | None = None
         else:
             state = InvoiceSearchCursor.decode_search(
-                cursor, operation="invoices.search", search=self._search
+                cursor,
+                operation="invoices.search",
+                search=self._search,
+                date_to=self._filters.date_to
+                if "date_to" in self._filters.model_fields_set
+                else None,
             )
             filters = state.filters
+            search_date_to = state.search_date_to
             params = state.params
             previous_truncation_boundary = state.previous_truncation_boundary
             if state.stalled is not None:
@@ -251,6 +258,7 @@ class AsyncInvoiceSearchPager(AsyncPager[InvoiceMetadata]):
                     v=CURSOR_VERSION,
                     operation="invoices.search",
                     search=self._search,
+                    search_date_to=search_date_to,
                     filters=filters,
                     params=params,
                     previous_truncation_boundary=previous_truncation_boundary,
@@ -275,6 +283,7 @@ class AsyncInvoiceSearchPager(AsyncPager[InvoiceMetadata]):
                 v=CURSOR_VERSION,
                 operation="invoices.search",
                 search=self._search,
+                search_date_to=search_date_to,
                 filters=next_filters,
                 params=next_params,
                 previous_truncation_boundary=next_boundary,

@@ -20,6 +20,7 @@ They are the paths intended to remain stable through the 1.x line.
 | `ksef2.renderers` | Optional local XSLT/PDF invoice rendering helpers. |
 | `ksef2.raw` | Low-level endpoint clients, schema-native `spec` and `supp` models, and low-level crypto helpers. |
 | `ksef2.raw.mappers` | Public mappers for crossing between raw schema models and SDK models. |
+| `ksef2.bridge` | Machine-readable manifest of the public sync API (`manifest()`, `manifest_json()`), for generating bindings in another language. |
 
 Prefer the highest-level import that fits the workflow:
 
@@ -213,3 +214,4 @@ draft API and are not deprecated.
 - [Client lifecycle](client-lifecycle.md): Review root clients, authenticated clients, and lifecycle ownership.
 - [Low-level API](low-level/overview.md): Use schema-native endpoint wrappers through the supported raw surface.
 - [Sync code generation](../contributing/sync-generation.md): Understand how sync clients are generated from async implementations.
+- [API manifest](api-manifest.md): Describe the public sync API as data a binding generator can read.

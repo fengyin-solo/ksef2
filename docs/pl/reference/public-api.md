@@ -20,6 +20,7 @@ stabilne w linii 1.x.
 | `ksef2.renderers` | Opcjonalne lokalne helpery renderowania faktur XSLT/PDF. |
 | `ksef2.raw` | Klienty endpointów niskiego poziomu, modele `spec` i `supp` oraz narzędzia kryptograficzne. |
 | `ksef2.raw.mappers` | Publiczne mappery między modelami raw i modelami SDK. |
+| `ksef2.bridge` | Maszynowo czytelny manifest publicznego API sync (`manifest()`, `manifest_json()`) do generowania powiązań w innym języku. |
 
 Preferuj najwyższy poziom importu pasujący do workflow:
 
@@ -214,3 +215,4 @@ i nie są wycofane.
 - [Cykl życia klienta](client-lifecycle.md): Przejrzyj klientów głównych, klientów uwierzytelnionych i własność cyklu życia.
 - [API niskiego poziomu](low-level/overview.md): Użyj schema-native wrapperów endpointów przez wspieraną powierzchnię raw.
 - [Generowanie kodu sync](../contributing/sync-generation.md): Zobacz jak klient sync jest generowany z implementacji async.
+- [Manifest API](api-manifest.md): Opisz publiczne API sync jako dane, które odczyta generator powiązań.

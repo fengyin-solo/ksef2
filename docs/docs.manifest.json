@@ -404,6 +404,13 @@
             "path": "reference/operations.md"
           },
           {
+            "label": "API manifest",
+            "translations": {
+              "pl": "Manifest API"
+            },
+            "path": "reference/api-manifest.md"
+          },
+          {
             "label": "Low-level API",
             "translations": {
               "pl": "API niskiego poziomu"

@@ -37,6 +37,7 @@ moduł, który da się zaimportować z repozytorium.
 | `ksef2.profiles` | Pomocniki konfiguracji profili zgodnych z lokalnymi profilami `ksef2-cli`. |
 | `ksef2.fa3` | Publiczny builder faktur FA(3), drafty buildera i publiczne modele domenowe FA(3) używane przez przepływy buildera. |
 | `ksef2.renderers` | Opcjonalne lokalne pomocniki renderowania faktur XSLT/PDF po instalacji dodatku `pdf`. |
+| `ksef2.bridge` | `manifest()` i `manifest_json()`: publiczne API sync jako jeden deterministyczny dokument JSON ze schematem JSON Schema dla każdego parametru, wyniku i stanu, do generowania powiązań. |
 
 Dokładną granicę kompatybilności opisuje strona interfejsu publicznego.
 
@@ -53,6 +54,13 @@ wersji zapisu. Niezgodne formaty wymagają nowej wersji i udokumentowanej migrac
 Stany wznowienia sesji i operacji zapisują teraz `format_version` jako tekst
 `"1"`; czytniki przyjmują także liczbę całkowitą `1` zapisywaną przez wcześniejsze
 wydania. Kursory stronicowania zachowują osobne pole wersji całkowitej.
+
+`ksef2.bridge.manifest()` oraz `python -m ksef2.bridge manifest` opisują tę
+powierzchnię jako dane: jedną operację na każdą niewycofaną publiczną metodę sync,
+schemat JSON Schema 2020-12 dla każdego parametru, wyniku i stanu, nazwaną pozycję
+`$defs` dla każdego modelu i każdego aliasu `Literal` oraz listę `excluded` z
+powodem dla każdego elementu, który nie jest operacją. Zobacz
+[Manifest API](api-manifest.md).
 
 ## Przełomowe zmiany w 1.0
 

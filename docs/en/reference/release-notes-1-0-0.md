@@ -37,6 +37,7 @@ module in the repository.
 | `ksef2.profiles` | Local `ksef2-cli` compatible profile config helpers. |
 | `ksef2.fa3` | Public FA(3) invoice builder, draft snapshots, and public FA(3) domain models used by builder workflows. |
 | `ksef2.renderers` | Optional local XSLT/PDF invoice rendering helpers when installed with the `pdf` extra. |
+| `ksef2.bridge` | `manifest()` and `manifest_json()`: the public sync API as one deterministic JSON document, with a JSON Schema for every parameter, return value and state, for generating bindings. |
 
 For the exact compatibility boundary, use the public API contract page.
 
@@ -52,6 +53,13 @@ Readers in 1.x retain support for released persistence versions. Incompatible
 formats require a new version and a documented migration. Session and operation resume states now write `format_version` as the string
 `"1"`; readers also accept the integer `1` written by earlier releases.
 Pagination cursors retain a separate integer version field.
+
+`ksef2.bridge.manifest()` and `python -m ksef2.bridge manifest` describe that
+surface as data: one operation per non-deprecated public sync method, a JSON
+Schema 2020-12 for every parameter, return value and state, a named `$defs` entry
+for every model and every `Literal` alias, and an `excluded` list with a reason
+for each member that is not an operation. See the
+[API manifest](api-manifest.md).
 
 ## Breaking in 1.0
 

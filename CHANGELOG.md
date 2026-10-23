@@ -2,6 +2,29 @@
 
 ### Added
 
+- `ksef2.bridge.manifest()` and `python -m ksef2.bridge manifest` describe the
+  public sync API as one JSON document, so a binding generator no longer has to
+  re-derive it with `inspect`. The header carries the SDK version and a manifest
+  `format_version`. Every non-deprecated public sync method is an operation with a
+  stable id (`tokens.list`), the state it runs on (unauthenticated client,
+  authenticated client, online session, batch session, handle, pager or result),
+  its parameters with JSON Schema, JSON defaults and docstring descriptions, and a
+  return schema. Every schema is JSON Schema 2020-12 and every named type,
+  including each `Literal` alias, is written once in `$defs`, so generated code
+  gets named enums instead of inline unions. Live objects are described by data: a
+  paged operation returns the `Page` of its item type together with the
+  `next_cursor` that resumes the collection, an operation that returns a handle or
+  a session returns the resume-state model that carries it and its follow-up
+  operations take that state as a `state` parameter, and an export result is the
+  `ExportedInvoices` data model. `bytes` travels as a base64 string and
+  `pathlib.Path` as a `format: "path"` string, so no Python-only type is left in
+  the document. Members that are not operations — deprecated, Python-only,
+  iterator-shaped, local to the filesystem, lifecycle, abstract, or a second path
+  to a secret — are listed in `excluded` with a reason and what to use instead, so
+  nothing disappears silently. The output is deterministic, so you can commit it
+  and diff it. The document describes the API and does not call it; calling it by
+  name is a separate decision (#270).
+
 - `PreparedBatch.to_sensitive_dict()` and `to_sensitive_json()` export a prepared
   batch in full, including encrypted parts as URL-safe Base64 with `=` padding
   and the AES material. Save the output in protected storage and restore it with

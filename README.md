@@ -218,6 +218,7 @@ invoice downloads after KSeF assigns invoice numbers.
 - Quickstart: <https://docs.stacking.me/sdk/getting-started/quickstart/>
 - How-to guides: <https://docs.stacking.me/sdk/how-to-guides/overview/>
 - Public API contract: <https://docs.stacking.me/sdk/reference/public-api/>
+- API manifest for binding generators: <https://docs.stacking.me/sdk/reference/api-manifest/>
 - Python API reference: <https://docs.stacking.me/sdk/reference/api/>
 - Source docs: [`docs/en`](https://github.com/stacking-hq/ksef2/tree/main/docs/en) and [`docs/pl`](https://github.com/stacking-hq/ksef2/tree/main/docs/pl)
 - Runnable examples: [`scripts/examples`](https://github.com/stacking-hq/ksef2/tree/main/scripts/examples)

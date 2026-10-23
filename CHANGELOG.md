@@ -388,6 +388,15 @@ fix (#118) shipped in v0.22.2. PyPI goes 0.20.0, 0.22.0, 0.22.2, 1.0.0.
   `KSeFAuthTokenRedemptionError` now derive from `KSeFTransportError` while keeping
   their own codes, attributes and recovery behaviour (#268).
 
+### Fixed
+
+- Person permission queries no longer duplicate the entity name and no longer
+  drop the entity address. `PersonPermissionDetail` maps the API's
+  `subjectEntityDetails.fullName` to `entity_full_name` and exposes
+  `subjectEntityDetails.address` as `entity_address`, replacing
+  `entity_first_name` and `entity_last_name`, which held the same full name in
+  both fields and discarded the address (#205).
+
 ## v0.22.2 (2026-09-25)
 
 ## v0.22.1 (2026-09-25)

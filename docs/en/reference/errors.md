@@ -12,6 +12,23 @@ stay ordinary Python exceptions. Presigned external-storage transfers use the
 dedicated exceptions described below instead of KSeF API/authentication
 classification.
 
+## Local input validation
+
+Public models in `ksef2.models` raise `KSeFValidationError` for invalid input.
+Non-builder clients and services use the same exception when converting public
+arguments into request models or restoring invalid JSON state. The message
+names the public parameter, and `__cause__` retains the original Pydantic error.
+`errors()` exposes its structured validation details.
+
+Permission grants check PESEL digit counts and checksums, and the OpenAPI NIP
+pattern, against the selected identifier type. NIP checksums are not checked
+for grants; `with_test_certificate()` keeps its existing NIP checksum check. Empty permission lists, revoke IDs, and KSeF token
+credentials raise `KSeFArgumentError` with a corrective `hint`, before a request
+is sent. This class also inherits from `KSeFValidationError` and `KSeFException`.
+
+`InvoicesFilter(ksef_number=...)` validates the number at construction. Both
+35-character KSeF 2.0 and legacy 36-character KSeF 1.0 formats are accepted.
+
 ## Branch on the class or on `ksef_code`
 
 Handle errors by exception class, or by `ksef_code` for KSeF API errors. Never

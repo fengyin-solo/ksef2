@@ -392,24 +392,6 @@
                 }
             }
         ],
-        "./src/ksef2/_domain/models/certificates.py": [
-            {
-                "code": "reportUnknownVariableType",
-                "range": {
-                    "startColumn": 0,
-                    "endColumn": 34,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportUnknownVariableType",
-                "range": {
-                    "startColumn": 11,
-                    "endColumn": 68,
-                    "lineCount": 1
-                }
-            }
-        ],
         "./src/ksef2/_domain/models/fa3/attachment.py": [
             {
                 "code": "reportUnnecessaryComparison",

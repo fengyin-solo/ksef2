@@ -13,6 +13,9 @@ from ksef2._clients._pager import Pager
 from ksef2._clients._pagination_cursor import OffsetCursor
 from ksef2._core import exceptions
 from ksef2._core.protocols import Middleware
+from ksef2._domain.identifiers import require_nonempty, validate_permission_identifiers
+from ksef2._domain.models._enum import coerce_enum
+from ksef2._domain.models.base import validation_errors
 from ksef2._domain.models.pagination import OffsetPaginationParams, Page
 from ksef2._domain.models.permissions import (
     AttachmentPermissionStatus,
@@ -26,6 +29,8 @@ from ksef2._domain.models.permissions import (
     EntityPermissionDetail,
     EntityPermissionsQuery,
     EntityPermissionsQueryResponse,
+    EntityPermissionType,
+    EntityPermissionTypeEnum,
     EntityRole,
     EntityRolesResponse,
     EuEntityAdminContextIdentifierType,
@@ -52,6 +57,7 @@ from ksef2._domain.models.permissions import (
     PersonPermissionScope,
     PersonPermissionsQuery,
     PersonPermissionsQueryResponse,
+    PersonPermissionTypeEnum,
     SubordinateEntityRoleDetail,
     SubordinateEntityRolesQuery,
     SubordinateEntityRolesQueryResponse,
@@ -288,7 +294,7 @@ class PermissionsClient:
             A handle that polls the operation's status.
 
         Raises:
-            ValidationError: If ``state`` is JSON that is not a saved permission operation state.
+            KSeFValidationError: If ``state`` is JSON that is not a saved permission operation state.
 
         Example:
             ```python
@@ -296,11 +302,12 @@ class PermissionsClient:
             status = operation.wait()
             ```
         """
-        restored = (
-            state
-            if isinstance(state, PermissionOperationResumeState)
-            else PermissionOperationResumeState.from_json(state)
-        )
+        with validation_errors("state"):
+            restored = (
+                state
+                if isinstance(state, PermissionOperationResumeState)
+                else PermissionOperationResumeState.from_json(state)
+            )
         return self._operation(
             GrantPermissionsResponse(reference_number=restored.reference_number)
         )
@@ -310,7 +317,7 @@ class PermissionsClient:
         *,
         subject_type: CertificateSubjectIdentifierType,
         subject_value: str,
-        permissions: list[PersonPermissionScope],
+        permissions: Sequence[PersonPermissionScope | PersonPermissionTypeEnum | str],
         description: str,
         first_name: str,
         last_name: str,
@@ -328,16 +335,32 @@ class PermissionsClient:
         Returns:
             A handle to the asynchronous grant operation; call ``wait()`` to wait until KSeF has applied it.
         """
-        body = grant_to_spec(
-            GrantPersonPermissionsRequest(
-                subject_type=subject_type,
-                subject_value=subject_value,
-                permissions=permissions,
-                description=description,
-                first_name=first_name,
-                last_name=last_name,
-            )
+        require_nonempty(permissions, "permissions")
+        validate_permission_identifiers(
+            {"subject_type": subject_type, "subject_value": subject_value}
         )
+        with validation_errors():
+            body = grant_to_spec(
+                GrantPersonPermissionsRequest(
+                    subject_type=subject_type,
+                    subject_value=subject_value,
+                    permissions=cast(
+                        list[PersonPermissionScope],
+                        [
+                            coerce_enum(
+                                PersonPermissionTypeEnum,
+                                value,
+                                snake_case_only=True,
+                                parameter="permissions",
+                            ).value
+                            for value in permissions
+                        ],
+                    ),
+                    description=description,
+                    first_name=first_name,
+                    last_name=last_name,
+                )
+            )
         return self._operation(
             grant_from_spec(self._grant_eps.grant_person(request=body))
         )
@@ -346,7 +369,9 @@ class PermissionsClient:
         self,
         *,
         subject_value: str,
-        permissions: list[EntityPermission],
+        permissions: Sequence[
+            EntityPermission | EntityPermissionType | EntityPermissionTypeEnum | str
+        ],
         description: str,
         entity_name: str,
     ) -> PermissionOperation:
@@ -361,14 +386,31 @@ class PermissionsClient:
         Returns:
             A handle to the asynchronous grant operation; call ``wait()`` to wait until KSeF has applied it.
         """
-        body = grant_to_spec(
-            GrantEntityPermissionsRequest(
-                subject_value=subject_value,
-                permissions=permissions,
-                description=description,
-                entity_name=entity_name,
-            )
+        require_nonempty(permissions, "permissions")
+        validate_permission_identifiers(
+            {"subject_type": "nip", "subject_value": subject_value}
         )
+        with validation_errors():
+            body = grant_to_spec(
+                GrantEntityPermissionsRequest(
+                    subject_value=subject_value,
+                    permissions=[
+                        value
+                        if isinstance(value, EntityPermission)
+                        else EntityPermission(
+                            type=coerce_enum(
+                                EntityPermissionTypeEnum,
+                                value,
+                                snake_case_only=True,
+                                parameter="permissions",
+                            ).value
+                        )
+                        for value in permissions
+                    ],
+                    description=description,
+                    entity_name=entity_name,
+                )
+            )
         return self._operation(
             grant_from_spec(self._grant_eps.grant_entity(request=body))
         )
@@ -394,15 +436,19 @@ class PermissionsClient:
         Returns:
             A handle to the asynchronous grant operation; call ``wait()`` to wait until KSeF has applied it.
         """
-        body = grant_to_spec(
-            GrantAuthorizationPermissionsRequest(
-                subject_type=subject_type,
-                subject_value=subject_value,
-                permission=permission,
-                description=description,
-                entity_name=entity_name,
-            )
+        validate_permission_identifiers(
+            {"subject_type": subject_type, "subject_value": subject_value}
         )
+        with validation_errors():
+            body = grant_to_spec(
+                GrantAuthorizationPermissionsRequest(
+                    subject_type=subject_type,
+                    subject_value=subject_value,
+                    permission=permission,
+                    description=description,
+                    entity_name=entity_name,
+                )
+            )
         return self._operation(
             grant_from_spec(self._grant_eps.grant_authorization(request=body))
         )
@@ -434,18 +480,28 @@ class PermissionsClient:
         Returns:
             A handle to the asynchronous grant operation; call ``wait()`` to wait until KSeF has applied it.
         """
-        body = grant_to_spec(
-            GrantIndirectPermissionsRequest(
-                subject_type=subject_type,
-                subject_value=subject_value,
-                permissions=permissions,
-                description=description,
-                first_name=first_name,
-                last_name=last_name,
-                target_type=target_type,
-                target_value=target_value,
-            )
+        require_nonempty(permissions, "permissions")
+        validate_permission_identifiers(
+            {
+                "subject_type": subject_type,
+                "subject_value": subject_value,
+                "target_type": target_type,
+                "target_value": target_value,
+            }
         )
+        with validation_errors():
+            body = grant_to_spec(
+                GrantIndirectPermissionsRequest(
+                    subject_type=subject_type,
+                    subject_value=subject_value,
+                    permissions=permissions,
+                    description=description,
+                    first_name=first_name,
+                    last_name=last_name,
+                    target_type=target_type,
+                    target_value=target_value,
+                )
+            )
         return self._operation(
             grant_from_spec(self._grant_eps.grant_indirect(request=body))
         )
@@ -477,18 +533,27 @@ class PermissionsClient:
         Returns:
             A handle to the asynchronous grant operation; call ``wait()`` to wait until KSeF has applied it.
         """
-        body = grant_to_spec(
-            GrantSubunitPermissionsRequest(
-                subject_type=subject_type,
-                subject_value=subject_value,
-                context_type=context_type,
-                context_value=context_value,
-                description=description,
-                first_name=first_name,
-                last_name=last_name,
-                subunit_name=subunit_name,
-            )
+        validate_permission_identifiers(
+            {
+                "context_type": context_type,
+                "context_value": context_value,
+                "subject_type": subject_type,
+                "subject_value": subject_value,
+            }
         )
+        with validation_errors():
+            body = grant_to_spec(
+                GrantSubunitPermissionsRequest(
+                    subject_type=subject_type,
+                    subject_value=subject_value,
+                    context_type=context_type,
+                    context_value=context_value,
+                    description=description,
+                    first_name=first_name,
+                    last_name=last_name,
+                    subunit_name=subunit_name,
+                )
+            )
         return self._operation(
             grant_from_spec(self._grant_eps.grant_subunit(request=body))
         )
@@ -510,13 +575,16 @@ class PermissionsClient:
         Returns:
             A handle to the asynchronous grant operation; call ``wait()`` to wait until KSeF has applied it.
         """
-        body = grant_to_spec(
-            GrantEuEntityPermissionsRequest(
-                subject_value=subject_value,
-                permissions=permissions,
-                description=description,
+        require_nonempty(permissions, "permissions")
+        validate_permission_identifiers({"subject_value": subject_value})
+        with validation_errors():
+            body = grant_to_spec(
+                GrantEuEntityPermissionsRequest(
+                    subject_value=subject_value,
+                    permissions=permissions,
+                    description=description,
+                )
             )
-        )
         return self._operation(
             grant_from_spec(self._grant_eps.grant_eu_entity(request=body))
         )
@@ -542,15 +610,23 @@ class PermissionsClient:
         Returns:
             A handle to the asynchronous grant operation; call ``wait()`` to wait until KSeF has applied it.
         """
-        body = grant_to_spec(
-            GrantEuEntityAdministrationRequest(
-                subject_value=subject_value,
-                context_type=context_type,
-                context_value=context_value,
-                description=description,
-                eu_entity_name=eu_entity_name,
-            )
+        validate_permission_identifiers(
+            {
+                "context_type": context_type,
+                "context_value": context_value,
+                "subject_value": subject_value,
+            }
         )
+        with validation_errors():
+            body = grant_to_spec(
+                GrantEuEntityAdministrationRequest(
+                    subject_value=subject_value,
+                    context_type=context_type,
+                    context_value=context_value,
+                    description=description,
+                    eu_entity_name=eu_entity_name,
+                )
+            )
         return self._operation(
             grant_from_spec(self._grant_eps.grant_administered_eu_entity(request=body))
         )
@@ -568,6 +644,7 @@ class PermissionsClient:
         Returns:
             A handle to the asynchronous revoke operation; call ``wait()`` to wait until KSeF has applied it.
         """
+        require_nonempty(permission_id, "permission_id")
         return self._operation(
             grant_from_spec(
                 self._revoke_eps.revoke_authorization(
@@ -577,6 +654,7 @@ class PermissionsClient:
         )
 
     def _revoke(self, permission_id: str) -> GrantPermissionsResponse:
+        require_nonempty(permission_id, "permission_id")
         return grant_from_spec(
             self._revoke_eps.revoke_person(
                 permission_id=permission_id,
@@ -663,63 +741,77 @@ class PermissionsClient:
     def _authorizations(
         self, query: AuthorizationPermissionsQuery, params: OffsetPaginationParams
     ) -> AuthorizationPermissionsQueryResponse:
+        with validation_errors("query"):
+            body = query_to_spec(query)
         return entity_from_spec(
             self._query_eps.query_authorizations_grants(
-                request=query_to_spec(query), **params.to_query_params()
+                request=body, **params.to_query_params()
             )
         )
 
     def _entities(
         self, query: EntityPermissionsQuery, params: OffsetPaginationParams
     ) -> EntityPermissionsQueryResponse:
+        with validation_errors("query"):
+            body = query_to_spec(query)
         return entity_from_spec(
             self._query_eps.query_entities_grants(
-                request=query_to_spec(query), **params.to_query_params()
+                request=body, **params.to_query_params()
             )
         )
 
     def _eu_entities(
         self, query: EuEntityPermissionsQuery, params: OffsetPaginationParams
     ) -> EuEntityPermissionsQueryResponse:
+        with validation_errors("query"):
+            body = query_to_spec(query)
         return eu_entity_from_spec(
             self._query_eps.query_eu_entities_grants(
-                request=query_to_spec(query), **params.to_query_params()
+                request=body, **params.to_query_params()
             )
         )
 
     def _personal(
         self, query: PersonalPermissionsQuery, params: OffsetPaginationParams
     ) -> PersonalPermissionsQueryResponse:
+        with validation_errors("query"):
+            body = query_to_spec(query)
         return personal_from_spec(
             self._query_eps.query_personal_grants(
-                request=query_to_spec(query), **params.to_query_params()
+                request=body, **params.to_query_params()
             )
         )
 
     def _persons(
         self, query: PersonPermissionsQuery, params: OffsetPaginationParams
     ) -> PersonPermissionsQueryResponse:
+        with validation_errors("query"):
+            body = query_to_spec(query)
         return person_from_spec(
             self._query_eps.query_persons_grants(
-                request=query_to_spec(query), **params.to_query_params()
+                request=body, **params.to_query_params()
             )
         )
 
     def _subordinate_entities(
         self, query: SubordinateEntityRolesQuery, params: OffsetPaginationParams
     ) -> SubordinateEntityRolesQueryResponse:
+        with validation_errors("query"):
+            body = query_to_spec(query)
         return subordinate_roles_from_spec(
             self._query_eps.query_subordinate_entities_roles(
-                request=query_to_spec(query), **params.to_query_params()
+                request=body, **params.to_query_params()
             )
         )
 
     def _subunits(
         self, query: SubunitPermissionsQuery, params: OffsetPaginationParams
     ) -> SubunitPermissionsQueryResponse:
+        with validation_errors("query"):
+            body = query_to_spec(query)
         return subunit_from_spec(
             self._query_eps.query_subunits_grants(
-                request=query_to_spec(query), **params.to_query_params()
+                request=body, **params.to_query_params()
             )
         )
 

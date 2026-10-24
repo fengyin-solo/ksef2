@@ -3,8 +3,19 @@
 import json
 import re
 from importlib import import_module
-from collections.abc import Mapping
-from typing import Annotated, Any, Callable, ClassVar, Literal, Self, cast, override
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
+from typing import (
+    Annotated,
+    Any,
+    Callable,
+    ClassVar,
+    Literal,
+    Self,
+    Unpack,
+    cast,
+    override,
+)
 
 from pydantic import (
     AliasChoices,
@@ -16,7 +27,7 @@ from pydantic import (
     model_validator,
     ValidationError,
 )
-from pydantic.alias_generators import to_camel
+from pydantic.alias_generators import to_camel, to_snake
 
 from ksef2._logging import get_logger
 
@@ -28,7 +39,10 @@ def _validation_exception(error: ValidationError, model_name: str) -> Exception:
     error_type = cast(
         Callable[..., Exception], getattr(exception_module, "KSeFValidationError")
     )
-    reason = error.errors()[0]["msg"]
+    detail = error.errors()[0]
+    reason = detail["msg"]
+    if detail["loc"]:
+        reason += " (" + ".".join(str(part) for part in detail["loc"]) + ")"
     return error_type(f"Invalid {model_name} input: {reason}", validation_error=error)
 
 
@@ -43,6 +57,48 @@ def _wrapped_sdk_validation_error(error: ValidationError) -> Exception | None:
             if isinstance(nested_error, error_type):
                 return nested_error
     return None
+
+
+@contextmanager
+def validation_errors(parameter: str | None = None) -> Iterator[None]:
+    """Wrap public input conversions using the SDK model-validation exception.
+
+    ``parameter`` names the public argument when a whole object is converted.
+    Otherwise the failing field names the argument. Preserve the original
+    Pydantic error even when a domain model has already wrapped it.
+    """
+    exception_module = import_module("ksef2._core.exceptions")
+    error_type = cast(type[Exception], getattr(exception_module, "KSeFValidationError"))
+    try:
+        yield
+    except (ValidationError, error_type) as exc:
+        if not isinstance(exc, ValidationError) and type(exc) is not error_type:
+            raise
+        error = (
+            exc
+            if isinstance(exc, ValidationError)
+            else getattr(exc, "validation_error", None)
+        )
+        if not isinstance(error, ValidationError):
+            raise
+        location = [
+            to_snake(str(part))
+            for part in error.errors()[0]["loc"]
+            if isinstance(part, str)
+        ]
+        public_fields = {
+            "invoice_size": "invoice_xml",
+            "subject_nip": "nip",
+            "revocation_reason": "reason",
+            "encrypted_invoice_size": "invoice_xml",
+            "subject_identifier": "subject_value",
+            "context_identifier": "context_value",
+            "target_identifier": "target_value",
+            "subject_details": "subject_value",
+        }
+        field = public_fields.get(location[0], location[0]) if location else "input"
+        label = parameter or field
+        raise _validation_exception(error, label) from error
 
 
 _AliasSpec = str | AliasPath | AliasChoices | None
@@ -99,13 +155,33 @@ class KSeFBaseModel(BaseModel):
     """Base model that ignores undeclared fields and logs warnings about them."""
 
     model_config = ConfigDict(extra="ignore")
-    wrap_validation_errors: ClassVar[bool] = False
+    wrap_validation_errors: ClassVar[bool] = True
+
+    def __init_subclass__(cls, **kwargs: Unpack[ConfigDict]) -> None:
+        super().__init_subclass__(**kwargs)
+        # Explicit opt-ins, including Fa3Model, use this same SDK wrapper.
+        if "wrap_validation_errors" in cls.__dict__:
+            return
+        if cls.__module__.startswith("ksef2._domain.models.fa3."):
+            cls.wrap_validation_errors = any(
+                base.wrap_validation_errors
+                for base in cls.__bases__
+                if issubclass(base, KSeFBaseModel)
+                and base.__module__.startswith("ksef2._domain.models.fa3.")
+            )
+        elif cls.__module__.startswith("ksef2."):
+            cls.wrap_validation_errors = cls.__module__.startswith(
+                "ksef2._domain.models."
+            )
 
     def __init__(self, **data: Any) -> None:  # pyright: ignore[reportAny, reportExplicitAny]
         try:
             super().__init__(**data)
         except ValidationError as exc:
             if self.wrap_validation_errors:
+                wrapped_error = _wrapped_sdk_validation_error(exc)
+                if wrapped_error is not None:
+                    raise wrapped_error from wrapped_error.__cause__ or exc
                 raise _validation_exception(exc, type(self).__name__) from exc
             raise
 
@@ -168,6 +244,31 @@ class KSeFBaseModel(BaseModel):
             )
         except ValidationError as exc:
             if cls.wrap_validation_errors:
+                wrapped_error = _wrapped_sdk_validation_error(exc)
+                if wrapped_error is not None:
+                    raise wrapped_error from wrapped_error.__cause__ or exc
+                raise _validation_exception(exc, cls.__name__) from exc
+            raise
+
+    @classmethod
+    @override
+    def model_validate_strings(cls, obj: Any, **kwargs: Any) -> Self:  # pyright: ignore[reportAny, reportExplicitAny]
+        """Validate string data with the same SDK error contract as other entry points.
+
+        Args:
+            obj: String-valued data to validate.
+            **kwargs: Pydantic validation options.
+
+        Returns:
+            The validated model.
+        """
+        try:
+            return super().model_validate_strings(obj, **kwargs)  # pyright: ignore[reportAny]
+        except ValidationError as exc:
+            if cls.wrap_validation_errors:
+                wrapped_error = _wrapped_sdk_validation_error(exc)
+                if wrapped_error is not None:
+                    raise wrapped_error from wrapped_error.__cause__ or exc
                 raise _validation_exception(exc, cls.__name__) from exc
             raise
 

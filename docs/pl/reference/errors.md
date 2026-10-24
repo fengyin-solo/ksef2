@@ -12,6 +12,23 @@ pozostają zwykłymi wyjątkami Pythona. Transfery przez presigned URL-e do
 zewnętrznego storage używają opisanych niżej dedykowanych wyjątków zamiast
 klasyfikacji błędów API lub uwierzytelnienia KSeF.
 
+## Lokalna walidacja danych wejściowych
+
+Publiczne modele z `ksef2.models` zgłaszają `KSeFValidationError` dla
+niepoprawnych danych wejściowych. Klienci i serwisy poza builderami używają tego
+samego wyjątku podczas konwersji argumentów na modele żądań i odtwarzania stanu
+z niepoprawnego JSON. Komunikat wskazuje publiczny parametr, a `__cause__`
+zachowuje oryginalny błąd Pydantic. Metoda `errors()` udostępnia jego szczegóły.
+
+Nadawanie uprawnień sprawdza długość i sumę kontrolną PESEL oraz wzorzec NIP
+z OpenAPI zgodnie z wybranym typem identyfikatora. Nie sprawdza sumy kontrolnej
+NIP. `with_test_certificate()` zachowuje dotychczasową kontrolę sumy NIP. Puste listy uprawnień, identyfikatory cofania
+i tokeny KSeF zgłaszają `KSeFArgumentError` z podpowiedzią `hint` przed wysłaniem
+żądania. Ten wyjątek dziedziczy też po `KSeFValidationError` i `KSeFException`.
+
+`InvoicesFilter(ksef_number=...)` sprawdza format numeru podczas tworzenia
+obiektu. Akceptuje 35-znakowe numery KSeF 2.0 oraz 36-znakowe numery KSeF 1.0.
+
 ## Rozgałęziaj po klasie albo po `ksef_code`
 
 Obsługuj błędy po klasie wyjątku, a dla błędów API KSeF po `ksef_code`. Nigdy nie

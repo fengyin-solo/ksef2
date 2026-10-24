@@ -3,7 +3,6 @@
 
 """Authentication branch client."""
 
-import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import final
@@ -27,6 +26,12 @@ from ksef2._core.crypto import encrypt_token
 from ksef2._core.polling import poll_until
 from ksef2._core.protocols import Middleware
 from ksef2._core.stores import CertificateStoreProtocol
+from ksef2._domain.identifiers import (
+    require_nonempty,
+)
+from ksef2._domain.identifiers import (
+    validate_nip_checksum as _validated_nip,
+)
 from ksef2._domain.models.auth import (
     AuthenticationResumeState,
     AuthOperationStatus,
@@ -35,6 +40,7 @@ from ksef2._domain.models.auth import (
     InitTokenAuthenticationRequest,
     RefreshedToken,
 )
+from ksef2._domain.models.base import validation_errors
 from ksef2._domain.models.xades import XAdESCredentials
 from ksef2._endpoints.auth import AuthEndpoints
 from ksef2._infra.mappers.auth import from_spec, to_spec
@@ -52,35 +58,6 @@ def _build_signed_xades(
 
     xml_bytes = build_auth_token_request_xml(challenge, nip)
     return sign_xades(xml_bytes, cert, private_key)
-
-
-def _validated_nip(nip: str | None) -> str:
-    if not isinstance(nip, str):
-        raise exceptions.KSeFArgumentError(
-            "nip must be a 10-digit Polish NIP.",
-            hint="Pass 10 digits; dashes and a leading PL prefix are accepted.",
-        )
-    normalized = re.sub(r"[-\s]", "", nip.strip()).upper()
-    if normalized.startswith("PL"):
-        normalized = normalized[2:]
-    if not re.fullmatch(r"\d{10}", normalized):
-        raise exceptions.KSeFArgumentError(
-            "nip must contain exactly 10 digits.",
-            hint="Pass 10 digits; dashes and a leading PL prefix are accepted.",
-        )
-    weights = (6, 5, 7, 2, 3, 4, 5, 6, 7)
-    checksum = (
-        sum(
-            int(digit) * weight
-            for digit, weight in zip(normalized[:9], weights, strict=True)
-        )
-        % 11
-    )
-    if checksum == 10 or checksum != int(normalized[9]):
-        raise exceptions.KSeFArgumentError(
-            "nip has an invalid checksum.", hint="Check the 10-digit NIP value."
-        )
-    return normalized
 
 
 @final
@@ -142,11 +119,12 @@ class AuthClient:
         Returns:
             An authenticated client bound to the saved tokens.
         """
-        resume = (
-            AuthenticationResumeState.from_json(state)
-            if isinstance(state, str)
-            else state
-        )
+        with validation_errors("state"):
+            resume = (
+                AuthenticationResumeState.from_json(state)
+                if isinstance(state, str)
+                else state
+            )
         return self._build_authenticated_client(auth_tokens=resume.to_tokens())
 
     def with_token(
@@ -186,6 +164,7 @@ class AuthClient:
             )
             ```
         """
+        require_nonempty(ksef_token, "ksef_token")
         self._ensure_certificates()
 
         challenge = from_spec(self._auth_ep.challenge())
@@ -199,14 +178,16 @@ class AuthClient:
         encrypted = encrypt_token(
             ksef_token, str(challenge.timestamp_ms), cert.certificate
         )
-        request = InitTokenAuthenticationRequest(
-            challenge=challenge.challenge,
-            context_type=context_type,
-            context_value=nip,
-            encrypted_token=encrypted,
-            public_key_id=cert.public_key_id,
-        )
-        init_resp = from_spec(self._auth_ep.token_auth(body=to_spec(request)))
+        with validation_errors():
+            request = InitTokenAuthenticationRequest(
+                challenge=challenge.challenge,
+                context_type=context_type,
+                context_value=nip,
+                encrypted_token=encrypted,
+                public_key_id=cert.public_key_id,
+            )
+            body = to_spec(request)
+        init_resp = from_spec(self._auth_ep.token_auth(body=body))
 
         self._poll_until_authenticated(
             auth_token=init_resp.authentication_token.token,

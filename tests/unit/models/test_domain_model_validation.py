@@ -1,11 +1,12 @@
 from datetime import datetime, timezone
 
 import pytest
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from ksef2._domain.models.batch import BatchFileInfo, BatchFilePart
 from ksef2._domain.models.invoices import InvoicesFilter
 from ksef2._domain.models.pagination import InvoiceMetadataParams
+from ksef2.models import PersonPermissionsQuery
 from ksef2._core.exceptions import KSeFException, KSeFValidationError
 
 
@@ -54,7 +55,7 @@ def _invoice_filter(**overrides: object) -> InvoicesFilter:
 
 
 def test_batch_file_info_rejects_file_larger_than_5gb() -> None:
-    with pytest.raises(ValidationError, match="less than or equal to 5000000000"):
+    with pytest.raises(KSeFValidationError, match="less than or equal to 5000000000"):
         BatchFileInfo(
             file_size=5_000_000_001,
             file_hash="hash",
@@ -79,22 +80,22 @@ def test_batch_file_info_rejects_more_than_50_parts() -> None:
         _batch_part(ordinal_number=ordinal_number) for ordinal_number in range(1, 52)
     ]
 
-    with pytest.raises(ValidationError, match="at most 50"):
+    with pytest.raises(KSeFValidationError, match="at most 50"):
         BatchFileInfo(file_size=1, file_hash="hash", parts=parts)
 
 
 def test_batch_file_part_rejects_negative_size() -> None:
-    with pytest.raises(ValidationError, match="greater than or equal to 0"):
+    with pytest.raises(KSeFValidationError, match="greater than or equal to 0"):
         _batch_part(file_size=-1)
 
 
 def test_batch_file_part_rejects_encrypted_size_above_represented_limit() -> None:
-    with pytest.raises(ValidationError, match="less than or equal to 100000016"):
+    with pytest.raises(KSeFValidationError, match="less than or equal to 100000016"):
         _batch_part(file_size=100_000_017)
 
 
 def test_batch_file_part_rejects_zero_ordinal_number() -> None:
-    with pytest.raises(ValidationError, match="greater than or equal to 1"):
+    with pytest.raises(KSeFValidationError, match="greater than or equal to 1"):
         _batch_part(ordinal_number=0)
 
 
@@ -245,3 +246,79 @@ def test_invoices_filter_accepts_explicit_offset_during_dst_overlap() -> None:
 
     assert filters.date_from == datetime(2026, 10, 25, 0, 30, tzinfo=timezone.utc)
     assert filters.date_to == datetime(2026, 10, 25, 1, 30, tzinfo=timezone.utc)
+
+
+def _public_pydantic_models() -> list[type[BaseModel]]:
+    import inspect
+    import ksef2.models as models
+
+    return sorted(
+        {
+            value
+            for name in models.__all__
+            if inspect.isclass(value := getattr(models, name))
+            and issubclass(value, BaseModel)
+        },
+        key=lambda model: model.__name__,
+    )
+
+
+@pytest.mark.parametrize(
+    "model", _public_pydantic_models(), ids=lambda model: model.__name__
+)
+@pytest.mark.parametrize("entry", ["constructor", "object", "json", "strings"])
+def test_every_public_model_wraps_invalid_input(
+    model: type[BaseModel],
+    entry: str,
+) -> None:
+    if entry == "constructor":
+        # None is invalid for each declared field; models with no fields have no
+        # invalid constructor input because they deliberately ignore extras.
+        if not model.model_fields:
+            return
+        invalid = {name: None for name in model.model_fields}
+        try:
+            model(**invalid)
+        except KSeFValidationError as error:
+            assert isinstance(error.__cause__, ValidationError)
+        else:
+            # Fully optional query models accept None. Malformed JSON below
+            # exercises their validation boundary without inventing constraints.
+            assert all(not field.is_required() for field in model.model_fields.values())
+    else:
+        with pytest.raises(KSeFValidationError) as caught:
+            if entry == "object":
+                model.model_validate(None)
+            elif entry == "strings":
+                model.model_validate_strings(None)
+            else:
+                model.model_validate_json("{")
+        assert isinstance(caught.value.__cause__, ValidationError)
+
+
+@pytest.mark.parametrize(
+    "value", ["garbage", "", "5261040828-20260101-abcdefABCDEF-AA"]
+)
+def test_invoice_filter_validates_ksef_number_at_construction(value: str) -> None:
+    with pytest.raises(KSeFValidationError) as caught:
+        _invoice_filter(ksef_number=value)
+    assert caught.value.errors()[0]["loc"] == ("ksef_number",)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "5261040828-20260101-ABCDEF123456-AA",
+        "5261040828-20260101-ABCDEF-123456-AA",
+    ],
+)
+def test_invoice_filter_accepts_both_spec_ksef_number_formats(value: str) -> None:
+    assert _invoice_filter(ksef_number=value).ksef_number == value
+
+
+def test_missing_person_query_type_uses_sdk_exception_hierarchy() -> None:
+    with pytest.raises(KSeFException, match="query_type") as caught:
+        PersonPermissionsQuery()  # pyright: ignore[reportCallIssue]
+    assert isinstance(caught.value, KSeFValidationError)
+    assert isinstance(caught.value.__cause__, ValidationError)
+    assert caught.value.errors()[0]["loc"] == ("query_type",)

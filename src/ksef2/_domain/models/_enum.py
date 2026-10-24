@@ -14,7 +14,13 @@ def _valid_value(member: Enum) -> str:
     return f"{member.name} ({value})"
 
 
-def coerce_enum(enum_type: type[EnumT], value: object) -> EnumT:
+def coerce_enum(
+    enum_type: type[EnumT],
+    value: object,
+    *,
+    snake_case_only: bool = False,
+    parameter: str | None = None,
+) -> EnumT:
     """Match an enum member, name, or string value without regard to case."""
     if isinstance(value, enum_type):
         return value
@@ -22,18 +28,30 @@ def coerce_enum(enum_type: type[EnumT], value: object) -> EnumT:
     if isinstance(value, str):
         normalized = value.strip().casefold()
         for member in enum_type:
-            if (
+            if (not snake_case_only or value == str(cast(object, member.value))) and (
                 member.name.casefold() == normalized
                 or str(cast(object, member.value)).casefold() == normalized
             ):
                 return member
 
-    valid_values = ", ".join(_valid_value(member) for member in enum_type)
+    suggestion = ""
+    if isinstance(value, str):
+        for member in enum_type:
+            candidate = str(cast(object, member.value))
+            if value.casefold() == candidate.replace("_", "").casefold():
+                suggestion = f' did you mean "{candidate}"?'
+                break
+    valid_values = ", ".join(
+        str(cast(object, member.value)) if snake_case_only else _valid_value(member)
+        for member in enum_type
+    )
     argument_error = cast(
         Callable[..., Exception],
         getattr(import_module("ksef2._core.exceptions"), "KSeFArgumentError"),
     )
     raise argument_error(
-        f"Invalid {enum_type.__name__} value {value!r}. Valid values are: {valid_values}.",
-        hint="Pass one of the listed enum names or values.",
+        f"Invalid {parameter or enum_type.__name__} value {value!r}.{suggestion} Valid values are: {valid_values}.",
+        hint="Pass a snake_case permission value or its enum member."
+        if snake_case_only
+        else "Pass one of the listed enum names or values.",
     )

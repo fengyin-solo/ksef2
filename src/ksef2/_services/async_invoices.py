@@ -14,6 +14,8 @@ from typing import final, overload, override
 
 from typing_extensions import deprecated
 
+from ksef2._domain.models.base import validation_errors
+
 from ksef2._clients._async_handles import AsyncOperationHandle
 from ksef2._clients._async_pager import AsyncPager
 from ksef2._clients._metadata_pagination import (
@@ -548,9 +550,12 @@ class AsyncInvoicesService:
                     "export(state=...) resumes an existing export; "
                     "only_metadata and compression_type apply only to filters."
                 )
-            resume = (
-                ExportResumeState.from_json(state) if isinstance(state, str) else state
-            )
+            with validation_errors("state"):
+                resume = (
+                    ExportResumeState.from_json(state)
+                    if isinstance(state, str)
+                    else state
+                )
         else:
             assert filters is not None
             handle = await self._schedule_export(

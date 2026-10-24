@@ -6,13 +6,14 @@ The sync classes are generated from the async ones, so every case runs in both
 flavours. No test here reaches KSeF.
 """
 
+from ksef2 import KSeFValidationError
+
 import inspect
 import json
 from typing import Any
 
 import pytest
 from polyfactory import BaseFactory
-from pydantic import ValidationError
 
 from ksef2._clients.async_certificates import AsyncCertificateEnrollment
 from ksef2._clients.async_certificates import AsyncCertificatesClient
@@ -419,14 +420,14 @@ def test_resume_state_rejects_version_2_and_unknown_fields(
 
     future_version = state.to_dict()
     future_version["format_version"] = 2
-    with pytest.raises(ValidationError, match="unsupported format version"):
+    with pytest.raises(KSeFValidationError, match="unsupported format version"):
         state_cls.from_dict(future_version)
-    with pytest.raises(ValidationError, match="unsupported format version"):
+    with pytest.raises(KSeFValidationError, match="unsupported format version"):
         state_cls.from_json(json.dumps(future_version))
 
     with_unknown_field = state.to_dict()
     with_unknown_field["future_capability"] = "must-not-be-ignored"
-    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+    with pytest.raises(KSeFValidationError, match="Extra inputs are not permitted"):
         state_cls.from_dict(with_unknown_field)
 
     assert state_cls.from_json(state.to_json()) == state

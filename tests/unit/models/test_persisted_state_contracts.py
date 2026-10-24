@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import SecretStr, ValidationError
 
+from ksef2 import KSeFValidationError
 from ksef2._domain.models.auth import (
     AuthenticationResumeState,
     AuthTokens,
@@ -55,17 +56,17 @@ def test_authentication_state_rejects_redacted_future_and_extra_state() -> None:
         refresh_token_valid_until=datetime(2026, 1, 2, tzinfo=UTC),
     )
 
-    with pytest.raises(ValidationError, match="original bearer token"):
+    with pytest.raises(KSeFValidationError, match="original bearer token"):
         AuthenticationResumeState.from_json(state.model_dump_json())
 
     future_state = state.to_dict()
     future_state["format_version"] = 2
-    with pytest.raises(ValidationError, match="unsupported format version"):
+    with pytest.raises(KSeFValidationError, match="unsupported format version"):
         AuthenticationResumeState.from_dict(future_state)
 
     state_with_extra = state.to_dict()
     state_with_extra["future_capability"] = "must-not-be-ignored"
-    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+    with pytest.raises(KSeFValidationError, match="Extra inputs are not permitted"):
         AuthenticationResumeState.from_dict(state_with_extra)
 
 
@@ -84,17 +85,17 @@ def test_session_state_is_versioned_and_rejects_redacted_or_invalid_keys() -> No
     _ = legacy_export.pop("format_version")
     assert OnlineSessionResumeState.from_dict(legacy_export).format_version == "1"
 
-    with pytest.raises(ValidationError, match="redacted encryption material"):
+    with pytest.raises(KSeFValidationError, match="redacted encryption material"):
         OnlineSessionResumeState.from_json(state.model_dump_json())
 
     invalid_key_state = dict(exported)
     invalid_key_state["aes_key"] = "not-base64"
-    with pytest.raises(ValidationError, match="aes_key must be valid Base64"):
+    with pytest.raises(KSeFValidationError, match="aes_key must be valid Base64"):
         OnlineSessionResumeState.from_dict(invalid_key_state)
 
     short_key_state = dict(exported)
     short_key_state["aes_key"] = "eA=="
-    with pytest.raises(ValidationError, match="aes_key must decode to 32 bytes"):
+    with pytest.raises(KSeFValidationError, match="aes_key must decode to 32 bytes"):
         OnlineSessionResumeState.from_dict(short_key_state)
 
 

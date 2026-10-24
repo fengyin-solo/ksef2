@@ -5,7 +5,7 @@ from typing import Self
 
 from pydantic import BaseModel, Field, field_serializer, field_validator
 
-from ksef2._domain.models.base import KSeFBaseParams
+from ksef2._domain.models.base import KSeFBaseModel, KSeFBaseParams
 from ksef2._domain.models.invoices import (
     SortOrder as SortOrder,
     SortOrderInput,
@@ -31,7 +31,7 @@ from ksef2._domain.types import (
 )
 
 
-class Page[T](BaseModel):
+class Page[T](KSeFBaseModel):
     """One page of a collection, with the cursor that resumes after it.
 
     Returned by ``Pager.page()``. ``next_cursor`` is opaque, versioned SDK state:

@@ -28,6 +28,10 @@ and method names remain functional throughout 1.x (#171). Read
   `trace_id` and `details`, and say what to do next in `hint` (#167).
 - Deprecations are visible to type checkers and IDEs (PEP 702 `@deprecated`) and
   remain functional through the 1.x line. Removal is a 2.0 decision (#171).
+- Polling helpers continue through retryable server, rate-limit and transport
+  errors until their timeout. Invoice submission retries a rejected `429` while
+  keeping ambiguous sends single-shot; connect failures are reported as
+  non-ambiguous and lost responses include a recovery hint (#300).
 
 ### Breaking changes
 

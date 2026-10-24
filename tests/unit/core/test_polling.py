@@ -2,6 +2,12 @@ import asyncio
 
 import pytest
 
+from ksef2._core.exceptions import (
+    ExceptionCode,
+    KSeFRateLimitError,
+    KSeFServerError,
+    KSeFTransportError,
+)
 from ksef2._core.polling import async_poll_until, poll_until
 
 
@@ -206,3 +212,130 @@ def test_async_poll_until_does_not_sleep_after_final_attempt() -> None:
         return sleeps
 
     assert asyncio.run(_run()) == [0.25, 0.25]
+
+
+def test_poll_until_retries_transient_errors_until_timeout_with_fake_clock() -> None:
+    now = 0.0
+    attempts = 0
+    sleeps: list[float] = []
+
+    def _sleep(delay: float) -> None:
+        nonlocal now
+        sleeps.append(delay)
+        now += delay
+
+    def _operation() -> int:
+        nonlocal attempts
+        attempts += 1
+        if attempts < 3:
+            raise KSeFServerError(503, ExceptionCode.UNKNOWN_ERROR, "busy")
+        return 1
+
+    assert (
+        poll_until(
+            operation=_operation,
+            retry_predicate=lambda _: False,
+            poll_interval=2.0,
+            timeout_seconds=5.0,
+            timeout_error_factory=PollTimeoutError,
+            sleep=_sleep,
+            clock=lambda: now,
+        )
+        == 1
+    )
+    assert attempts == 3
+    assert sleeps == [2.0, 2.0]
+
+
+def test_poll_until_caps_sleep_to_remaining_timeout_and_retries_transport_errors() -> (
+    None
+):
+    now = 0.0
+    sleeps: list[float] = []
+
+    def _sleep(delay: float) -> None:
+        nonlocal now
+        sleeps.append(delay)
+        now += delay
+
+    with pytest.raises(PollTimeoutError):
+        poll_until(
+            operation=lambda: (_ for _ in ()).throw(
+                KSeFTransportError("lost", method="GET", path="/status")
+            ),
+            retry_predicate=lambda _: False,
+            poll_interval=10.0,
+            timeout_seconds=3.0,
+            timeout_error_factory=PollTimeoutError,
+            sleep=_sleep,
+            clock=lambda: now,
+        )
+    assert sleeps == [3.0]
+
+
+def test_poll_until_uses_retry_after_for_rate_limit_errors() -> None:
+    now = 0.0
+    sleeps: list[float] = []
+
+    def _sleep(delay: float) -> None:
+        nonlocal now
+        sleeps.append(delay)
+        now += delay
+
+    attempts = 0
+
+    def _operation() -> int:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise KSeFRateLimitError(4, "slow down")
+        return 1
+
+    assert (
+        poll_until(
+            operation=_operation,
+            retry_predicate=lambda _: False,
+            poll_interval=1.0,
+            timeout_seconds=5.0,
+            timeout_error_factory=PollTimeoutError,
+            sleep=_sleep,
+            clock=lambda: now,
+        )
+        == 1
+    )
+    assert sleeps == [4.0]
+
+
+def test_async_poll_until_retries_transient_errors_until_timeout_with_fake_clock() -> (
+    None
+):
+    async def _run() -> tuple[int, list[float]]:
+        now = 0.0
+        attempts = 0
+        sleeps: list[float] = []
+
+        async def _sleep(delay: float) -> None:
+            nonlocal now
+            sleeps.append(delay)
+            now += delay
+
+        async def _operation() -> int:
+            nonlocal attempts
+            attempts += 1
+            if attempts < 3:
+                raise KSeFServerError(503, ExceptionCode.UNKNOWN_ERROR, "busy")
+            return 1
+
+        result = await async_poll_until(
+            operation=_operation,
+            retry_predicate=lambda _: False,
+            poll_interval=2.0,
+            timeout_seconds=5.0,
+            timeout_error_factory=PollTimeoutError,
+            sleep=_sleep,
+            clock=lambda: now,
+        )
+        assert attempts == 3
+        return result, sleeps
+
+    assert asyncio.run(_run()) == (1, [2.0, 2.0])

@@ -16,6 +16,22 @@ _TRANSPORT_FAILED_MESSAGE = (
 _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
 
+def _transport_error_details(
+    method: str, path: str, error: Exception
+) -> tuple[bool, str | None]:
+    if method.upper() in _SAFE_METHODS or isinstance(
+        error, (httpx.ConnectError, httpx.ConnectTimeout)
+    ):
+        return False, None
+    if (
+        method.upper() == "POST"
+        and path.startswith("/sessions/online/")
+        and path.endswith("/invoices")
+    ):
+        return True, "Check `session.list_invoices()` before resending the invoice."
+    return True, "The request may have reached KSeF. Check its status before retrying."
+
+
 @final
 class AsyncKSeFExceptionMiddleware(AsyncBaseMiddleware):
     """Classify failed HTTP requests and error responses as SDK exceptions.
@@ -59,10 +75,12 @@ class AsyncKSeFExceptionMiddleware(AsyncBaseMiddleware):
                 **kwargs,
             )
         except (httpx.RequestError, httpx.InvalidURL, httpx.StreamError) as exc:
+            outcome_ambiguous, hint = _transport_error_details(method, path, exc)
             raise exceptions.KSeFTransportError(
                 _TRANSPORT_FAILED_MESSAGE,
+                hint=hint,
                 method=method,
                 path=path,
-                outcome_ambiguous=method.upper() not in _SAFE_METHODS,
+                outcome_ambiguous=outcome_ambiguous,
             ) from exc
         return self._handle(response, method, path)

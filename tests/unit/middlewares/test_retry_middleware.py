@@ -1,4 +1,5 @@
 from collections.abc import Mapping
+import asyncio
 from unittest.mock import patch
 
 import httpx
@@ -7,8 +8,11 @@ import pytest
 from ksef2._config import RetryConfig
 from ksef2._core.exceptions import KSeFAuthError, KSeFRateLimitError
 from ksef2._core.middlewares.exceptions import KSeFExceptionMiddleware
+from ksef2._core.middlewares.async_retry import AsyncRetryMiddleware
+from ksef2._core.http import HttpTransport
+from ksef2._core.async_http import AsyncHttpTransport
 from ksef2._core.middlewares.retry import RetryMiddleware
-from ksef2._core.routes import AuthRoutes, CollectiveIdentifierRoutes
+from ksef2._core.routes import AuthRoutes, CollectiveIdentifierRoutes, InvoiceRoutes
 from tests.unit.fakes.transport import FakeTransport
 
 
@@ -41,6 +45,96 @@ class FailingThenSucceedingTransport(FakeTransport):
 
 
 class TestRetryMiddleware:
+    def test_invoice_send_retries_429_with_retry_after_on_custom_httpx_transport(
+        self,
+    ) -> None:
+        requests: list[httpx.Request] = []
+        delays: list[float] = []
+
+        def _handle(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            status_code = 429 if len(requests) == 1 else 200
+            return httpx.Response(
+                status_code,
+                headers={"Retry-After": "3"} if status_code == 429 else {},
+                request=request,
+            )
+
+        with httpx.Client(
+            base_url="https://ksef.mock", transport=httpx.MockTransport(_handle)
+        ) as client:
+            middleware = RetryMiddleware(
+                HttpTransport(client, headers={}),
+                RetryConfig(max_attempts=2, max_retry_after=10.0),
+            )
+            response = middleware.request(
+                "POST",
+                InvoiceRoutes.SEND.format(referenceNumber="session-ref"),
+                json={"encryptedInvoice": "payload"},
+                _sleep_fn=delays.append,
+            )
+
+        assert response.status_code == 200
+        assert len(requests) == 2
+        assert delays == [3.0]
+
+    def test_async_invoice_send_retries_429_with_retry_after_on_custom_httpx_transport(
+        self,
+    ) -> None:
+        requests: list[httpx.Request] = []
+        delays: list[float] = []
+
+        def _handle(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            status_code = 429 if len(requests) == 1 else 200
+            return httpx.Response(
+                status_code,
+                headers={"Retry-After": "3"} if status_code == 429 else {},
+                request=request,
+            )
+
+        async def _run() -> None:
+            async with httpx.AsyncClient(
+                base_url="https://ksef.mock", transport=httpx.MockTransport(_handle)
+            ) as client:
+                middleware = AsyncRetryMiddleware(
+                    AsyncHttpTransport(client, headers={}),
+                    RetryConfig(max_attempts=2, max_retry_after=10.0),
+                )
+
+                async def _sleep(delay: float) -> None:
+                    delays.append(delay)
+
+                response = await middleware.request(
+                    "POST",
+                    InvoiceRoutes.SEND.format(referenceNumber="session-ref"),
+                    json={"encryptedInvoice": "payload"},
+                    _sleep_fn=_sleep,
+                )
+                assert response.status_code == 200
+
+        asyncio.run(_run())
+        assert len(requests) == 2
+        assert delays == [3.0]
+
+    def test_invoice_send_does_not_retry_503(self) -> None:
+        transport = FakeTransport()
+        transport.enqueue(status_code=503, json_body={"message": "busy"})
+        transport.enqueue(status_code=200, json_body={"unexpected": True})
+        delays: list[float] = []
+        middleware = RetryMiddleware(transport, RetryConfig(max_attempts=3))
+
+        response = middleware.request(
+            "POST",
+            InvoiceRoutes.SEND.format(referenceNumber="session-ref"),
+            json={"encryptedInvoice": "payload"},
+            _sleep_fn=delays.append,
+        )
+
+        assert response.status_code == 503
+        assert len(transport.calls) == 1
+        assert delays == []
+
     @patch("ksef2._core.middlewares.retry.time.sleep")
     def test_retries_get_on_retryable_status(
         self,

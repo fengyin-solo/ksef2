@@ -27,9 +27,20 @@ class AsyncRetryMiddleware(AsyncBaseMiddleware):
     def _is_retryable_request(self, method: str, path: str) -> bool:
         if method in {"GET", "PUT", "DELETE"}:
             return True
-        return method == "POST" and path in routes.RETRYABLE_POST_PATHS
+        return method == "POST" and (
+            path in routes.RETRYABLE_POST_PATHS or self._is_send_invoice_path(path)
+        )
 
-    def _is_retryable_status(self, status_code: int) -> bool:
+    @staticmethod
+    def _is_send_invoice_path(path: str) -> bool:
+        return path.startswith("/sessions/online/") and path.endswith("/invoices")
+
+    def _is_retryable_status(self, method: str, path: str, status_code: int) -> bool:
+        if method == "POST" and self._is_send_invoice_path(path):
+            return (
+                status_code == 429
+                and status_code in self._config.retryable_status_codes
+            )
         return status_code in self._config.retryable_status_codes
 
     def _parse_retry_after(self, response: httpx.Response) -> float | None:
@@ -110,7 +121,7 @@ class AsyncRetryMiddleware(AsyncBaseMiddleware):
             last_response = response
             if (
                 response.is_success
-                or not self._is_retryable_status(response.status_code)
+                or not self._is_retryable_status(method, path, response.status_code)
                 or attempt >= self._config.max_attempts
             ):
                 return response

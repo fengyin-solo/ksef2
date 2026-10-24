@@ -56,7 +56,7 @@ class AsyncClient:
         self,
         environment: Environment = Environment.PRODUCTION,
         *,
-        transport_config: TransportConfig | None = None,
+        transport_config: object | None = None,
         http_client: httpx.AsyncClient | None = None,
         certificate_store: stores.CertificateStoreProtocol | None = None,
     ) -> None:
@@ -68,10 +68,12 @@ class AsyncClient:
             http_client: Existing ``httpx.AsyncClient`` to use instead of building one. The caller then owns it and must close it.
             certificate_store: Store for KSeF public-key certificates; an in-memory store is created when omitted.
         """
-        if transport_config is not None:
-            validate_transport_config(transport_config)
         self._environment = environment
-        self._transport_config = transport_config or TransportConfig()
+        self._transport_config = (
+            validate_transport_config(transport_config)
+            if transport_config is not None
+            else TransportConfig()
+        )
         self._http_client = http_client or self._build_http_client(
             environment=environment,
             config=self._transport_config,

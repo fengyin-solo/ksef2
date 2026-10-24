@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Literal
+from typing import Literal, cast
 
 from ksef2._core.exceptions import KSeFArgumentError
 
@@ -54,7 +54,7 @@ class Environment(Enum):
         return self.value
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class TimeoutConfig:
     """HTTP timeout settings passed to ``httpx``."""
 
@@ -67,14 +67,21 @@ class TimeoutConfig:
     pool: float = 5.0
     """Seconds to wait for a free connection from the pool."""
 
-    def __post_init__(self) -> None:
+    def __init__(
+        self,
+        connect: object = 5.0,
+        read: object = 30.0,
+        write: object = 30.0,
+        pool: object = 5.0,
+    ) -> None:
         for name, value in (
-            ("connect", self.connect),
-            ("read", self.read),
-            ("write", self.write),
-            ("pool", self.pool),
+            ("connect", connect),
+            ("read", read),
+            ("write", write),
+            ("pool", pool),
         ):
             _positive_number(name, value)
+            object.__setattr__(self, name, cast(float, value))
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,9 +174,10 @@ class TransportConfig:
                 )
 
 
-def validate_transport_config(value: object) -> None:
+def validate_transport_config(value: object) -> TransportConfig:
     if not isinstance(value, TransportConfig):
         raise KSeFArgumentError(
             "transport_config must be a TransportConfig instance.",
             hint="Construct TransportConfig with the desired settings.",
         )
+    return value

@@ -1,6 +1,10 @@
+from collections.abc import Callable
+
 import pytest
 
 from ksef2._clients.async_auth import _validated_nip
+from ksef2._clients.async_base import AsyncClient
+from ksef2._clients.base import Client
 from ksef2._config import RetryConfig, TimeoutConfig
 from ksef2._core.exceptions import KSeFArgumentError, KSeFValidationError
 from ksef2._domain.models.batch import BatchInvoice
@@ -51,9 +55,22 @@ def test_batch_preparation_rejects_invoice_over_default_size() -> None:
     "build",
     [
         lambda: TimeoutConfig(read=-5),
+        lambda: TimeoutConfig(read="30"),
         lambda: RetryConfig(max_attempts=0),
     ],
 )
-def test_transport_configuration_rejects_invalid_values(build: object) -> None:
+def test_transport_configuration_rejects_invalid_values(
+    build: Callable[[], object],
+) -> None:
     with pytest.raises(KSeFArgumentError):
-        build()  # type: ignore[operator]
+        build()
+
+
+def test_sync_root_client_rejects_dictionary_transport_config() -> None:
+    with pytest.raises(KSeFArgumentError, match="TransportConfig instance"):
+        Client(transport_config={})
+
+
+def test_async_root_client_rejects_dictionary_transport_config() -> None:
+    with pytest.raises(KSeFArgumentError, match="TransportConfig instance"):
+        AsyncClient(transport_config={})

@@ -1,6 +1,7 @@
 """Async high-level invoice workflow service."""
 
 import asyncio
+import os
 from collections.abc import (
     AsyncIterator,
     Awaitable,
@@ -31,6 +32,7 @@ from ksef2._core import exceptions
 from ksef2._core.async_protocols import AsyncMiddleware
 from ksef2._core.async_external_transfer import AsyncExternalTransferClient
 from ksef2._core.crypto import decrypt_aes_cbc
+from ksef2._core.paths import require_path
 from ksef2._core.polling import async_poll_until
 from ksef2._core.stores import CertificateStoreProtocol
 from ksef2._domain.models.compression import (
@@ -49,7 +51,11 @@ from ksef2._domain.models.invoices import (
 )
 from ksef2._domain.models.pagination import InvoiceMetadataParams, Page
 from ksef2._logging import get_logger
-from ksef2._services.export_parts import safe_part_filename
+from ksef2._services.export_parts import (
+    create_partial_file,
+    decrypt_verified_part,
+    safe_part_filename,
+)
 
 logger = get_logger(__name__)
 
@@ -77,6 +83,9 @@ class AsyncExportJob(
         *,
         get_status: Callable[[], Awaitable[InvoiceExportStatusResponse]],
         download_parts: Callable[[InvoicePackage], Awaitable[list[bytes]]],
+        download_to: Callable[
+            [InvoicePackage | None, Path], Awaitable[ExportedInvoices]
+        ],
     ) -> None:
         """Create the handle.
 
@@ -84,11 +93,13 @@ class AsyncExportJob(
             state: Reference number and key material of the export.
             get_status: Coroutine function returning the current export status.
             download_parts: Coroutine function that downloads and decrypts every part of a package, in order.
+            download_to: Coroutine function that downloads verified parts to an archive path.
         """
         super().__init__(state.reference_number)
         self._state = state
         self._get_status = get_status
         self._download_parts = download_parts
+        self._download_to = download_to
 
     def resume_state(self) -> ExportResumeState:
         """Return the sensitive state needed to resume the export later.
@@ -161,6 +172,40 @@ class AsyncExportJob(
                 its outcome cannot be determined.
         """
         return await self._wait(timeout, poll_interval)
+
+    async def download(
+        self,
+        path: os.PathLike[str],
+        *,
+        timeout: float = 120.0,
+        poll_interval: float = 2.0,
+    ) -> ExportedInvoices:
+        """Wait for the export and decrypt its parts to an archive file.
+
+        External HTTP responses are currently buffered by the configured
+        transport; decryption and output are processed in bounded chunks.
+
+        Args:
+            path: Destination archive path, as any ``os.PathLike``.
+            timeout: Maximum seconds to wait for the export to become ready.
+            poll_interval: Delay between export status checks.
+
+        Raises:
+            KSeFArgumentError: If ``path`` is a ``str``, ``bytes`` or not ``os.PathLike``.
+            KSeFExportTimeoutError: If polling exceeds ``timeout``.
+
+        Returns:
+            An ``ExportedInvoices`` object backed by the written file.
+        """
+        target = require_path(path)
+        status = await async_poll_until(
+            operation=self._poll,
+            retry_predicate=self._is_pending,
+            poll_interval=poll_interval,
+            timeout_seconds=timeout,
+            timeout_error_factory=lambda: self._timeout_error(timeout),
+        )
+        return await self._download_to(status.package, target)
 
 
 @final
@@ -521,6 +566,9 @@ class AsyncInvoicesService:
                 reference_number=handle.reference_number
             ),
             download_parts=_download_parts,
+            download_to=lambda package, path: self._download_package_to(
+                package=package, export=handle, path=path
+            ),
         )
 
     @deprecated(
@@ -884,6 +932,43 @@ class AsyncInvoicesService:
             encrypted_part,
             key=export.aes_key,
             iv=export.iv,
+        )
+
+    async def _download_package_to(
+        self, *, package: InvoicePackage | None, export: ExportHandle, path: Path
+    ) -> ExportedInvoices:
+        temporary_path, output = create_partial_file(path)
+        try:
+            with output:
+                if package is not None:
+                    for part in sorted(
+                        package.parts, key=lambda item: item.ordinal_number
+                    ):
+                        encrypted = await self._external_transfers.download_part(
+                            url=str(part.url),
+                            reference_number=export.reference_number,
+                            part_ordinal=part.ordinal_number,
+                        )
+                        await asyncio.to_thread(
+                            decrypt_verified_part,
+                            encrypted,
+                            part=part,
+                            key=export.aes_key,
+                            iv=export.iv,
+                            output=output,
+                        )
+            # Only now, with every part verified, does the destination change. The
+            # rename is called directly: awaiting it in a thread would let a
+            # cancellation land after the destination was already replaced.
+            os.replace(temporary_path, path)
+        except BaseException:
+            # Reached only before the replace, so this removes the temporary file
+            # and never the destination.
+            temporary_path.unlink(missing_ok=True)
+            raise
+        compression = package.compression_type if package is not None else "zip"
+        return ExportedInvoices.from_path(
+            path, compression=compression, package=package
         )
 
     @deprecated(

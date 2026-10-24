@@ -60,6 +60,16 @@ the next sync window.
 until the package is ready, downloads and decrypts the parts, joins them and
 returns an `ExportedInvoices` object.
 
+For large packages, `job.download(Path(...))` writes the joined decrypted archive
+to disk and returns an `ExportedInvoices` backed by that path. Each AES part is
+decrypted in chunks and checked against the size and SHA-256 values from KSeF;
+output goes to a new, uniquely named temporary file beside the destination,
+which atomically replaces the destination only after all parts pass. On
+failure the temporary file is removed and an existing destination is left as
+it was. The current HTTP transport buffers each encrypted response,
+so memory use is bounded by the downloaded encrypted part, not by the full
+decrypted archive.
+
 The optional `compression_type` accepts `"zip"` or `"tar_gz"`. When omitted,
 the server chooses the package format.
 
@@ -132,6 +142,11 @@ written = restored.save(Path("downloads"))
 The factory defaults to `compression="zip"`. For TarGz exports, store the archive
 bytes in a `.tar.gz` file and pass `compression="tar_gz"` when restoring. Use the
 same compression format as the original export; the factory does not detect it.
+If the archive is already on disk, use `ExportedInvoices.from_path(path,
+compression="zip")` to read invoice entries without loading the whole archive.
+Both methods accept a `Path` or any other `os.PathLike` object; a `str` or
+`bytes` value raises `KSeFArgumentError`, because the SDK treats strings as
+content, not file names.
 
 Construction does not open or validate the archive. `metadata` reads
 `_metadata.json` on first access and caches the result: `None` means the file is

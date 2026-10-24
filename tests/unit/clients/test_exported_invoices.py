@@ -2,6 +2,7 @@
 
 import io
 import json
+import os
 import zipfile
 from pathlib import Path
 
@@ -9,9 +10,15 @@ import pytest
 from polyfactory import BaseFactory
 
 from ksef2._clients.exported_invoices import ExportedInvoices
-from ksef2._core.exceptions import KSeFResponseValidationError
+from ksef2._core.exceptions import KSeFArgumentError, KSeFResponseValidationError
 from ksef2._domain.models.invoices import InvoiceMetadata
 from ksef2._infra.schema.api import spec
+
+requires_unchecked_types = pytest.mark.skipif(
+    bool(os.environ.get("KSEF2_RUNTIME_CHECKS")),
+    reason="beartype rejects the out-of-contract value before the guard runs",
+)
+
 
 KSEF_1 = "5265877635-20260101-0100100AB5B5-4B"
 KSEF_2 = "5265877635-20260102-0100100AB5B5-5C"
@@ -39,6 +46,16 @@ def _metadata_json(
 
 
 class TestInvoicesAndArchive:
+    def test_from_path_reads_zip_entries_from_file(self, tmp_path: Path) -> None:
+        archive = _zip({f"{KSEF_1}.xml": b"<one />"})
+        path = tmp_path / "export.zip"
+        path.write_bytes(archive)
+
+        exported = ExportedInvoices.from_path(path)
+
+        assert list(exported.invoices()) == [(KSEF_1, b"<one />")]
+        assert exported.archive == archive
+
     def test_joins_decrypted_parts_into_one_archive_and_unzips_it(self) -> None:
         archive = _zip({f"{KSEF_1}.xml": b"<one />", f"{KSEF_2}.xml": b"<two />"})
         parts = _split(archive, 3)
@@ -147,6 +164,33 @@ class TestSave:
         assert not target.exists()
         assert not (tmp_path / "evil.xml").exists()
         assert not Path("/etc/evil.xml").exists()
+
+    def test_from_path_refuses_unsafe_entry_paths(self, tmp_path: Path) -> None:
+        path = tmp_path / "export.zip"
+        path.write_bytes(_zip({"../evil.xml": b"<evil />"}))
+        target = tmp_path / "out"
+
+        with pytest.raises(ValueError, match="Unsafe archive entry path"):
+            ExportedInvoices.from_path(path).save(target)
+
+        assert not (tmp_path / "evil.xml").exists()
+
+    def test_from_path_accepts_any_pathlike(self, tmp_path: Path) -> None:
+        class CustomPath:
+            def __fspath__(self) -> str:
+                return str(tmp_path / "export.zip")
+
+        (tmp_path / "export.zip").write_bytes(_zip({f"{KSEF_1}.xml": b"<one />"}))
+
+        exported = ExportedInvoices.from_path(CustomPath())
+
+        assert list(exported.invoices()) == [(KSEF_1, b"<one />")]
+
+    @requires_unchecked_types
+    @pytest.mark.parametrize("value", ["export.zip", b"export.zip", None])
+    def test_from_path_rejects_non_paths(self, value: object) -> None:
+        with pytest.raises(KSeFArgumentError, match=r"pass Path\(\.\.\.\)"):
+            _ = ExportedInvoices.from_path(value)  # pyright: ignore[reportArgumentType]
 
     def test_refuses_an_entry_that_resolves_outside_through_a_symlink(
         self, tmp_path: Path

@@ -19,7 +19,7 @@ from cryptography.x509.oid import NameOID
 
 from ksef2 import AsyncClient, Client, Environment
 from ksef2.models import AuthenticationResumeState, ExportResumeState, InvoicesFilter
-from ksef2._core.crypto import encrypt_invoice
+from ksef2._core.crypto import encrypt_invoice, sha256_b64
 
 
 @pytest.mark.parametrize("compression", ["Zip", "TarGz"])
@@ -107,9 +107,9 @@ async def test_export_reads_and_saves_response_format(
                                 "method": "GET",
                                 "url": f"https://storage.mock/parts/{i}",
                                 "partSize": len(parts[i]),
-                                "partHash": "A" * 43 + "=",
+                                "partHash": sha256_b64(parts[i]),
                                 "encryptedPartSize": len(content),
-                                "encryptedPartHash": "A" * 43 + "=",
+                                "encryptedPartHash": sha256_b64(content),
                                 "expirationDate": "2030-01-01T00:00:00Z",
                             }
                             for i, content in enumerate(encrypted)
@@ -154,7 +154,12 @@ async def test_export_reads_and_saves_response_format(
                 job = await auth.invoices.export(
                     filters, compression_type=sdk_compression
                 )
-            exported = await job.wait(poll_interval=0.0)
+            exported = await job.download(
+                tmp_path / "downloaded.tar"
+                if compression == "TarGz"
+                else tmp_path / "downloaded.zip",
+                poll_interval=0.0,
+            )
     else:
         with Client(
             Environment.TEST,
@@ -167,7 +172,12 @@ async def test_export_reads_and_saves_response_format(
                 job = auth.invoices.export(state=state)
             else:
                 job = auth.invoices.export(filters, compression_type=sdk_compression)
-            exported = job.wait(poll_interval=0.0)
+            exported = job.download(
+                tmp_path / "downloaded.tar"
+                if compression == "TarGz"
+                else tmp_path / "downloaded.zip",
+                poll_interval=0.0,
+            )
     assert exported.archive == payload
     assert list(exported.invoices()) == [("invoice", b"<invoice />")]
     assert exported.metadata == []

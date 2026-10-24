@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import os
+from typing import Protocol, runtime_checkable
 
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
@@ -9,6 +10,13 @@ from cryptography.x509 import load_der_x509_certificate
 
 from ksef2._core.exceptions import KSeFEncryptionError
 from ksef2._domain.models.encryption import PublicKeyCertificate, CertUsage
+
+
+@runtime_checkable
+class BytesWriter(Protocol):
+    """A binary stream that plaintext can be written to, such as an open file."""
+
+    def write(self, data: bytes, /) -> int: ...
 
 
 def _load_public_key(cert_b64: str):
@@ -132,6 +140,16 @@ def encrypt_invoice(xml_bytes: bytes, key: bytes, iv: bytes) -> bytes:
         raise KSeFEncryptionError(f"Invoice encryption failed: {exc}") from exc
 
 
+def _strip_pkcs7(block: bytes) -> bytes:
+    """Return *block* without PKCS#7 padding, rejecting invalid padding."""
+    pad_len = block[-1] if block else 0
+    if pad_len < 1 or pad_len > 16:
+        raise ValueError(f"Invalid PKCS#7 padding byte: {pad_len}")
+    if block[-pad_len:] != bytes([pad_len] * pad_len):
+        raise ValueError("Invalid PKCS#7 padding")
+    return block[:-pad_len]
+
+
 def decrypt_aes_cbc(ciphertext: bytes, key: bytes, iv: bytes) -> bytes:
     """AES-256-CBC decrypt *ciphertext* and strip PKCS#7 padding.
 
@@ -140,19 +158,60 @@ def decrypt_aes_cbc(ciphertext: bytes, key: bytes, iv: bytes) -> bytes:
     try:
         cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
         decryptor = cipher.decryptor()
-        decrypted_padded = decryptor.update(ciphertext) + decryptor.finalize()
-
-        # Strip PKCS#7 padding
-        pad_len = decrypted_padded[-1]
-        if pad_len < 1 or pad_len > 16:
-            raise ValueError(f"Invalid PKCS#7 padding byte: {pad_len}")
-        if decrypted_padded[-pad_len:] != bytes([pad_len] * pad_len):
-            raise ValueError("Invalid PKCS#7 padding")
-        return decrypted_padded[:-pad_len]
+        return _strip_pkcs7(decryptor.update(ciphertext) + decryptor.finalize())
     except KSeFEncryptionError:
         raise
     except Exception as exc:
         raise KSeFEncryptionError(f"AES-CBC decryption failed: {exc}") from exc
+
+
+def decrypt_aes_cbc_to(
+    ciphertext: bytes,
+    key: bytes,
+    iv: bytes,
+    output: BytesWriter,
+    *,
+    chunk_size: int = 64 * 1024,
+) -> tuple[int, str]:
+    """AES-256-CBC decrypt *ciphertext* into *output* in bounded chunks.
+
+    Plaintext is written as it is decrypted, holding back only the final block
+    until its PKCS#7 padding has been checked.
+
+    Args:
+        ciphertext: Encrypted bytes.
+        key: 32-byte AES-256 key.
+        iv: 16-byte initialization vector.
+        output: Binary stream receiving the plaintext.
+        chunk_size: Ciphertext bytes decrypted per step.
+
+    Returns:
+        The plaintext size and its Base64-encoded SHA-256 digest.
+
+    Raises:
+        KSeFEncryptionError: If the ciphertext length, key or padding is invalid.
+    """
+    if len(ciphertext) == 0 or len(ciphertext) % 16:
+        raise KSeFEncryptionError("AES-CBC ciphertext has an invalid block length.")
+    try:
+        decryptor = Cipher(algorithms.AES(key), modes.CBC(iv)).decryptor()
+        digest = hashlib.sha256()
+        size = 0
+        pending = b""
+        for offset in range(0, len(ciphertext), chunk_size):
+            pending += decryptor.update(ciphertext[offset : offset + chunk_size])
+            if len(pending) > 16:
+                chunk, pending = pending[:-16], pending[-16:]
+                _ = output.write(chunk)
+                digest.update(chunk)
+                size += len(chunk)
+        final_chunk = _strip_pkcs7(pending + decryptor.finalize())
+    except Exception as exc:
+        raise KSeFEncryptionError(f"AES-CBC decryption failed: {exc}") from exc
+    _ = output.write(final_chunk)
+    digest.update(final_chunk)
+    size += len(final_chunk)
+    return size, base64.b64encode(digest.digest()).decode()
 
 
 def sha256_b64(data: bytes) -> str:

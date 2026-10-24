@@ -61,6 +61,16 @@ w granicy, którą KSeF raportuje jako kompletną. Zapisz
 aż paczka będzie gotowa, pobiera i odszyfrowuje części, łączy je i zwraca obiekt
 `ExportedInvoices`.
 
+Dla dużych paczek użyj `job.download(Path(...))`, aby zapisać połączone,
+odszyfrowane archiwum na dysku. Metoda zwraca `ExportedInvoices` korzystający z
+tego pliku. Każda część AES jest odszyfrowywana fragmentami i sprawdzana według
+rozmiaru oraz sumy SHA-256 otrzymanych z KSeF; dane trafiają do nowego pliku
+tymczasowego o unikalnej nazwie obok pliku docelowego, który atomowo zastępuje
+plik docelowy dopiero po poprawnym sprawdzeniu wszystkich części. W razie błędu
+plik tymczasowy jest usuwany, a istniejący plik docelowy pozostaje bez zmian. Obecny transport HTTP buforuje każdą zaszyfrowaną
+odpowiedź, więc pamięć zależy od rozmiaru pobranej części, a nie całego
+odszyfrowanego archiwum.
+
 Opcjonalny `compression_type` przyjmuje `"zip"` albo `"tar_gz"`. Gdy go
 pominięto, format paczki wybiera serwer.
 
@@ -133,6 +143,11 @@ written = restored.save(Path("downloads"))
 Fabryka domyślnie używa `compression="zip"`. Dla eksportu TarGz zapisz bajty
 archiwum w pliku `.tar.gz` i podaj `compression="tar_gz"` przy odtwarzaniu.
 Użyj formatu kompresji oryginalnego eksportu; fabryka nie wykrywa go automatycznie.
+Jeśli archiwum jest już na dysku, użyj `ExportedInvoices.from_path(path,
+compression="zip")`, aby czytać wpisy bez wczytywania całego archiwum.
+Obie metody przyjmują `Path` lub dowolny inny obiekt `os.PathLike`; wartość
+`str` lub `bytes` zgłasza `KSeFArgumentError`, ponieważ SDK traktuje napisy jako
+treść, a nie nazwy plików.
 
 Utworzenie obiektu nie otwiera ani nie waliduje archiwum. `metadata` czyta
 `_metadata.json` przy pierwszym dostępie i zapamiętuje wynik: `None` oznacza brak

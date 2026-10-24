@@ -179,4 +179,7 @@ def test_pdf_page_size_overrides_css(size: PDFPageSize, css_size: str) -> None:
 )
 def test_invalid_pdf_page_size_raises_sdk_argument_error() -> None:
     with pytest.raises(KSeFArgumentError, match="Invalid PDFPageSize value"):
-        InvoicePDFExporter(page_size=cast(PDFPageSize, cast(object, "A7")))
+        InvoicePDFExporter(
+            verification_environment=Environment.TEST,
+            page_size=cast(PDFPageSize, cast(object, "A7")),
+        )

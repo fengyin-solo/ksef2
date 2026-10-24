@@ -12,6 +12,7 @@ from typing_extensions import deprecated
 from ksef2._clients._pager import Pager
 from ksef2._clients._pagination_cursor import ContinuationCursor
 from ksef2._core.protocols import Middleware
+from ksef2._domain.models.base import validation_errors
 from ksef2._domain.models.collective_identifiers import (
     CollectiveIdentifierInvoice,
     CollectiveIdentifierInvoiceDetails,
@@ -56,7 +57,9 @@ class CollectiveIdentifiersClient:
         Returns:
             The generated collective identifier number.
         """
-        return from_spec(self._endpoints.generate(body=to_spec(invoices)))
+        with validation_errors("invoices"):
+            body = to_spec(invoices)
+        return from_spec(self._endpoints.generate(body=body))
 
     def _query(
         self,
@@ -66,9 +69,11 @@ class CollectiveIdentifiersClient:
         params: CollectiveIdentifierParams | None = None,
     ) -> CollectiveIdentifiersPage:
         parameters = params or CollectiveIdentifierParams()
+        with validation_errors("filters"):
+            body = to_spec(filters)
         return from_spec(
             self._endpoints.query(
-                body=to_spec(filters),
+                body=body,
                 continuation_token=continuation_token,
                 **parameters.to_query_params(),
             )
@@ -138,9 +143,11 @@ class CollectiveIdentifiersClient:
         query = CollectiveIdentifierInvoicesQuery(
             collective_identifier_numbers=collective_identifier_numbers
         )
+        with validation_errors("query"):
+            body = to_spec(query)
         return from_spec(
             self._endpoints.list_invoices(
-                body=to_spec(query),
+                body=body,
                 continuation_token=continuation_token,
                 **parameters.to_query_params(),
             )

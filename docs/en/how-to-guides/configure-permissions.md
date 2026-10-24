@@ -7,6 +7,18 @@ Use `auth.permissions` when the authenticated context needs to grant, inspect,
 or revoke KSeF permissions. Permission changes are asynchronous: grant and
 revoke methods return an operation reference first.
 
+Use an 11-digit PESEL or 10-digit NIP with a valid checksum. The identifier
+must match `subject_type`. The SDK checks these values before sending a grant,
+and rejects empty permission lists and empty IDs passed to `revoke()` or
+`revoke_authorization()` with `KSeFArgumentError` and a corrective `hint`.
+
+Pass snake_case permission strings or the matching enum members to
+`grant_person()` and `grant_entity()`, just as for `tokens.generate()`.
+For example, use `"invoice_read"`, `PersonPermissionTypeEnum.INVOICE_READ`, or
+`EntityPermissionTypeEnum.INVOICE_READ`. To allow delegation, keep using
+`EntityPermission(type="invoice_read", can_delegate=True)` for an entity grant.
+`"InvoiceRead"` raises an error suggesting `"invoice_read"`.
+
 ## Grant permissions
 
 Pick the grant method that matches the target subject. Keep the permission set
@@ -17,7 +29,7 @@ as small as the workflow allows.
 ```python
 operation = auth.permissions.grant_person(
     subject_type="pesel",
-    subject_value="90010112345",
+    subject_value="44051401458",
     permissions=["invoice_read"],
     description="Read invoices",
     first_name="Jan",
@@ -36,7 +48,7 @@ operation = auth.permissions.grant_person(
 from ksef2.models import EntityPermission
 
 operation = auth.permissions.grant_entity(
-    subject_value="1234567890",
+    subject_value="5261040828",
     permissions=[
         EntityPermission(type="invoice_read", can_delegate=False),
     ],
@@ -50,7 +62,7 @@ operation = auth.permissions.grant_entity(
 ```python
 operation = auth.permissions.grant_authorization(
     subject_type="nip",
-    subject_value="1234567890",
+    subject_value="5261040828",
     permission="self_invoicing",
     description="Self-invoicing agreement",
     entity_name="Partner Sp. z o.o.",

@@ -7,6 +7,8 @@ from typing import cast, final, override
 
 from typing_extensions import deprecated
 
+from ksef2._domain.models.base import validation_errors
+
 from ksef2._clients._async_handles import AsyncOperationHandle, not_after_resume
 from ksef2._clients._async_pager import AsyncPager
 from ksef2._clients._pagination_cursor import OffsetCursor
@@ -256,13 +258,14 @@ class AsyncCertificatesClient:
             print(status.certificate_serial_number)
             ```
         """
-        request = EnrollCertificateRequest(
-            certificate_name=certificate_name,
-            certificate_type=certificate_type,
-            csr=csr,
-            valid_from=valid_from,
-        )
-        body = to_spec(request)
+        with validation_errors():
+            request = EnrollCertificateRequest(
+                certificate_name=certificate_name,
+                certificate_type=certificate_type,
+                csr=csr,
+                valid_from=valid_from,
+            )
+            body = to_spec(request)
         response = from_spec(await self._endpoints.enroll(body=body))
         return AsyncCertificateEnrollment(self, response.reference_number, response)
 
@@ -281,7 +284,7 @@ class AsyncCertificatesClient:
             A handle that polls the enrollment's status. It has no ``timestamp``: the acceptance time is not part of the saved state.
 
         Raises:
-            ValidationError: If ``state`` is JSON that is not a saved enrollment state.
+            KSeFValidationError: If ``state`` is JSON that is not a saved enrollment state.
 
         Example:
             ```python
@@ -289,11 +292,12 @@ class AsyncCertificatesClient:
             status = await enrollment.wait()
             ```
         """
-        restored = (
-            state
-            if isinstance(state, CertificateEnrollmentResumeState)
-            else CertificateEnrollmentResumeState.from_json(state)
-        )
+        with validation_errors("state"):
+            restored = (
+                state
+                if isinstance(state, CertificateEnrollmentResumeState)
+                else CertificateEnrollmentResumeState.from_json(state)
+            )
         return AsyncCertificateEnrollment(self, restored.reference_number)
 
     async def get_enrollment_status(
@@ -328,10 +332,11 @@ class AsyncCertificatesClient:
         Returns:
             The requested certificates with their DER data.
         """
-        request = RetrieveCertificatesRequest(
-            certificate_serial_numbers=certificate_serial_numbers,
-        )
-        body = to_spec(request)
+        with validation_errors():
+            request = RetrieveCertificatesRequest(
+                certificate_serial_numbers=certificate_serial_numbers,
+            )
+            body = to_spec(request)
         return from_spec(await self._endpoints.retrieve(body=body))
 
     async def revoke(
@@ -349,8 +354,9 @@ class AsyncCertificatesClient:
         validated_serial_number = validate_certificate_serial_number(
             certificate_serial_number
         )
-        request = RevokeCertificateRequest(revocation_reason=reason)
-        body = to_spec(request)
+        with validation_errors():
+            request = RevokeCertificateRequest(revocation_reason=reason)
+            body = to_spec(request)
         await self._endpoints.revoke(
             certificate_serial_number=validated_serial_number,
             body=body,
@@ -367,14 +373,15 @@ class AsyncCertificatesClient:
         params: OffsetPaginationParams | None = None,
     ) -> CertificatesInfoList:
         parameters = params or OffsetPaginationParams()
-        request = QueryCertificatesRequest(
-            certificate_serial_number=certificate_serial_number,
-            name=name,
-            certificate_type=certificate_type,
-            status=status,
-            expires_after=expires_after,
-        )
-        body = to_spec(request)
+        with validation_errors():
+            request = QueryCertificatesRequest(
+                certificate_serial_number=certificate_serial_number,
+                name=name,
+                certificate_type=certificate_type,
+                status=status,
+                expires_after=expires_after,
+            )
+            body = to_spec(request)
         spec_resp = await self._endpoints.query(
             body=body, **parameters.to_query_params()
         )

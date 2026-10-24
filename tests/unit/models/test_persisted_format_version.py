@@ -3,6 +3,7 @@ import json
 import pytest
 from pydantic import SecretStr, ValidationError
 
+from ksef2 import KSeFValidationError
 from ksef2._domain.models.base import CURRENT_FORMAT_VERSION, parse_format_version
 from ksef2._domain.models.fa3.invoice import KsefInvoiceDraft
 from ksef2._domain.models.invoices import ExportResumeState
@@ -104,7 +105,7 @@ def test_state_keeps_a_later_minor_version_it_can_read() -> None:
 
 @pytest.mark.parametrize("stored", [True, 1.0, "2", "1.", "v1", 2])
 def test_state_rejects_unreadable_versions(stored: object) -> None:
-    with pytest.raises(ValidationError, match="format version"):
+    with pytest.raises(KSeFValidationError, match="format version"):
         _ = GeneratedTokenResumeState.from_dict(
             {"format_version": stored, "reference_number": "ref"}
         )

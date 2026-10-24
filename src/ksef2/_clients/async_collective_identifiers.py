@@ -6,6 +6,8 @@ from typing import final
 
 from typing_extensions import deprecated
 
+from ksef2._domain.models.base import validation_errors
+
 from ksef2._clients._async_pager import AsyncPager
 from ksef2._clients._pagination_cursor import ContinuationCursor
 from ksef2._core.async_protocols import AsyncMiddleware
@@ -53,7 +55,9 @@ class AsyncCollectiveIdentifiersClient:
         Returns:
             The generated collective identifier number.
         """
-        return from_spec(await self._endpoints.generate(body=to_spec(invoices)))
+        with validation_errors("invoices"):
+            body = to_spec(invoices)
+        return from_spec(await self._endpoints.generate(body=body))
 
     async def _query(
         self,
@@ -63,9 +67,11 @@ class AsyncCollectiveIdentifiersClient:
         params: CollectiveIdentifierParams | None = None,
     ) -> CollectiveIdentifiersPage:
         parameters = params or CollectiveIdentifierParams()
+        with validation_errors("filters"):
+            body = to_spec(filters)
         return from_spec(
             await self._endpoints.query(
-                body=to_spec(filters),
+                body=body,
                 continuation_token=continuation_token,
                 **parameters.to_query_params(),
             )
@@ -135,9 +141,11 @@ class AsyncCollectiveIdentifiersClient:
         query = CollectiveIdentifierInvoicesQuery(
             collective_identifier_numbers=collective_identifier_numbers
         )
+        with validation_errors("query"):
+            body = to_spec(query)
         return from_spec(
             await self._endpoints.list_invoices(
-                body=to_spec(query),
+                body=body,
                 continuation_token=continuation_token,
                 **parameters.to_query_params(),
             )

@@ -629,8 +629,13 @@ class InvoicesFilter(KSeFBaseModel):
     """Match invoices to this buyer identifier of another kind."""
     invoice_number: str | None = None
     """Match this seller invoice number."""
-    ksef_number: str | None = None
-    """Match this KSeF number."""
+    ksef_number: str | None = PydanticField(
+        default=None,
+        min_length=35,
+        max_length=36,
+        pattern=r"^([1-9](\d[1-9]|[1-9]\d)\d{7})-(20[2-9][0-9]|2[1-9]\d{2}|[3-9]\d{3})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])-([0-9A-F]{6})-?([0-9A-F]{6})-([0-9A-F]{2})$",
+    )
+    """Match a 35-character KSeF 2.0 or 36-character KSeF 1.0 number."""
 
     # data
     invoice_schema: FormSchema | None = None

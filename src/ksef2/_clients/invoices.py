@@ -13,6 +13,7 @@ from ksef2._clients._metadata_pagination import (
 )
 from ksef2._core.crypto import encrypt_symmetric_key, generate_session_key
 from ksef2._core.protocols import Middleware
+from ksef2._domain.models.base import validation_errors
 from ksef2._domain.models.compression import (
     CompressionType as _CompressionType,
 )
@@ -84,7 +85,8 @@ class InvoicesClient:
                 print(invoice.ksef_number)
             ```
         """
-        request = to_spec(filters)
+        with validation_errors("filters"):
+            request = to_spec(filters)
         parameters = params or InvoiceMetadataParams()
         spec_resp = self._endpoints.query_metadata(
             body=request,
@@ -227,20 +229,21 @@ class InvoicesClient:
             key=aes_key,
             cert_b64=encryption_certificate,
         )
-        spec_request = to_spec(
-            ExportInvoicesPayload(
-                filter=filters,
-                encrypted_symmetric_key=base64.b64encode(encrypted_key).decode(),
-                initialization_vector=base64.b64encode(iv).decode(),
-                public_key_id=encryption_public_key_id,
-                only_metadata=only_metadata,
-                compression_type=(
-                    normalize_compression_type(compression_type)
-                    if compression_type is not None
-                    else None
-                ),
+        with validation_errors():
+            spec_request = to_spec(
+                ExportInvoicesPayload(
+                    filter=filters,
+                    encrypted_symmetric_key=base64.b64encode(encrypted_key).decode(),
+                    initialization_vector=base64.b64encode(iv).decode(),
+                    public_key_id=encryption_public_key_id,
+                    only_metadata=only_metadata,
+                    compression_type=(
+                        normalize_compression_type(compression_type)
+                        if compression_type is not None
+                        else None
+                    ),
+                )
             )
-        )
         spec_resp = self._endpoints.export(body=spec_request)
         resp = from_spec(spec_resp)
         return ExportHandle(

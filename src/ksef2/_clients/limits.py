@@ -6,6 +6,7 @@
 from typing import final
 
 from ksef2._core.protocols import Middleware
+from ksef2._domain.models.base import validation_errors
 from ksef2._domain.models.limits import ApiRateLimits, ContextLimits, SubjectLimits
 from ksef2._endpoints.limits import LimitEndpoints
 from ksef2._infra.mappers.limits import from_spec, to_spec
@@ -76,7 +77,9 @@ class LimitsClient:
         Args:
             limits: New session limits.
         """
-        self._endpoints.set_session_limits(body=to_spec(limits))
+        with validation_errors("limits"):
+            body = to_spec(limits)
+        self._endpoints.set_session_limits(body=body)
         self._cached_context_limits = limits
 
     def reset_session_limits(self) -> None:
@@ -90,7 +93,9 @@ class LimitsClient:
         Args:
             limits: New subject-level limits.
         """
-        self._endpoints.set_subject_limits(body=to_spec(limits))
+        with validation_errors("limits"):
+            body = to_spec(limits)
+        self._endpoints.set_subject_limits(body=body)
 
     def reset_subject_limits(self) -> None:
         """Reset subject-level limits to their default values."""
@@ -102,7 +107,9 @@ class LimitsClient:
         Args:
             limits: New API rate limits.
         """
-        self._endpoints.set_api_rate_limits(body=to_spec(limits))
+        with validation_errors("limits"):
+            body = to_spec(limits)
+        self._endpoints.set_api_rate_limits(body=body)
 
     def reset_api_rate_limits(self) -> None:
         """Reset API rate limits to their default values."""

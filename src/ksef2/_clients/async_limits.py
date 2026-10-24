@@ -2,6 +2,8 @@
 
 from typing import final
 
+from ksef2._domain.models.base import validation_errors
+
 from ksef2._core.async_protocols import AsyncMiddleware
 from ksef2._domain.models.limits import ApiRateLimits, ContextLimits, SubjectLimits
 from ksef2._endpoints.async_limits import AsyncLimitEndpoints
@@ -73,7 +75,9 @@ class AsyncLimitsClient:
         Args:
             limits: New session limits.
         """
-        await self._endpoints.set_session_limits(body=to_spec(limits))
+        with validation_errors("limits"):
+            body = to_spec(limits)
+        await self._endpoints.set_session_limits(body=body)
         self._cached_context_limits = limits
 
     async def reset_session_limits(self) -> None:
@@ -87,7 +91,9 @@ class AsyncLimitsClient:
         Args:
             limits: New subject-level limits.
         """
-        await self._endpoints.set_subject_limits(body=to_spec(limits))
+        with validation_errors("limits"):
+            body = to_spec(limits)
+        await self._endpoints.set_subject_limits(body=body)
 
     async def reset_subject_limits(self) -> None:
         """Reset subject-level limits to their default values."""
@@ -99,7 +105,9 @@ class AsyncLimitsClient:
         Args:
             limits: New API rate limits.
         """
-        await self._endpoints.set_api_rate_limits(body=to_spec(limits))
+        with validation_errors("limits"):
+            body = to_spec(limits)
+        await self._endpoints.set_api_rate_limits(body=body)
 
     async def reset_api_rate_limits(self) -> None:
         """Reset API rate limits to their default values."""

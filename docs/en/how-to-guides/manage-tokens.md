@@ -7,6 +7,13 @@ Use `auth.tokens` when an authenticated context needs to create or retire KSeF
 tokens for automation. The examples assume you already have an authenticated
 client named `auth`.
 
+Pass at least one permission to `generate()`. Permission strings use
+snake_case, such as `"invoice_read"`; `TokenPermissionEnum.INVOICE_READ` is also
+accepted. An API value such as `"InvoiceRead"` raises `KSeFArgumentError` with
+`did you mean "invoice_read"?`. Empty permission lists, empty token references
+passed to `revoke()`, and empty `ksef_token` values passed to `with_token()` fail
+locally with `KSeFArgumentError` before any HTTP request.
+
 ## Generate a token
 
 Choose the smallest permission set required by the automation that will use the

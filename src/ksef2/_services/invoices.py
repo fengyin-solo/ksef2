@@ -35,6 +35,7 @@ from ksef2._core.paths import require_path
 from ksef2._core.polling import poll_until
 from ksef2._core.protocols import Middleware
 from ksef2._core.stores import CertificateStoreProtocol
+from ksef2._domain.models.base import validation_errors
 from ksef2._domain.models.compression import (
     CompressionType as CompressionType,
 )
@@ -536,9 +537,12 @@ class InvoicesService:
                     "export(state=...) resumes an existing export; "
                     "only_metadata and compression_type apply only to filters."
                 )
-            resume = (
-                ExportResumeState.from_json(state) if isinstance(state, str) else state
-            )
+            with validation_errors("state"):
+                resume = (
+                    ExportResumeState.from_json(state)
+                    if isinstance(state, str)
+                    else state
+                )
         else:
             assert filters is not None
             handle = self._schedule_export(

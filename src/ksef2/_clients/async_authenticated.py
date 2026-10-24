@@ -3,8 +3,9 @@
 from functools import cached_property
 from typing import final, overload
 
-from pydantic import ValidationError
 from typing_extensions import deprecated
+
+from ksef2._domain.models.base import validation_errors
 
 from ksef2._clients._async_session import _AwaitableSession
 from ksef2._clients.async_batch import AsyncBatchSessionClient
@@ -188,15 +189,15 @@ class AsyncAuthenticatedClient:
     ) -> AsyncOnlineSessionClient:
         material = await self._get_encryption_material()
 
-        request = OpenOnlineSessionRequest(
-            encrypted_key=material.encrypted_key,
-            iv=material.iv,
-            public_key_id=material.public_key_id,
-            form_code=form_code,
-        )
-        session_data = session_from_spec(
-            await self._session_eps.open_online(session_to_spec(request))
-        )
+        with validation_errors():
+            request = OpenOnlineSessionRequest(
+                encrypted_key=material.encrypted_key,
+                iv=material.iv,
+                public_key_id=material.public_key_id,
+                form_code=form_code,
+            )
+            body = session_to_spec(request)
+        session_data = session_from_spec(await self._session_eps.open_online(body))
 
         state = OnlineSessionResumeState.from_encoded(
             reference_number=session_data.reference_number,
@@ -287,16 +288,12 @@ class AsyncAuthenticatedClient:
     def _rebind_online_session(
         self, state: OnlineSessionResumeState | str
     ) -> AsyncOnlineSessionClient:
-        try:
+        with validation_errors("state"):
             resume = (
                 OnlineSessionResumeState.from_json(state)
                 if isinstance(state, str)
                 else state
             )
-        except ValidationError as exc:
-            raise exceptions.KSeFValidationError(
-                "Invalid online session resume state.", validation_error=exc
-            ) from exc
         return AsyncOnlineSessionClient(
             transport=self._authed_transport,
             state=resume,
@@ -453,11 +450,12 @@ class AsyncAuthenticatedClient:
         state: BatchSessionResumeState | str,
         prepared_batch: PreparedBatch | None = None,
     ) -> AsyncBatchSessionClient:
-        resume = (
-            BatchSessionResumeState.from_json(state)
-            if isinstance(state, str)
-            else state
-        )
+        with validation_errors("state"):
+            resume = (
+                BatchSessionResumeState.from_json(state)
+                if isinstance(state, str)
+                else state
+            )
         if prepared_batch is not None:
             if (
                 resume.prepared_batch_digest is None
@@ -530,16 +528,18 @@ class AsyncAuthenticatedClient:
         offline_mode: bool = False,
         prepared_batch: PreparedBatch | None = None,
     ) -> AsyncBatchSessionClient:
-        request = OpenBatchSessionRequest(
-            encrypted_key=encryption_material.encrypted_key,
-            iv=encryption_material.iv,
-            public_key_id=encryption_material.public_key_id,
-            batch_file=batch_file,
-            form_code=form_code,
-            offline_mode=offline_mode,
-        )
+        with validation_errors():
+            request = OpenBatchSessionRequest(
+                encrypted_key=encryption_material.encrypted_key,
+                iv=encryption_material.iv,
+                public_key_id=encryption_material.public_key_id,
+                batch_file=batch_file,
+                form_code=form_code,
+                offline_mode=offline_mode,
+            )
+            body = session_to_spec(request)
         session_response = session_from_spec(
-            await self._session_eps.open_batch(body=session_to_spec(request))
+            await self._session_eps.open_batch(body=body)
         )
 
         state = BatchSessionResumeState.from_encoded(

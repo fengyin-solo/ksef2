@@ -7,6 +7,8 @@ from typing import cast, final, override
 import httpx
 from typing_extensions import deprecated
 
+from ksef2._domain.models.base import validation_errors
+
 from ksef2._clients._async_handles import AsyncOperationHandle
 from ksef2._core import exceptions
 from ksef2._core.async_protocols import AsyncMiddleware
@@ -257,7 +259,7 @@ class AsyncOnlineSessionClient:
 
         Raises:
             KSeFArgumentError: If both or neither of ``reference_number`` and ``state`` are given, or ``state`` names another session.
-            ValidationError: If ``state`` is JSON that is not a saved submission state.
+            KSeFValidationError: If ``state`` is JSON that is not a saved submission state.
         """
         if state is None:
             if reference_number is None:
@@ -270,11 +272,12 @@ class AsyncOnlineSessionClient:
                 raise exceptions.KSeFArgumentError(
                     "Pass exactly one of reference_number or state."
                 )
-            restored = (
-                state
-                if isinstance(state, InvoiceSubmissionResumeState)
-                else InvoiceSubmissionResumeState.from_json(state)
-            )
+            with validation_errors("state"):
+                restored = (
+                    state
+                    if isinstance(state, InvoiceSubmissionResumeState)
+                    else InvoiceSubmissionResumeState.from_json(state)
+                )
             if restored.session_reference_number != self.reference_number:
                 raise exceptions.KSeFArgumentError(
                     "The saved submission belongs to session "
@@ -328,12 +331,13 @@ class AsyncOnlineSessionClient:
             key=self._state.get_aes_key_bytes(),
             iv=self._state.get_iv_bytes(),
         )
-        request_body = invoice_to_spec(
-            SendInvoicePayload(
-                xml_bytes=xml_bytes,
-                encrypted_bytes=encrypted,
+        with validation_errors():
+            request_body = invoice_to_spec(
+                SendInvoicePayload(
+                    xml_bytes=xml_bytes,
+                    encrypted_bytes=encrypted,
+                )
             )
-        )
 
         response_dto = await self._invoice_eps.send(
             reference_number=self._state.reference_number,

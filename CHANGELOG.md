@@ -2,6 +2,16 @@
 
 ### Fixed
 
+- Wrap invalid non-builder public model and request-conversion inputs in the
+  SDK validation-error hierarchy, preserving the Pydantic cause and naming the
+  public parameter. Validate KSeF invoice-number filters at construction,
+  including both current and legacy formats.
+- Reject invalid PESEL/NIP lengths and checksums in permission grants, mismatched
+  identifier types, empty permission lists, empty revoke IDs, and empty KSeF
+  token credentials before HTTP requests. Person and entity grants accept
+  snake_case strings or permission enums; PascalCase permissions suggest the
+  corresponding snake_case value.
+
 - Restore deprecated `ksef2.clients.*` submodule imports throughout 1.x.
 
 ksef2 1.0.0 is being prepared as the first stable release. It targets KSeF

@@ -7,6 +7,13 @@ Użyj `auth.tokens`, gdy uwierzytelniony kontekst ma tworzyć albo wycofywać
 tokeny KSeF dla automatyzacji. Przykłady zakładają, że masz już
 uwierzytelnionego klienta `auth`.
 
+Przekaż co najmniej jedno uprawnienie do `generate()`. Wartości tekstowe
+używają snake_case, np. `"invoice_read"`. Możesz też podać
+`TokenPermissionEnum.INVOICE_READ`. Wartość API, np. `"InvoiceRead"`, zgłasza
+`KSeFArgumentError` z sugestią `did you mean "invoice_read"?`. Puste listy
+uprawnień, puste numery referencyjne w `revoke()` i puste wartości `ksef_token`
+w `with_token()` zgłaszają lokalnie `KSeFArgumentError` przed żądaniem HTTP.
+
 ## Wygeneruj token
 
 Wybierz najmniejszy zestaw uprawnień wymagany przez automatyzację, która będzie

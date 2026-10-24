@@ -351,7 +351,7 @@ class DomainGrantPersonPermissionsRequestFactory(
     ModelFactory[domain_permissions.GrantPersonPermissionsRequest]
 ):
     subject_type: str = "nip"
-    subject_value = "1234567890"
+    subject_value = "5261040828"
     permissions: list[str] = ["invoice_read"]
 
 
@@ -359,7 +359,7 @@ class DomainGrantPersonPermissionsRequestFactory(
 class DomainGrantEntityPermissionsRequestFactory(
     ModelFactory[domain_permissions.GrantEntityPermissionsRequest]
 ):
-    subject_value = "1234567890"
+    subject_value = "5261040828"
     permissions: list[domain_permissions.EntityPermission] = [
         domain_permissions.EntityPermission(type="invoice_read", can_delegate=False)
     ]
@@ -370,14 +370,19 @@ class DomainGrantAuthorizationPermissionsRequestFactory(
     ModelFactory[domain_permissions.GrantAuthorizationPermissionsRequest]
 ):
     subject_type: str = "nip"
-    subject_value = "1234567890"
+    subject_value = "5261040828"
     permission: str = "self_invoicing"
 
 
 @register_fixture(name="domain_perm_grant_indirect_req")
 class DomainGrantIndirectPermissionsRequestFactory(
     ModelFactory[domain_permissions.GrantIndirectPermissionsRequest]
-): ...
+):
+    subject_type: str = "pesel"
+    subject_value = "44051401458"
+    permissions: list[str] = ["invoice_read"]
+    target_type = None
+    target_value = None
 
 
 @register_fixture(name="domain_perm_grant_subunit_req")
@@ -385,9 +390,9 @@ class DomainGrantSubunitPermissionsRequestFactory(
     ModelFactory[domain_permissions.GrantSubunitPermissionsRequest]
 ):
     subject_type: str = "nip"
-    subject_value = "1234567890"
+    subject_value = "5261040828"
     context_type: str = "nip"
-    context_value = "1234567890"
+    context_value = "5261040828"
     first_name = "Jan"
 
 

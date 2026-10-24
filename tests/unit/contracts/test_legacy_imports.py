@@ -1,0 +1,255 @@
+"""Existing application imports work with canonical modules and one warning."""
+
+import importlib
+import subprocess
+import sys
+import warnings
+
+import pytest
+
+
+@pytest.mark.parametrize("canonical_first", [False, True])
+@pytest.mark.parametrize(
+    ("family", "paths", "replacements"),
+    [
+        (
+            "core",
+            ["exceptions", "xades", "middlewares.retry"],
+            ["ksef2", "ksef2.xades"],
+        ),
+        (
+            "domain",
+            [
+                "models.invoices",
+                "models.pagination",
+                "models.session",
+                "models.fa3.body.row",
+            ],
+            ["ksef2.models", "ksef2.fa3"],
+        ),
+        (
+            "infra",
+            [
+                "schema.fa3.models.schemat",
+                "mappers",
+                "schema",
+                "schema.api.spec.models",
+            ],
+            ["ksef2.raw", "ksef2.fa3"],
+        ),
+        (
+            "services",
+            ["invoices", "async_invoices", "builders.fa3.root", "renderers.xslt"],
+            ["ksef2.clients", "ksef2.fa3", "ksef2.renderers"],
+        ),
+    ],
+)
+def test_legacy_imports_preserve_identity_and_warn_once(
+    family: str, paths: list[str], replacements: list[str], canonical_first: bool
+) -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            f"""
+import importlib
+import sys
+import warnings
+import ksef2
+
+hooks = tuple(sys.meta_path)
+if {canonical_first!r}:
+    for path in {paths!r}:
+        importlib.import_module('ksef2._{family}.' + path)
+
+with warnings.catch_warnings(record=True) as caught:
+    warnings.simplefilter('always', DeprecationWarning)
+    from ksef2.{family}.{paths[0]} import __name__ as module_name
+    for path in {paths!r}:
+        old = importlib.import_module('ksef2.{family}.' + path)
+        new = importlib.import_module('ksef2._{family}.' + path)
+        assert old is new, path
+    assert importlib.import_module('ksef2.{family}') is importlib.import_module('ksef2._{family}')
+
+messages = [str(w.message) for w in caught if w.category is DeprecationWarning]
+assert len(messages) == 1, messages
+assert messages[0].startswith('`ksef2.{family}` and its submodules are deprecated'), messages
+assert 'no earlier than ksef2 2.0.0' in messages[0], messages
+for replacement in {replacements!r}:
+    assert replacement in messages[0], messages
+assert tuple(sys.meta_path) == hooks
+assert 'weasyprint' not in sys.modules
+
+with warnings.catch_warnings(record=True) as caught:
+    warnings.simplefilter('always', DeprecationWarning)
+    for path in {paths!r}:
+        importlib.import_module('ksef2.{family}.' + path)
+assert not caught
+""",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_real_application_imports_and_resources() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-W",
+            "ignore::DeprecationWarning",
+            "-c",
+            """
+import sys
+from importlib.resources import files
+import ksef2
+from ksef2.domain.models.invoices import InvoicesFilter
+from ksef2.domain.models.pagination import InvoiceMetadataParams
+from ksef2.domain.models.session import FormSchema
+from ksef2.services.invoices import InvoicesFilter as ServiceFilter
+from ksef2.core.exceptions import KSeFApiError
+from ksef2.core.xades import load_certificate_from_pem
+from ksef2.services.builders import FA3InvoiceBuilder
+from ksef2.services.renderers.xslt import InvoiceXSLTRenderer
+import ksef2.infra.schema.fa3.models.schemat
+from ksef2.infra.schema.fa3 import STYLESHEET_PATH
+from ksef2 import models, fa3, xades, renderers
+
+assert InvoicesFilter is ServiceFilter is models.InvoicesFilter
+assert InvoiceMetadataParams is models.InvoiceMetadataParams
+assert FormSchema is ksef2.FormSchema
+assert KSeFApiError is ksef2.KSeFApiError
+assert load_certificate_from_pem is xades.load_certificate_from_pem
+assert FA3InvoiceBuilder is fa3.FA3InvoiceBuilder
+assert InvoiceXSLTRenderer is renderers.InvoiceXSLTRenderer
+assert STYLESHEET_PATH.is_file()
+assert files('ksef2.infra.schema.fa3').joinpath('definitions/schemat.xsd').is_file()
+assert ksef2.infra.schema.fa3.models.schemat is sys.modules['ksef2._infra.schema.fa3.models.schemat']
+assert 'weasyprint' not in sys.modules
+""",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_legacy_client_submodules_preserve_identity_and_warn_once() -> None:
+    from ksef2 import _legacy_imports, clients
+
+    paths = [
+        "_async_session",
+        "_metadata_pagination",
+        "async_auth",
+        "async_authenticated",
+        "async_base",
+        "async_batch",
+        "async_certificates",
+        "async_collective_identifiers",
+        "async_encryption",
+        "async_invoice_sessions",
+        "async_invoices",
+        "async_limits",
+        "async_online",
+        "async_peppol",
+        "async_permissions",
+        "async_session_management",
+        "async_testdata",
+        "async_tokens",
+        "auth",
+        "authenticated",
+        "base",
+        "batch",
+        "certificates",
+        "collective_identifiers",
+        "encryption",
+        "invoice_sessions",
+        "invoices",
+        "limits",
+        "online",
+        "peppol",
+        "permissions",
+        "profiles",
+        "session_management",
+        "testdata",
+        "tokens",
+    ]
+    for path in paths:
+        sys.modules.pop("ksef2.clients." + path, None)
+    _legacy_imports._warned_clients = False
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", DeprecationWarning)
+        for path in paths:
+            sys.modules.pop(f"ksef2.clients.{path}", None)
+            old = importlib.import_module(f"ksef2.clients.{path}")
+            new = importlib.import_module(f"ksef2._clients.{path}")
+            assert old is new, path
+
+    messages = [str(w.message) for w in caught if w.category is DeprecationWarning]
+    assert len(messages) == 1, messages
+    assert "ksef2.clients" in messages[0], messages
+    assert "use the public `ksef2.clients` facade" in messages[0], messages
+    assert "no earlier than ksef2 2.0.0" in messages[0], messages
+    assert importlib.import_module("ksef2.clients") is clients
+    compression_type = importlib.import_module(
+        "ksef2._domain.models.compression"
+    ).CompressionType
+    for path in ("async_invoices", "invoices"):
+        module = importlib.import_module(f"ksef2.clients.{path}")
+        assert module.CompressionType is compression_type
+
+
+def test_legacy_client_imports_bind_attributes_on_the_facade() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            """
+import warnings
+import ksef2
+
+with warnings.catch_warnings():
+    warnings.simplefilter('ignore', DeprecationWarning)
+    import ksef2.clients.authenticated as authenticated
+    assert ksef2.clients.authenticated is authenticated
+    import ksef2.clients.online as online
+    assert ksef2.clients.online is online
+
+assert authenticated is __import__('ksef2._clients.authenticated', fromlist=[''])
+assert online is __import__('ksef2._clients.online', fromlist=[''])
+""",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_modern_imports_do_not_activate_legacy_packages() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            """
+import sys
+import warnings
+with warnings.catch_warnings(record=True) as caught:
+    warnings.simplefilter('always', DeprecationWarning)
+    import ksef2
+    from ksef2 import clients, models, fa3, xades, raw
+
+assert not [w for w in caught if w.category is DeprecationWarning], caught
+for family in ('core', 'domain', 'infra', 'services'):
+    assert 'ksef2.' + family not in sys.modules, family
+assert not any(name.startswith('ksef2.clients.') for name in sys.modules)
+assert 'ksef2._legacy_imports' not in sys.modules
+assert 'ksef2._services.renderers.pdf' not in sys.modules
+assert 'weasyprint' not in sys.modules
+""",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr

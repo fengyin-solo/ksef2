@@ -91,6 +91,10 @@ with auth.online_session(form_code=FormSchema.FA3) as session:
 ```
 
 `send_invoice()` oznacza tylko, że KSeF przyjął zaszyfrowany payload do sesji.
+SDK sprawdza rozmiar XML faktury przed szyfrowaniem, stosując udokumentowany
+limit domyślny 1 MB, gdy limity sesji nie są znane. Wywołaj
+`auth.limits.get_context_limits()` przed otwarciem sesji, aby użyć w tym
+sprawdzeniu efektywnego limitu sesji, w tym limitu dla faktur z załącznikiem.
 `submission.wait()` czeka na wynik konkretnej faktury i zwraca numer KSeF
 po udanym przetworzeniu. Działa też po zamknięciu sesji, a `session.wait()`
 zwraca końcowy status zamkniętej sesji.
@@ -149,6 +153,9 @@ Serwis wysokiego poziomu przygotowuje paczkę ZIP, szyfruje części, otwiera
 sesję batch, wysyła części, zamyka sesję i zwraca zamkniętego klienta `BatchSessionClient`. Wywołaj potem
 jego `wait()`, `list_failed_invoices()` i `download_upo()`. `auth.batch.prepare()`
 i `submit()` przyjmują elementy `bytes`, `str`, `Path` lub `BatchInvoice`.
+Rozmiar faktury jest sprawdzany względem udokumentowanego limitu domyślnego
+1 MB, chyba że wcześniej pobrano `auth.limits.get_context_limits()`; wtedy
+używany jest efektywny limit sesji batch, w tym limit dla faktur z załącznikiem.
 
 ### Z plików
 

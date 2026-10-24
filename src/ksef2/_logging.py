@@ -1,9 +1,13 @@
-import logging
+import logging as stdlib_logging
 from typing import Any, Literal, Protocol, runtime_checkable
 
 import structlog
 
 DEFAULT_LOGGER_NAME = "ksef2"
+
+# Keep SDK records available to application logging configuration without
+# installing a handler or renderer on import.
+stdlib_logging.getLogger(DEFAULT_LOGGER_NAME).addHandler(stdlib_logging.NullHandler())
 
 _SHARED_PROCESSORS: list[Any] = [
     structlog.contextvars.merge_contextvars,
@@ -13,6 +17,21 @@ _SHARED_PROCESSORS: list[Any] = [
     structlog.processors.StackInfoRenderer(),
     structlog.processors.format_exc_info,
 ]
+
+
+def _configure_stdlib_bridge() -> None:
+    structlog.configure(
+        processors=[
+            *_SHARED_PROCESSORS,
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
+        ],
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
+        cache_logger_on_first_use=False,
+    )
+
+
+_configure_stdlib_bridge()
 
 
 @runtime_checkable
@@ -36,7 +55,7 @@ def get_logger(name: str | None = None, **initial_values: object) -> Any:
 
 def configure_logging(
     *,
-    level: int | str = logging.INFO,
+    level: int | str = stdlib_logging.INFO,
     renderer: Literal["console", "json"] = "console",
     stream: Any | None = None,
     force: bool = False,
@@ -60,19 +79,11 @@ def configure_logging(
         ],
     )
 
-    handler = logging.StreamHandler(stream)
+    handler = stdlib_logging.StreamHandler(stream)
     handler.setFormatter(formatter)
 
-    logging.basicConfig(level=level, handlers=[handler], force=force)
+    stdlib_logging.basicConfig(level=level, handlers=[handler], force=force)
 
-    structlog.configure(
-        processors=[
-            *_SHARED_PROCESSORS,
-            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
-        ],
-        logger_factory=structlog.stdlib.LoggerFactory(),
-        wrapper_class=structlog.stdlib.BoundLogger,
-        # Do not cache: applications may call configure_logging() after
-        # get_logger() is called at module import time.
-        cache_logger_on_first_use=False,
-    )
+    # Do not cache: applications may call configure_logging() after
+    # get_logger() is called at module import time.
+    _configure_stdlib_bridge()

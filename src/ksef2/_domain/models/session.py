@@ -120,6 +120,9 @@ class FormSchema(Enum):
         return json_schema
 
 
+type FormSchemaInput = FormSchema | str
+
+
 class SessionEncryptionMaterial(KSeFBaseModel):
     """Raw and encrypted symmetric session key material."""
 
@@ -674,6 +677,8 @@ class BaseSessionResumeState(KSeFPersistedModel):
 
 
 class OnlineSessionResumeState(BaseSessionResumeState):
+    """Persisted state used to resume an online invoice session."""
+
     """Serializable resume state of an online session.
 
     This class holds all information needed to resume an online session.

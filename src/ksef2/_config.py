@@ -2,7 +2,34 @@
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Literal
+import warnings
+from typing import Literal, cast
+
+from ksef2._core.exceptions import KSeFArgumentError
+
+
+def _positive_number(name: str, value: object) -> None:
+    if isinstance(value, bool) or not isinstance(value, int | float) or value <= 0:
+        raise KSeFArgumentError(
+            f"{name} must be a positive number.",
+            hint="Pass a numeric value greater than zero.",
+        )
+
+
+def _nonnegative_number(name: str, value: object) -> None:
+    if isinstance(value, bool) or not isinstance(value, int | float) or value < 0:
+        raise KSeFArgumentError(
+            f"{name} must be a non-negative number.",
+            hint="Pass a numeric value of zero or greater.",
+        )
+
+
+def _positive_integer(name: str, value: object) -> None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise KSeFArgumentError(
+            f"{name} must be an integer of at least 1.",
+            hint="Pass an integer value of at least 1.",
+        )
 
 
 class Environment(Enum):
@@ -28,7 +55,25 @@ class Environment(Enum):
         return self.value
 
 
-@dataclass(frozen=True, slots=True)
+def resolve_legacy_environment(
+    environment: Environment | None,
+    *,
+    replacement: str,
+) -> Environment:
+    """Keep old public branch constructors working while warning on omission."""
+    if environment is not None:
+        return environment
+    warnings.warn(
+        "Omitting `environment` from this constructor is deprecated. "
+        f"Use {replacement} instead. This call shape remains available "
+        "throughout 1.x; removal, if any, may happen no earlier than 2.0.0.",
+        DeprecationWarning,
+        stacklevel=3,
+    )
+    return Environment.PRODUCTION
+
+
+@dataclass(frozen=True, slots=True, init=False)
 class TimeoutConfig:
     """HTTP timeout settings passed to ``httpx``."""
 
@@ -40,6 +85,22 @@ class TimeoutConfig:
     """Seconds to wait while sending the request."""
     pool: float = 5.0
     """Seconds to wait for a free connection from the pool."""
+
+    def __init__(
+        self,
+        connect: object = 5.0,
+        read: object = 30.0,
+        write: object = 30.0,
+        pool: object = 5.0,
+    ) -> None:
+        for name, value in (
+            ("connect", connect),
+            ("read", read),
+            ("write", write),
+            ("pool", pool),
+        ):
+            _positive_number(name, value)
+            object.__setattr__(self, name, cast(float, value))
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,7 +117,14 @@ class ConnectionPoolConfig:
 
 @dataclass(frozen=True, slots=True)
 class RetryConfig:
-    """Retry behavior for retryable KSeF responses and transient failures."""
+    """Retry behavior for retryable KSeF responses and transient failures.
+
+    ``max_attempts`` counts total attempts for one HTTP request. Polling helpers
+    have their own timeout budget: exhausted transient server, rate-limit, and
+    transport failures are retried by the poller until that timeout expires.
+    Invoice submission is retried only after HTTP 429, which confirms that KSeF
+    rejected the request; ambiguous transport failures and 5xx are not retried.
+    """
 
     max_attempts: int = 3
     """Total number of attempts per request, including the first."""
@@ -75,7 +143,18 @@ class RetryConfig:
     backoff_multiplier: float = 2.0
     """Factor by which the delay grows after each retry."""
     retryable_status_codes: tuple[int, ...] = (429, 502, 503, 504)
-    """HTTP status codes that trigger a retry."""
+    """HTTP status codes that trigger retries for otherwise retryable requests.
+
+    Invoice submission uses only 429 from this set; it is never retried for a
+    transport failure or another status because the result could be ambiguous.
+    """
+
+    def __post_init__(self) -> None:
+        _positive_integer("max_attempts", self.max_attempts)
+        _nonnegative_number("initial_delay", self.initial_delay)
+        _positive_number("max_delay", self.max_delay)
+        _nonnegative_number("max_retry_after", self.max_retry_after)
+        _positive_number("backoff_multiplier", self.backoff_multiplier)
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,3 +189,25 @@ class TransportConfig:
     """Whether authenticated clients refresh their access token automatically, shortly before it expires and once after a 401 response. Set to ``False`` to manage refreshing yourself."""
     error_format: Literal["problem-details", "legacy"] = "problem-details"
     """Error format requested from KSeF. ``"problem-details"`` sends ``X-Error-Format: problem-details``, so 400 and 429 errors carry ``trace_id`` and ``exc.response`` is a Problem Details model. ``"legacy"`` sends no header, so those errors come in the older format, without ``trace_id``. 401, 403 and 410 are always Problem Details."""
+
+    def __post_init__(self) -> None:
+        for name, expected in (
+            ("timeouts", TimeoutConfig),
+            ("pool", ConnectionPoolConfig),
+            ("retry", RetryConfig),
+            ("tls", TlsConfig),
+        ):
+            if not isinstance(getattr(self, name), expected):
+                raise KSeFArgumentError(
+                    f"{name} must be a {expected.__name__} instance.",
+                    hint=f"Pass a {expected.__name__} object.",
+                )
+
+
+def validate_transport_config(value: object) -> TransportConfig:
+    if not isinstance(value, TransportConfig):
+        raise KSeFArgumentError(
+            "transport_config must be a TransportConfig instance.",
+            hint="Construct TransportConfig with the desired settings.",
+        )
+    return value

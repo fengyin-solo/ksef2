@@ -31,6 +31,7 @@ from ksef2._infra.mappers.sessions import from_spec as session_from_spec
 from ksef2._logging import get_logger
 
 logger = get_logger(__name__)
+DEFAULT_MAX_INVOICE_SIZE_BYTES = 1_000_000
 
 
 @final
@@ -202,6 +203,7 @@ class AsyncOnlineSessionClient:
         state: OnlineSessionResumeState,
         *,
         resumed: bool = False,
+        max_invoice_size_bytes: int = DEFAULT_MAX_INVOICE_SIZE_BYTES,
     ):
         """Create the session client.
 
@@ -209,6 +211,7 @@ class AsyncOnlineSessionClient:
             transport: Middleware chain used for authenticated requests.
             state: Resume state describing the open session and its encryption keys.
             resumed: Whether the client was rebuilt from saved state. A resumed client cannot tell whether the session is still open, so ``wait()`` does not refuse to run on it.
+            max_invoice_size_bytes: Effective invoice size limit for this session.
         """
         self._transport = transport
         self._state = state
@@ -216,6 +219,7 @@ class AsyncOnlineSessionClient:
         self._session_eps = AsyncSessionEndpoints(transport)
         self._closed = False
         self._resumed = resumed
+        self._max_invoice_size_bytes = max_invoice_size_bytes
 
     def _ensure_open(self) -> None:
         """Reject operations after the session client has been closed."""
@@ -307,6 +311,18 @@ class AsyncOnlineSessionClient:
         xml_bytes = (
             invoice_xml.encode("utf-8") if isinstance(invoice_xml, str) else invoice_xml
         )
+        if len(xml_bytes) > self._max_invoice_size_bytes:
+            message = (
+                "Invoice exceeds the default 1 MB size limit."
+                if self._max_invoice_size_bytes == DEFAULT_MAX_INVOICE_SIZE_BYTES
+                else "Invoice exceeds the applicable size limit of "
+                f"{self._max_invoice_size_bytes} bytes."
+            )
+            raise exceptions.KSeFValidationError(
+                message,
+                hint="Reduce the invoice XML size or fetch the effective limits before opening the session.",
+                invoice_size_bytes=len(xml_bytes),
+            )
         encrypted = encrypt_invoice(
             xml_bytes=xml_bytes,
             key=self._state.get_aes_key_bytes(),

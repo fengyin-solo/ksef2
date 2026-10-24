@@ -5,6 +5,7 @@ import pytest
 from polyfactory import BaseFactory
 
 from ksef2._clients.authenticated import AuthenticatedClient
+from ksef2._config import Environment
 from ksef2._clients.batch import BatchSessionClient
 from ksef2._clients.certificates import CertificatesClient
 from ksef2._clients.invoice_sessions import InvoiceSessionsClient
@@ -32,7 +33,7 @@ from ksef2._services.batch import BatchService
 from ksef2._services.invoices import InvoicesService
 from tests.unit.conftest import _TOKEN
 from tests.unit.fakes.transport import FakeTransport
-from tests.unit.helpers import VALID_PUBLIC_KEY_ID, legacy_api
+from tests.unit.support.helpers import VALID_PUBLIC_KEY_ID, legacy_api
 from ksef2._core.crypto import sha256_b64
 
 
@@ -45,10 +46,23 @@ def _build_client(  # [TODO] maybe we could just have client as a fixture, im no
         transport=fake_transport,
         auth_tokens=auth_tokens,
         certificate_store=certificate_store or CertificateStore(),
+        environment=Environment.TEST,
     )
 
 
 class TestAuthenticatedClientFacade:
+    def test_legacy_constructor_without_environment_still_works(
+        self,
+        fake_transport: FakeTransport,
+        domain_auth_tokens: BaseFactory[AuthTokens],
+    ) -> None:
+        with pytest.warns(DeprecationWarning, match="authentication.resume"):
+            _ = AuthenticatedClient(
+                fake_transport,
+                domain_auth_tokens.build(),
+                CertificateStore(),
+            )
+
     def test_properties_expose_tokens(
         self,
         fake_transport: FakeTransport,

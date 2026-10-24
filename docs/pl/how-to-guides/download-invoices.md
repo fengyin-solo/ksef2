@@ -61,6 +61,9 @@ w granicy, którą KSeF raportuje jako kompletną. Zapisz
 aż paczka będzie gotowa, pobiera i odszyfrowuje części, łączy je i zwraca obiekt
 `ExportedInvoices`.
 
+Opcjonalny `compression_type` przyjmuje `"zip"` albo `"tar_gz"`. Gdy go
+pominięto, format paczki wybiera serwer.
+
 ```python
 job = auth.invoices.export(filters)
 package = job.wait(timeout=300.0)
@@ -238,8 +241,8 @@ output = exporter.export_to_file(
 Podaj rzeczywisty numer KSeF nadany tej fakturze. `ksef_number` dodaje lokalnie
 wygenerowany kod QR w formacie SVG oraz numer pod kodem. Pominięcie tego argumentu
 zachowuje dotychczasowy PDF bez QR. Ten sam argument obsługują `export_from_path()`
-i `export_from_string()`. Domyślnym środowiskiem jest `Environment.PRODUCTION`;
-dla faktur testowych lub demo wybierz odpowiednio `TEST` lub `DEMO`.
+i `export_from_string()`. `verification_environment` jest wymagane; wybierz
+środowisko, w którym wystawiono fakturę.
 Kod zawiera NIP sprzedawcy, datę wystawienia oraz SHA-256 **oryginalnych bajtów XML**,
 zakodowany jako Base64URL bez dopełnienia, zgodnie z
 [specyfikacją kodów QR Ministerstwa Finansów](https://github.com/CIRFMF/ksef-docs/blob/main/kody-qr.md).

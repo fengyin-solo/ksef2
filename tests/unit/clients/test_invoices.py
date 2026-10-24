@@ -3,9 +3,9 @@ from unittest.mock import patch, MagicMock
 
 from polyfactory import BaseFactory
 import pytest
-from pydantic import ValidationError
 
 from ksef2._clients.invoices import InvoicesClient
+from ksef2._core.exceptions import KSeFValidationError
 from ksef2._core.routes import InvoiceRoutes
 from ksef2._domain.models import invoices
 from ksef2._domain.models.session import FormSchema
@@ -13,7 +13,7 @@ from ksef2._domain.models.pagination import InvoiceMetadataParams
 from ksef2._infra.mappers.invoices import to_spec
 from ksef2._infra.schema.api import spec
 from tests.unit.fakes.transport import FakeTransport
-from tests.unit.helpers import VALID_PUBLIC_KEY_ID
+from tests.unit.support.helpers import VALID_PUBLIC_KEY_ID
 
 
 def _with_metadata_page_state(
@@ -82,7 +82,7 @@ class TestInvoicesClient:
 
         assert params.to_query_params().get("pageSize") == 250
 
-        with pytest.raises(ValidationError):
+        with pytest.raises(KSeFValidationError):
             _ = InvoiceMetadataParams(page_size=251)
 
     def test_query_metadata_pages_follows_has_more(

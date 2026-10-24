@@ -19,6 +19,7 @@ from ksef2._domain.models.batch import (
     BatchSessionResumeState,
     PreparedBatch,
 )
+from ksef2._domain.models.limits import ContextLimits, SessionLimits
 from ksef2._domain.models.session import (
     FormSchema,
     SessionEncryptionMaterial,
@@ -74,6 +75,7 @@ class AsyncBatchService:
         upload_transport: AsyncMiddleware,
         get_encryption_key: Callable[[], Awaitable[SessionEncryptionMaterial]],
         open_batch_session: AsyncBatchSessionOpener,
+        get_context_limits: Callable[[], ContextLimits | None] | None = None,
     ) -> None:
         """Create the service.
 
@@ -82,12 +84,14 @@ class AsyncBatchService:
             upload_transport: Middleware used to upload batch parts to external storage.
             get_encryption_key: Coroutine function returning fresh session encryption material.
             open_batch_session: Callable that opens a batch session from a prepared batch.
+            get_context_limits: Returns context limits already fetched by the client, if available.
         """
         self._invoice_eps = AsyncInvoicesEndpoints(authed_transport)
         self._session_eps = AsyncSessionEndpoints(authed_transport)
         self._external_transfers = AsyncExternalTransferClient(upload_transport)
         self._get_encryption_key = get_encryption_key
         self._open_batch_session = open_batch_session
+        self._get_context_limits = get_context_limits or (lambda: None)
 
     async def prepare(
         self,
@@ -100,7 +104,11 @@ class AsyncBatchService:
         """Build a ZIP package, split it, and encrypt each upload part.
 
         Args:
-            invoices: Invoices to include. Each item is invoice XML as ``bytes`` or ``str`` (named ``invoice-<position>.xml``), a ``Path`` to an XML file (keeps its file name) or a ``BatchInvoice`` with an explicit file name.
+            invoices: Invoices to include. ``bytes`` and ``str`` are XML content
+                (named ``invoice-<position>.xml``); ``Path`` reads an XML file and
+                keeps its name; ``BatchInvoice`` supplies an explicit name. A
+                string naming an existing file raises an argument error; use
+                ``Path`` to read it.
             form_code: Invoice schema declared for the batch session.
             offline_mode: Whether to declare offline invoicing mode for the batch.
             max_part_size: Maximum size of each ZIP part before encryption.
@@ -137,7 +145,11 @@ class AsyncBatchService:
         form_code: FormSchema,
         offline_mode: bool,
         max_part_size: int,
+        session_limits: SessionLimits | None = None,
     ) -> PreparedBatch:
+        context_limits = self._get_context_limits()
+        if session_limits is None and context_limits is not None:
+            session_limits = context_limits.batch_session
         material = await self._get_encryption_key()
         return await asyncio.to_thread(
             prepare_batch_package,
@@ -149,6 +161,7 @@ class AsyncBatchService:
             form_code=form_code,
             offline_mode=offline_mode,
             max_part_size=max_part_size,
+            session_limits=session_limits,
         )
 
     async def submit(

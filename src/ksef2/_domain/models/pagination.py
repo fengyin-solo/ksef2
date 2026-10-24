@@ -7,7 +7,9 @@ from pydantic import BaseModel, Field, field_serializer, field_validator
 
 from ksef2._domain.models.base import KSeFBaseParams
 from ksef2._domain.models.invoices import (
-    SortOrder,
+    SortOrder as SortOrder,
+    SortOrderInput,
+    SortOrderEnum,
     normalize_sort_order,
     sort_order_to_spec,
 )
@@ -73,18 +75,18 @@ class PageOffsetMixin(BaseModel):
 class SortOrderMixin(BaseModel):
     """Adds a sortable ``sort_order`` query parameter."""
 
-    sort_order: SortOrder = "asc"
+    sort_order: SortOrderInput = "asc"
     """Sort direction, ``asc`` or ``desc``."""
 
     @field_validator("sort_order", mode="before")
     @classmethod
     def _normalize_sort_order(cls, value: object) -> object:
-        if isinstance(value, str):
+        if isinstance(value, (str, SortOrderEnum)):
             return normalize_sort_order(value)
         return value
 
     @field_serializer("sort_order")
-    def _serialize_sort_order(self, value: SortOrder) -> str:
+    def _serialize_sort_order(self, value: SortOrderInput) -> str:
         return sort_order_to_spec(value)
 
 
@@ -108,7 +110,12 @@ class InvoiceMetadataParams(
     PageOffsetMixin,
     SortOrderMixin,
 ):
-    """Pagination parameters for invoice metadata queries."""
+    """Pagination parameters for invoice metadata queries.
+
+    ``page_size`` must be between 10 and 250 inclusive.
+    """
+
+    wrap_validation_errors = True
 
     page_size: int = Field(default=10, ge=10, le=250)
     """Number of results per page (10–250)."""

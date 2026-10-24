@@ -3,11 +3,30 @@ title: Migrate to ksef2 1.0
 description: Replace deprecated imports and invoice workflows while existing code keeps working through 1.x.
 ---
 
-Legacy imports under `ksef2.core`, `ksef2.domain`, `ksef2.infra` and
-`ksef2.services`, and deprecated method names, keep working throughout 1.x.
+Legacy imports under `ksef2.core`, `ksef2.domain`, `ksef2.infra`,
+`ksef2.services`, and `ksef2.clients.*`, plus deprecated method names, keep
+working throughout 1.x.
 They emit `DeprecationWarning` naming the replacement. Removal may happen no
 earlier than 2.0.0, and is still a decision for that release. New code should
 use the public facades and operation handles below.
+
+## Choose the KSeF environment explicitly
+
+`Client`, `AsyncClient`, and `InvoicePDFExporter` require an environment. Pass
+an `Environment` member or a case-insensitive name such as `"test"`:
+
+```python
+from ksef2 import AsyncClient, Client, Environment
+from ksef2.renderers import InvoicePDFExporter
+
+client = Client(Environment.TEST)
+async_client = AsyncClient("test")
+pdf_exporter = InvoicePDFExporter(verification_environment=Environment.TEST)
+```
+
+When a root client receives a custom `http_client`, its `base_url` must match
+the selected environment. An empty base URL is set from the environment; a
+conflict raises `KSeFArgumentError` at construction.
 
 ## Imports
 
@@ -42,6 +61,7 @@ from ksef2.renderers import InvoiceXSLTRenderer
 | `ksef2.infra.schema.fa3` and generated submodules | Keep the deprecated alias if generated XSD classes or schema resources are required. There is no public replacement for every generated FA(3) class. For invoice construction, use `ksef2.fa3.InvoiceBuilder`. |
 | `ksef2.services.builders` | `ksef2.fa3` |
 | `ksef2.services.renderers.xslt` | `ksef2.renderers` |
+| `ksef2.clients.*` | Import client types from `ksef2.clients`; use `AuthenticatedClient` or `AsyncAuthenticatedClient` child clients for new code. |
 
 The first import from a legacy package loads its entire implementation tree
 and registers aliases to the same modules and classes. It warns once per package
@@ -49,8 +69,14 @@ family, including when importing a nested module directly. Modern imports do
 not activate these aliases. Optional third-party PDF dependencies remain unloaded
 until rendering is requested.
 
-Nested legacy imports work at runtime, but IDEs and type checkers may not resolve
-the dynamic aliases. Use the public imports above for static analysis.
+The `ksef2.clients` facade remains supported. Its legacy submodules, such as
+`ksef2.clients.authenticated` and `ksef2.clients.online`, warn on first use and
+resolve to the canonical client modules.
+
+The `ksef2.clients.*` compatibility modules are real re-export modules, so IDEs
+and type checkers can resolve those paths. The older `core`, `domain`, `infra`
+and `services` trees still use runtime aliases; use the public imports above for
+static analysis of those paths.
 
 ## Send, wait and download UPO
 
@@ -131,6 +157,13 @@ Read a single page on demand with `pager.page()`, which returns a `Page` holding
 process if you need to, and the search resumes on the page after it: an invoice
 search cursor carries the filters, parameters and truncation boundary of the
 request it resumes.
+
+## Authentication and permission failures
+
+HTTP 401 still raises `KSeFAuthError`. HTTP 403 now raises
+`KSeFPermissionDeniedError`, which is an API error but not an authentication
+error. If a handler used `except KSeFAuthError` to recover from 403, add a
+`KSeFPermissionDeniedError` handler or catch `KSeFApiError` for both cases.
 
 ## Transport failures
 

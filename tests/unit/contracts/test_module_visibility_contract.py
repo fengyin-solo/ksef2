@@ -1,0 +1,140 @@
+"""Check public namespaces and the four deprecated compatibility packages."""
+
+from pathlib import Path
+
+SRC_ROOT = Path(__file__).resolve().parents[3] / "src"
+PACKAGE_ROOT = SRC_ROOT / "ksef2"
+
+# Every importable module whose path has no underscore-prefixed component.
+# Adding a name here is a public API decision; see docs/en/reference/public-api.md.
+PUBLIC_MODULES = frozenset(
+    {
+        "ksef2",
+        "ksef2.clients",
+        "ksef2.fa3",
+        "ksef2.logging",
+        "ksef2.models",
+        "ksef2.profiles",
+        "ksef2.raw",
+        "ksef2.raw.mappers",
+        "ksef2.raw.mappers.auth",
+        "ksef2.renderers",
+        "ksef2.testdata",
+        "ksef2.xades",
+    }
+)
+
+LEGACY_PACKAGES = frozenset(
+    {"ksef2.core", "ksef2.domain", "ksef2.infra", "ksef2.services"}
+)
+LEGACY_CLIENT_MODULES = frozenset(
+    f"ksef2.clients.{name}"
+    for name in (
+        "async_auth",
+        "async_authenticated",
+        "async_base",
+        "async_batch",
+        "async_certificates",
+        "async_collective_identifiers",
+        "async_encryption",
+        "async_invoice_sessions",
+        "async_invoices",
+        "async_limits",
+        "async_online",
+        "async_peppol",
+        "async_permissions",
+        "async_session_management",
+        "async_testdata",
+        "async_tokens",
+        "auth",
+        "authenticated",
+        "base",
+        "batch",
+        "certificates",
+        "collective_identifiers",
+        "encryption",
+        "invoice_sessions",
+        "invoices",
+        "limits",
+        "online",
+        "peppol",
+        "permissions",
+        "profiles",
+        "session_management",
+        "testdata",
+        "tokens",
+    )
+)
+
+
+def _is_dunder(part: str) -> bool:
+    return part.startswith("__") and part.endswith("__")
+
+
+def _module_name(path: Path) -> str:
+    parts = list(path.relative_to(SRC_ROOT).with_suffix("").parts)
+    if parts[-1] == "__init__":
+        parts.pop()
+    return ".".join(parts)
+
+
+def _all_modules() -> set[str]:
+    return {_module_name(path) for path in PACKAGE_ROOT.rglob("*.py")}
+
+
+def _is_private(module: str) -> bool:
+    return any(
+        part.startswith("_") and not _is_dunder(part) for part in module.split(".")
+    )
+
+
+def _is_dunder_module(module: str) -> bool:
+    return _is_dunder(module.rsplit(".", 1)[-1]) and module != "ksef2"
+
+
+def test_every_module_without_an_underscore_component_is_listed_as_public() -> None:
+    unlisted = sorted(
+        module
+        for module in _all_modules()
+        if not _is_private(module)
+        and not _is_dunder_module(module)
+        and module not in LEGACY_PACKAGES
+        and module not in LEGACY_CLIENT_MODULES
+        and module not in PUBLIC_MODULES
+    )
+
+    assert not unlisted, (
+        "Modules without an underscore-prefixed component are public. Rename "
+        "them with a leading underscore or add them to PUBLIC_MODULES: "
+        f"{', '.join(unlisted)}"
+    )
+
+
+def test_every_listed_public_module_exists() -> None:
+    missing = sorted(PUBLIC_MODULES - _all_modules())
+
+    assert not missing, f"PUBLIC_MODULES lists modules that do not exist: {missing}"
+
+
+def test_legacy_packages_exist_alongside_canonical_implementations() -> None:
+    modules = _all_modules()
+    assert LEGACY_PACKAGES <= modules
+    for module in LEGACY_PACKAGES:
+        assert module.replace("ksef2.", "ksef2._", 1) in modules, module
+
+
+def test_legacy_client_shims_exist_for_every_published_public_module() -> None:
+    modules = _all_modules()
+    missing = sorted(LEGACY_CLIENT_MODULES - modules)
+
+    assert not missing, f"Missing deprecated client shims: {', '.join(missing)}"
+
+
+def test_other_internal_paths_remain_private() -> None:
+    old_internal = {
+        "ksef2.endpoints",
+        "ksef2.config",
+        "ksef2.raw.facade",
+    }
+
+    assert not old_internal & _all_modules()

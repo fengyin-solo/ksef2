@@ -1,5 +1,9 @@
 ## v1.0.0 (unreleased)
 
+### Fixed
+
+- Restore deprecated `ksef2.clients.*` submodule imports throughout 1.x.
+
 ksef2 1.0.0 is being prepared as the first stable release. It targets KSeF
 OpenAPI 2.8.1 and starts the 1.x compatibility contract. Collective-identifier
 invoice queries change because KSeF replaced the endpoint. Old SDK import paths
@@ -8,8 +12,21 @@ and method names remain functional throughout 1.x (#171). Read
 
 ### Highlights
 
+- Offline validation rejects invoice metadata ranges longer than 100 days, documents
+  metadata page-size bounds, checks invoice sizes before sending or batch
+  encryption, computes batch part counts before encryption, validates signing
+  certificates and transport configuration, and defaults FA(3) XML serialization
+  to compact output (#299). PDF exports reject malformed roots and KSeF numbers,
+  and the token example stops before a placeholder can be sent.
+
+- Public input handling follows one rule: `bytes` and `str` are content, while
+  `Path` is a file. Batch preparation catches strings that name existing files,
+  FA(3) parsing accepts XML text with declarations, and PEM helpers warn when
+  legacy string paths are used (#297, #304).
+
 - The documented import paths (`ksef2`, `ksef2.clients`, `ksef2.models`,
-  `ksef2.fa3`, `ksef2.xades`, `ksef2.profiles`, `ksef2.renderers`, `ksef2.raw`,
+  `ksef2.fa3`, `ksef2.xades`, `ksef2.logging`, `ksef2.profiles`,
+  `ksef2.renderers`, `ksef2.raw`,
   `ksef2.raw.mappers`, and the new `ksef2.testdata`) are the compatibility
   contract for the whole 1.x line. The rule is simple: a module path with no
   underscore is public, and anything with an underscore is private and may change
@@ -26,10 +43,34 @@ and method names remain functional throughout 1.x (#171). Read
   for a before/after.
 - KSeF errors come from one pipeline with one message format, carry `ksef_code`,
   `trace_id` and `details`, and say what to do next in `hint` (#167).
+- Public Pydantic model validation and invoice-builder validation raise SDK
+  exceptions; HTTP 403 raises `KSeFPermissionDeniedError`, separate from
+  `KSeFAuthError`; terminal operation failures share `KSeFOperationFailedError`
+  (#296).
 - Deprecations are visible to type checkers and IDEs (PEP 702 `@deprecated`) and
   remain functional through the 1.x line. Removal is a 2.0 decision (#171).
+- Polling helpers continue through retryable server, rate-limit and transport
+  errors until their timeout. Invoice sends and refresh-token requests retry
+  only after an explicit `429`; ambiguous transport failures are not retried.
+  Connect failures are reported as non-ambiguous and lost invoice responses
+  include a recovery hint (#300).
+
+### Fixed
+
+- **FA(3) builder (#293, #304).** Emit summary amounts for VAT buckets with
+  rows even when rounding or correction arithmetic produces zero, validate
+  foreign-currency VAT exchange rates, and document rounding, corrections, and
+  large-invoice performance. #304 parser string handling remains in #297; the
+  missing corrected-invoice error remains in #296.
 
 ### Breaking changes
+
+- **Explicit client environments and URL alignment (#294, #295).** `Client`,
+  `AsyncClient`, and `InvoicePDFExporter` now require an environment. Pass an
+  `Environment` or a case-insensitive name such as `"test"`. A supplied
+  `http_client` with no `base_url` inherits the selected environment URL; a
+  conflicting URL raises `KSeFArgumentError` during construction. This prevents
+  environment guards and network routing from disagreeing.
 
 - **Collective-identifier invoice queries (#128).** KSeF API 2.8.1 replaced
   `GET /collective-identifiers/{collectiveIdentifierNumber}/invoices` with
@@ -93,7 +134,7 @@ and method names remain functional throughout 1.x (#171). Read
   | `ksef2.services` | `ksef2._services` |
   | `ksef2.clients.<module>` (`base`, `auth`, `online`, `async_*`, ...) | `ksef2._clients.<module>` (`ksef2.clients` stays the public facade with the same `__all__`) |
   | `ksef2.config` | `ksef2._config` (names stay exported from `ksef2`) |
-  | `ksef2.logging` | `ksef2._logging` (names stay exported from `ksef2`) |
+  | `ksef2._logging` | `ksef2.logging` (`configure_logging`) |
   | `ksef2.raw.facade`, `ksef2.raw.async_facade` | `ksef2.raw._facade`, `ksef2.raw._async_facade` (names stay exported from `ksef2.raw`) |
 
   If you imported something from an old path, import it from the public module
@@ -124,6 +165,16 @@ on the public API page for every alias and its replacement.
   (#150, #162).
 
 ### Added
+
+- SDK events use the standard `ksef2` logger and remain silent unless the
+  application configures logging. `ksef2.logging.configure_logging()` opts in
+  to the SDK console or JSON renderer. SDK events use standard logging levels
+  and do not include tokens, cryptographic keys or presigned URLs (#301).
+- `ksef2.renderers` is the public path for XSLT and PDF rendering. PDF use
+  requires `ksef2[pdf]`; `InvoicePDFExporter` raises an actionable `ImportError`
+  on first use when that extra is absent. `InvoiceBuilder` is the canonical
+  `ksef2.fa3` name; `FA3InvoiceBuilder` remains a deprecated alias with removal
+  no earlier than 2.0.0 (#302).
 
 - `PreparedBatch.to_sensitive_dict()` and `to_sensitive_json()` export a prepared
   batch in full, including encrypted parts as URL-safe Base64 with `=` padding
@@ -330,6 +381,11 @@ on the public API page for every alias and its replacement.
 
 ### Fixed
 
+- Enum inputs now accept documented values case-insensitively across online session
+  form codes, invoice export compression and sort order, FA(3) VAT markers, and PDF
+  page sizes. Invalid enum inputs raise `KSeFArgumentError` with valid choices.
+  Numeric VAT rates such as `23` and `Decimal("0.23")` are rejected; pass the FA(3)
+  marker as a string, such as `"23"` or `"zw"` (#298).
 - FA(3) tax exemptions write only the selected legal basis, and new-transport
   annotations can be attached without supplying other annotation fields (#179, #176).
 - Give each invoice in the batch examples its own FA(3) number (#135).

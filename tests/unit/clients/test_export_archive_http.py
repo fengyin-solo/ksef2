@@ -135,14 +135,16 @@ async def test_export_reads_and_saves_response_format(
         aes_key=SecretStr(base64.b64encode(key).decode()),
         iv=SecretStr(base64.b64encode(iv).decode()),
     )
-    filters = InvoicesFilter.for_seller(date_from="2026-01-01T00:00:00Z")
+    filters = InvoicesFilter.for_seller(
+        date_from="2026-01-01T00:00:00Z", date_to="2026-01-02T00:00:00Z"
+    )
     sdk_compression = "zip" if compression == "Zip" else "tar_gz"
     transport = httpx.MockTransport(handle)
     if is_async:
         async with AsyncClient(
             Environment.TEST,
             http_client=httpx.AsyncClient(
-                base_url="https://ksef.mock", transport=transport
+                base_url=Environment.TEST.base_url, transport=transport
             ),
         ) as client:
             auth = client.authentication.resume(auth_state)
@@ -156,7 +158,9 @@ async def test_export_reads_and_saves_response_format(
     else:
         with Client(
             Environment.TEST,
-            http_client=httpx.Client(base_url="https://ksef.mock", transport=transport),
+            http_client=httpx.Client(
+                base_url=Environment.TEST.base_url, transport=transport
+            ),
         ) as client:
             auth = client.authentication.resume(auth_state)
             if resumed:

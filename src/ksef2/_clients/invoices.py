@@ -13,7 +13,13 @@ from ksef2._clients._metadata_pagination import (
 )
 from ksef2._core.crypto import encrypt_symmetric_key, generate_session_key
 from ksef2._core.protocols import Middleware
-from ksef2._domain.models.compression import CompressionType, normalize_compression_type
+from ksef2._domain.models.compression import (
+    CompressionType as _CompressionType,
+)
+from ksef2._domain.models.compression import (
+    CompressionTypeInput,
+    normalize_compression_type,
+)
 from ksef2._domain.models.invoices import (
     ExportHandle,
     ExportInvoicesPayload,
@@ -25,6 +31,8 @@ from ksef2._domain.models.invoices import (
 from ksef2._domain.models.pagination import InvoiceMetadataParams
 from ksef2._endpoints.invoices import InvoicesEndpoints
 from ksef2._infra.mappers.invoices import from_spec, to_spec
+
+CompressionType = _CompressionType
 
 
 @final
@@ -186,7 +194,7 @@ class InvoicesClient:
         encryption_certificate: str,
         encryption_public_key_id: str | None = None,
         only_metadata: bool = False,
-        compression_type: CompressionType | str | None = None,
+        compression_type: CompressionTypeInput | None = None,
     ) -> ExportHandle:
         """Schedule an export and return the handle needed to decrypt it later.
 

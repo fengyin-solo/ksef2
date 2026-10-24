@@ -2,6 +2,7 @@
 
 Prerequisites:
 - run from the repository checkout so the sample invoice path resolves
+- install ``ksef2[pdf]`` for PDF output
 
 What it demonstrates:
 - local XSLT rendering to HTML
@@ -11,6 +12,7 @@ What it demonstrates:
 from dataclasses import dataclass
 from pathlib import Path
 
+from ksef2 import Environment
 from ksef2.renderers import InvoicePDFExporter, InvoiceXSLTRenderer
 from scripts.examples._common import repo_root
 
@@ -27,7 +29,7 @@ def run(config: ExampleConfig) -> None:
 
     config.output_dir.mkdir(parents=True, exist_ok=True)
 
-    pdf_exporter = InvoicePDFExporter()
+    pdf_exporter = InvoicePDFExporter(verification_environment=Environment.PRODUCTION)
     html_exporter = InvoiceXSLTRenderer()
 
     for path in sorted(config.source_dir.glob("*.xml")):

@@ -120,3 +120,22 @@ def test_services_builders_exports_only_canonical_builder() -> None:
 
     assert builders.__all__ == ["InvoiceBuilder"]
     assert builders.InvoiceBuilder is InvoiceBuilder
+
+
+def test_fa3_builder_alias_warns_and_preserves_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import warnings
+
+    import ksef2.fa3 as fa3
+
+    monkeypatch.delitem(fa3.__dict__, "FA3InvoiceBuilder", raising=False)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        from ksef2.fa3 import FA3InvoiceBuilder
+
+    assert FA3InvoiceBuilder is InvoiceBuilder
+    assert len(caught) == 1
+    message = str(caught[0].message)
+    assert "InvoiceBuilder" in message
+    assert "no earlier than ksef2 2.0.0" in message

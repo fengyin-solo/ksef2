@@ -4,9 +4,11 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Any, Self
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
+from ksef2._core.exceptions import KSeFArgumentError
 from ksef2._domain.models import KSeFBaseModel
+from ksef2._domain.models._enum import coerce_enum
 
 
 class VatRate(StrEnum):
@@ -64,6 +66,9 @@ class TaxRegime(StrEnum):
     TAXI_FLAT_RATE = "taxi_flat_rate"
     SPECIAL_XII = "special_xii"
     MARGIN = "margin"
+
+
+type VatRateInput = VatRate | str
 
 
 NUMERIC_RATE_BY_CATEGORY = {
@@ -184,15 +189,20 @@ SCHEMA_CODE_BY_CATEGORY = {
 }
 
 
-def coerce_vat_rate(value: VatRate | str | None) -> VatRate | None:
+def coerce_vat_rate(value: object) -> VatRate | None:
     """Normalize raw VAT rate input to a ``VatRate`` enum member."""
     if value is None or isinstance(value, VatRate):
         return value
+    if not isinstance(value, str):
+        raise KSeFArgumentError(
+            f"Invalid VAT rate {value!r}. VAT rates are FA(3) markers such as '23' or 'zw'.",
+            hint="Pass the VAT marker as a string, for example '23', '0', or 'zw'.",
+        )
     if value == "":
         return None
-    if value == "np":
+    if value.casefold() == "np":
         return VatRate.NOT_SUBJECT
-    return VatRate(value)
+    return coerce_enum(VatRate, value)
 
 
 def vat_rate_for_category(category: SaleCategory) -> VatRate:
@@ -225,6 +235,7 @@ def parse_sale_category(
         A ``(sale_category, tax_regime)`` pair. Either value may be ``None``.
 
     Raises:
+        KSeFArgumentError: If ``value`` is unsupported.
         ValueError: If the alias conflicts with the supplied VAT rate.
     """
     if value is None:
@@ -234,9 +245,9 @@ def parse_sale_category(
 
     normalized = str(value)
     try:
-        return SaleCategory(normalized), None
-    except ValueError:
-        alias = LEGACY_SALE_CATEGORY_ALIASES.get(normalized)
+        return coerce_enum(SaleCategory, normalized), None
+    except KSeFArgumentError:
+        alias = LEGACY_SALE_CATEGORY_ALIASES.get(normalized.casefold())
         if isinstance(alias, SaleCategory):
             return alias, None
         if isinstance(alias, TaxRegime):
@@ -248,7 +259,7 @@ def parse_sale_category(
                     )
                 return SaleCategory.RATE_4, alias
             return None, alias
-        if normalized == "standard":
+        if normalized.casefold() == "standard":
             normalized_vat_rate = coerce_vat_rate(vat_rate)
             if normalized_vat_rate is None:
                 return None, TaxRegime.STANDARD
@@ -270,6 +281,19 @@ class VatClassification(KSeFBaseModel):
         description="Numeric VAT rate percentage when the treatment is taxable or zero-rated.",
     )
     """Numeric VAT rate in percent; ``None`` for treatments without a rate."""
+
+    @field_validator("treatment", mode="before")
+    @classmethod
+    def normalize_treatment(cls, value: object) -> object:
+        """Coerce enum names and string values without regard to case.
+
+        Args:
+            value: Raw treatment enum member, name, or value.
+
+        Returns:
+            The matching ``VatTreatment`` member.
+        """
+        return coerce_enum(VatTreatment, value)
 
     @model_validator(mode="after")
     def validate_rate(self) -> Self:

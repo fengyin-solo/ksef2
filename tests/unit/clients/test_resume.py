@@ -6,11 +6,12 @@ from unittest.mock import MagicMock
 import httpx
 import pytest
 from polyfactory import BaseFactory
+from pydantic import ValidationError
 from pydantic import SecretStr
 
-from ksef2 import AsyncClient, Client
+from ksef2 import AsyncClient, Client, Environment
 from ksef2._core.crypto import encrypt_invoice
-from ksef2._core.exceptions import KSeFExportFailedError
+from ksef2._core.exceptions import KSeFExportFailedError, KSeFValidationError
 from ksef2._core.routes import SessionRoutes
 from ksef2._domain.models.auth import AuthenticationResumeState, AuthTokens
 from ksef2._domain.models.batch import (
@@ -46,6 +47,17 @@ def _paths(flavor: Flavor) -> list[str]:
 
 
 class TestOnlineSessionForms:
+    def test_invalid_resume_json_raises_sdk_validation_error(
+        self, flavor: Flavor, domain_auth_tokens: BaseFactory[AuthTokens]
+    ) -> None:
+        auth = _auth(flavor, domain_auth_tokens)
+
+        with pytest.raises(KSeFValidationError) as caught:
+            flavor.run(auth.online_session(state="{}"))
+
+        assert isinstance(caught.value.__cause__, ValidationError)
+        assert caught.value.errors()
+
     def test_both_forms_or_neither_raise_type_error(
         self, flavor: Flavor, domain_auth_tokens: BaseFactory[AuthTokens]
     ) -> None:
@@ -252,7 +264,7 @@ class TestAuthenticationResume:
     ) -> None:
         tokens = domain_auth_tokens.build()
         state = AuthenticationResumeState.from_tokens(tokens)
-        client = Client(http_client=MagicMock(spec=httpx.Client))
+        client = Client(Environment.TEST, http_client=MagicMock(spec=httpx.Client))
 
         authenticated = client.authentication.resume(state.to_json())
 
@@ -263,7 +275,9 @@ class TestAuthenticationResume:
     ) -> None:
         tokens = domain_auth_tokens.build()
         state = AuthenticationResumeState.from_tokens(tokens)
-        client = AsyncClient(http_client=MagicMock(spec=httpx.AsyncClient))
+        client = AsyncClient(
+            Environment.TEST, http_client=MagicMock(spec=httpx.AsyncClient)
+        )
 
         authenticated = client.authentication.resume(state.to_json())
 

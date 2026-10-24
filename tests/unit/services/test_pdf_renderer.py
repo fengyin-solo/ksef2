@@ -1,13 +1,15 @@
+import os
 import tomllib
 from base64 import b64decode, urlsafe_b64encode
 from hashlib import sha256
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+from typing import cast
 
 import pytest
 from lxml import etree
 
-from ksef2 import Environment
+from ksef2 import Environment, KSeFArgumentError, KSeFValidationError
 
 from ksef2.renderers import InvoicePDFExporter, InvoiceXSLTRenderer, PDFPageSize
 
@@ -29,7 +31,19 @@ def test_pdf_exporter_reports_missing_optional_dependency() -> None:
         side_effect=missing_weasyprint,
     ):
         with pytest.raises(ImportError, match=r"ksef2\[pdf\]"):
-            _ = InvoicePDFExporter()
+            _ = InvoicePDFExporter(verification_environment=Environment.TEST)
+
+
+def test_pdf_exporter_requires_verification_environment() -> None:
+    with pytest.raises(TypeError):
+        InvoicePDFExporter()  # pyright: ignore[reportCallIssue]
+
+
+def test_pdf_exporter_accepts_case_insensitive_environment_name() -> None:
+    with patch("ksef2._services.renderers.pdf._load_weasyprint"):
+        exporter = InvoicePDFExporter(verification_environment="tEsT")
+
+    assert exporter._verification_environment is Environment.TEST
 
 
 def test_weasyprint_is_declared_as_pdf_extra() -> None:
@@ -56,7 +70,7 @@ def test_pdf_verification_qr_uses_original_bytes(environment: str, host: str) ->
         Path(__file__).parents[3] / "schemas/FA3/samples/FA_3_Przykład_1.xml"
     ).read_bytes()
     xml += b"\n  "
-    number = "1234567890-20260201-ABCDEF123456-AB"
+    number = "5261040828-20260201-ABCDEF123456-AB"
     with patch("ksef2._services.renderers.pdf._load_weasyprint") as load:
         weasyprint = load.return_value
         weasyprint.HTML.return_value.write_pdf.return_value = b"%PDF-test"
@@ -99,11 +113,15 @@ def test_pdf_default_has_no_qr_and_rejects_empty_number() -> None:
     ).read_bytes()
     with patch("ksef2._services.renderers.pdf._load_weasyprint") as load:
         load.return_value.HTML.return_value.write_pdf.return_value = b"%PDF-test"
-        exporter = InvoicePDFExporter()
+        exporter = InvoicePDFExporter(verification_environment=Environment.TEST)
         assert exporter.export_from_string(xml) == b"%PDF-test"
         assert "KSeF QR" not in load.return_value.HTML.call_args.kwargs["string"]
-        with pytest.raises(ValueError, match="must not be empty"):
+        with pytest.raises(KSeFArgumentError, match="must not be empty"):
             _ = exporter.export_from_string(xml, ksef_number=" ")
+        with pytest.raises(KSeFArgumentError, match="KSeF number format"):
+            _ = exporter.export_from_string(xml, ksef_number="bogus")
+        with pytest.raises(KSeFValidationError, match="Faktura root"):
+            _ = exporter.export_from_string(b"<a/>")
 
 
 def test_pdf_file_exports_include_real_svg_qr(tmp_path: Path) -> None:
@@ -116,8 +134,13 @@ def test_pdf_file_exports_include_real_svg_qr(tmp_path: Path) -> None:
     target = tmp_path / "nested/invoice.pdf"
     with patch("ksef2._services.renderers.pdf._load_weasyprint") as load:
         load.return_value.HTML.return_value.write_pdf.return_value = b"%PDF-test"
-        exporter = InvoicePDFExporter()
-        assert exporter.export_to_file(source, target, ksef_number="KSEF-123") == target
+        exporter = InvoicePDFExporter(verification_environment=Environment.TEST)
+        assert (
+            exporter.export_to_file(
+                source, target, ksef_number="5261040828-20260201-ABCDEF123456-AB"
+            )
+            == target
+        )
         assert target.read_bytes() == b"%PDF-test"
         document = etree.HTML(load.return_value.HTML.call_args.kwargs["string"])
         assert document is not None
@@ -148,10 +171,24 @@ def test_pdf_page_size_overrides_css(size: PDFPageSize, css_size: str) -> None:
     with patch("ksef2._services.renderers.pdf._load_weasyprint") as load:
         load.return_value.HTML.return_value.write_pdf.return_value = b"%PDF-test"
         exporter = InvoicePDFExporter(
-            page_size=size, html_overrides="@page { size: A5; }"
+            verification_environment=Environment.TEST,
+            page_size=size,
+            html_overrides="@page { size: A5; }",
         )
         assert exporter.export_from_string(xml) == b"%PDF-test"
         assert (
             load.return_value.CSS.call_args.kwargs["string"]
             == "@page { size: A5; }\n@page { size: " + css_size + "; }"
+        )
+
+
+@pytest.mark.skipif(
+    os.getenv("KSEF2_RUNTIME_CHECKS") == "1",
+    reason="Runtime type checks reject strings before the enum value boundary runs.",
+)
+def test_invalid_pdf_page_size_raises_sdk_argument_error() -> None:
+    with pytest.raises(KSeFArgumentError, match="Invalid PDFPageSize value"):
+        InvoicePDFExporter(
+            verification_environment=Environment.TEST,
+            page_size=cast(PDFPageSize, cast(object, "A7")),
         )

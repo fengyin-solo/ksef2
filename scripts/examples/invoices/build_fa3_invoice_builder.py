@@ -1,3 +1,8 @@
+"""Build a FA(3) invoice and export it to PDF.
+
+Requirements: install ``ksef2[pdf]`` for PDF output.
+"""
+
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -5,6 +10,7 @@ from pathlib import Path
 
 from lxml import etree
 
+from ksef2 import Environment
 from ksef2.fa3 import InvoiceBuilder, VatRate
 from ksef2.renderers import InvoicePDFExporter
 
@@ -82,7 +88,7 @@ def validate_invoice_xml(xml_path: Path, schema_path: Path) -> None:
 
 
 def export_invoice_pdf(xml_path: Path, pdf_output_path: Path) -> Path:
-    pdf_exporter = InvoicePDFExporter()
+    pdf_exporter = InvoicePDFExporter(verification_environment=Environment.TEST)
     return pdf_exporter.export_to_file(xml_path, pdf_output_path)
 
 

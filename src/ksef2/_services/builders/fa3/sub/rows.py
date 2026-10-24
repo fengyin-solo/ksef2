@@ -16,7 +16,11 @@ from ksef2._domain.models.fa3.body import (
     VatClassification,
     VatRate,
 )
-from ksef2._domain.models.fa3.body.tax import coerce_vat_classification
+from ksef2._domain.models.fa3.body.tax import (
+    VatRateInput,
+    coerce_vat_classification,
+)
+from ksef2._domain.models._enum import coerce_enum
 from ksef2._services.builders.fa3.metadata import builder_param
 
 
@@ -63,7 +67,7 @@ RowUnitPriceGrossParam = Annotated[
     ),
 ]
 RowVatRateParam = Annotated[
-    VatRate | str | None,
+    VatRateInput | None,
     builder_param(
         "VAT rate used for the line when a standard VAT indicator is enough.",
         examples=["23", "8", "0", "zw"],
@@ -218,15 +222,11 @@ def _coerce_sale_category(
 ) -> SaleCategory | None:
     if sale_category is None:
         return None
-    if isinstance(sale_category, SaleCategory):
-        return sale_category
-    return SaleCategory(sale_category)
+    return coerce_enum(SaleCategory, sale_category)
 
 
 def _coerce_tax_regime(tax_regime: TaxRegime | str) -> TaxRegime:
-    if isinstance(tax_regime, TaxRegime):
-        return tax_regime
-    return TaxRegime(tax_regime)
+    return coerce_enum(TaxRegime, tax_regime)
 
 
 def _coerce_vat_classification(
@@ -240,9 +240,11 @@ def _validate_unit_price_choice(
     unit_price_gross: Decimal | None,
 ) -> None:
     if unit_price_net is not None and unit_price_gross is not None:
-        raise ValueError("Provide either unit_price_net or unit_price_gross, not both.")
+        raise _validation_error(
+            "Provide either unit_price_net or unit_price_gross, not both."
+        )
     if unit_price_net is None and unit_price_gross is None:
-        raise ValueError("Provide unit_price_net or unit_price_gross.")
+        raise _validation_error("Provide unit_price_net or unit_price_gross.")
 
 
 class RowsBuilder[TParent]:
@@ -547,7 +549,7 @@ class RowsBuilder[TParent]:
             ValueError: If no invoice rows have been added.
         """
         if self._is_empty():
-            raise ValueError("Invoice rows are empty. Add at least one line.")
+            raise _validation_error("Invoice rows are empty. Add at least one line.")
         self._on_done(self.build())
         return self._parent
 
@@ -567,3 +569,9 @@ class RowsBuilderMixin:
 
     def _set_rows(self, value: list[InvoiceRow]) -> None:
         self._rows = list(value)
+
+
+def _validation_error(message: str):
+    from ksef2._core.exceptions import KSeFValidationError
+
+    return KSeFValidationError(message)

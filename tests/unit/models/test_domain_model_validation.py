@@ -5,6 +5,29 @@ from pydantic import ValidationError
 
 from ksef2._domain.models.batch import BatchFileInfo, BatchFilePart
 from ksef2._domain.models.invoices import InvoicesFilter
+from ksef2._domain.models.pagination import InvoiceMetadataParams
+from ksef2._core.exceptions import KSeFException, KSeFValidationError
+
+
+def test_public_model_validation_wraps_pydantic_errors() -> None:
+    with pytest.raises(
+        KSeFValidationError, match="Invalid InvoiceMetadataParams"
+    ) as caught:
+        InvoiceMetadataParams(page_size=5)
+
+    assert isinstance(caught.value.__cause__, ValidationError)
+    assert caught.value.errors()[0]["loc"] == ("page_size",)
+    assert isinstance(caught.value, ValueError)
+
+
+@pytest.mark.parametrize("json_data", ["{", "null", '{"page_size":5}'])
+def test_public_model_json_validation_wraps_pydantic_errors(json_data: str) -> None:
+    with pytest.raises(KSeFException) as caught:
+        InvoiceMetadataParams.model_validate_json(json_data)
+
+    assert isinstance(caught.value, KSeFValidationError)
+    assert isinstance(caught.value.__cause__, ValidationError)
+    assert caught.value.errors()
 
 
 def _batch_part(
@@ -39,6 +62,18 @@ def test_batch_file_info_rejects_file_larger_than_5gb() -> None:
         )
 
 
+def test_invoice_filter_rejects_ranges_longer_than_100_days() -> None:
+    with pytest.raises(
+        KSeFValidationError,
+        match="Invalid InvoicesFilter input:.*must not exceed 100 days",
+    ) as caught:
+        _invoice_filter(date_to="2026-04-12T00:00:00")
+
+    assert isinstance(caught.value.__cause__, ValidationError)
+    assert caught.value.errors()
+    assert str(caught.value).count("Invalid InvoicesFilter input") == 1
+
+
 def test_batch_file_info_rejects_more_than_50_parts() -> None:
     parts = [
         _batch_part(ordinal_number=ordinal_number) for ordinal_number in range(1, 52)
@@ -65,7 +100,7 @@ def test_batch_file_part_rejects_zero_ordinal_number() -> None:
 
 def test_invoices_filter_rejects_amount_min_greater_than_amount_max() -> None:
     with pytest.raises(
-        ValidationError,
+        KSeFValidationError,
         match="amount_min must be less than or equal to amount_max",
     ):
         _invoice_filter(amount_type="brutto", amount_min=100.0, amount_max=10.0)
@@ -79,7 +114,7 @@ def test_invoices_filter_allows_missing_amount_type_without_amount_range() -> No
 
 def test_invoices_filter_requires_amount_type_with_amount_range() -> None:
     with pytest.raises(
-        ValidationError,
+        KSeFValidationError,
         match="amount_type must be specified when amount_min or amount_max is used",
     ):
         _invoice_filter(amount_min=10.0)
@@ -87,7 +122,7 @@ def test_invoices_filter_requires_amount_type_with_amount_range() -> None:
 
 def test_invoices_filter_rejects_multiple_buyer_identifiers() -> None:
     with pytest.raises(
-        ValidationError,
+        KSeFValidationError,
         match="Only one buyer identifier can be specified: buyer_nip, buyer_vat_ue",
     ):
         _invoice_filter(buyer_nip="1234567890", buyer_vat_ue="PL1234567890")
@@ -122,7 +157,7 @@ def test_invoices_filter_seller_constructor_sets_role_and_counterparty() -> None
 
 def test_invoices_filter_rejects_reversed_parseable_date_strings() -> None:
     with pytest.raises(
-        ValidationError,
+        KSeFValidationError,
         match="date_from must be less than or equal to date_to",
     ):
         _invoice_filter(
@@ -133,7 +168,7 @@ def test_invoices_filter_rejects_reversed_parseable_date_strings() -> None:
 
 def test_invoices_filter_rejects_reversed_datetime_values() -> None:
     with pytest.raises(
-        ValidationError,
+        KSeFValidationError,
         match="date_from must be less than or equal to date_to",
     ):
         _invoice_filter(
@@ -173,7 +208,7 @@ def test_invoices_filter_accepts_equal_instants_with_different_offsets() -> None
 
 def test_invoices_filter_rejects_reversed_mixed_timezone_range() -> None:
     with pytest.raises(
-        ValidationError,
+        KSeFValidationError,
         match="date_from must be less than or equal to date_to",
     ):
         _invoice_filter(
@@ -183,7 +218,7 @@ def test_invoices_filter_rejects_reversed_mixed_timezone_range() -> None:
 
 
 def test_invoices_filter_rejects_invalid_datetime_string() -> None:
-    with pytest.raises(ValidationError, match="Input should be a valid datetime"):
+    with pytest.raises(KSeFValidationError, match="Input should be a valid datetime"):
         _invoice_filter(date_from="not-a-datetime")
 
 
@@ -198,7 +233,7 @@ def test_invoices_filter_requires_offset_for_dst_transition_times(
     value: str,
     message: str,
 ) -> None:
-    with pytest.raises(ValidationError, match=message):
+    with pytest.raises(KSeFValidationError, match=message):
         _invoice_filter(date_from=value)
 
 

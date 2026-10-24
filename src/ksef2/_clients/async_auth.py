@@ -1,6 +1,8 @@
 """Async authentication branch client."""
 
 import asyncio
+import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import final
 
@@ -17,7 +19,7 @@ from ksef2._clients.profiles import (
     profile_context_type,
     resolve_profile_secret,
 )
-from ksef2._config import Environment
+from ksef2._config import Environment, resolve_legacy_environment
 from ksef2._core import exceptions
 from ksef2._core.async_protocols import AsyncMiddleware
 from ksef2._core.crypto import encrypt_token
@@ -37,8 +39,6 @@ from ksef2._endpoints.async_auth import AsyncAuthEndpoints
 from ksef2._infra.mappers.auth import from_spec, to_spec
 
 
-# Kept as one sync callable so the async client can run the CPU-bound signing
-# in a worker thread via asyncio.to_thread.
 def _build_signed_xades(
     *,
     challenge: str,
@@ -50,6 +50,35 @@ def _build_signed_xades(
 
     xml_bytes = build_auth_token_request_xml(challenge, nip)
     return sign_xades(xml_bytes, cert, private_key)
+
+
+def _validated_nip(nip: str | None) -> str:
+    if not isinstance(nip, str):
+        raise exceptions.KSeFArgumentError(
+            "nip must be a 10-digit Polish NIP.",
+            hint="Pass 10 digits; dashes and a leading PL prefix are accepted.",
+        )
+    normalized = re.sub(r"[-\s]", "", nip.strip()).upper()
+    if normalized.startswith("PL"):
+        normalized = normalized[2:]
+    if not re.fullmatch(r"\d{10}", normalized):
+        raise exceptions.KSeFArgumentError(
+            "nip must contain exactly 10 digits.",
+            hint="Pass 10 digits; dashes and a leading PL prefix are accepted.",
+        )
+    weights = (6, 5, 7, 2, 3, 4, 5, 6, 7)
+    checksum = (
+        sum(
+            int(digit) * weight
+            for digit, weight in zip(normalized[:9], weights, strict=True)
+        )
+        % 11
+    )
+    if checksum == 10 or checksum != int(normalized[9]):
+        raise exceptions.KSeFArgumentError(
+            "nip has an invalid checksum.", hint="Check the 10-digit NIP value."
+        )
+    return normalized
 
 
 @final
@@ -71,7 +100,7 @@ class AsyncAuthClient:
         self,
         transport: AsyncMiddleware,
         certificate_store: CertificateStoreProtocol,
-        environment: Environment = Environment.PRODUCTION,
+        environment: Environment | None = None,
         transfer_transport: AsyncMiddleware | None = None,
         auto_refresh_tokens: bool = True,
     ) -> None:
@@ -80,14 +109,20 @@ class AsyncAuthClient:
         Args:
             transport: Middleware chain used for unauthenticated requests.
             certificate_store: Store holding the KSeF public-key certificates used to encrypt tokens.
-            environment: KSeF environment the client talks to.
+            environment: KSeF environment the client talks to. Omitting it is deprecated; use the root client's ``authentication`` branch.
             transfer_transport: Middleware used for transfers outside the KSeF API such as batch part uploads; defaults to ``transport``.
             auto_refresh_tokens: Whether authenticated clients refresh their access token automatically.
         """
         self._transport = transport
         self._transfer_transport = transfer_transport or transport
         self._certificate_store = certificate_store
-        self._environment = environment
+        self._environment = resolve_legacy_environment(
+            environment,
+            replacement=(
+                "`Client(environment).authentication` or "
+                "`AsyncClient(environment).authentication`"
+            ),
+        )
         self._auto_refresh_tokens = auto_refresh_tokens
         self._certificates = AsyncEncryptionClient(transport)
         self._auth_ep = AsyncAuthEndpoints(transport)
@@ -187,7 +222,7 @@ class AsyncAuthClient:
     async def with_xades(
         self,
         *,
-        nip: str,
+        nip: str | None,
         cert: Certificate | None = None,
         private_key: XAdESPrivateKey | None = None,
         credentials: XAdESCredentials | None = None,
@@ -240,6 +275,7 @@ class AsyncAuthClient:
             )
             ```
         """
+        nip = _validated_nip(nip)
         if credentials is not None:
             if cert is not None or private_key is not None:
                 raise exceptions.KSeFArgumentError(
@@ -255,6 +291,18 @@ class AsyncAuthClient:
                 )
             signing_cert = cert
             signing_key = private_key
+
+        if credentials is None:
+            _ = XAdESCredentials(signing_cert, signing_key)
+        now = datetime.now(timezone.utc)
+        if (
+            now < signing_cert.not_valid_before_utc
+            or now > signing_cert.not_valid_after_utc
+        ):
+            raise exceptions.KSeFArgumentError(
+                "The XAdES certificate is outside its validity period.",
+                hint="Use a certificate that is currently valid.",
+            )
 
         challenge = from_spec(await self._auth_ep.challenge())
         signed_xml = await asyncio.to_thread(
@@ -283,7 +331,7 @@ class AsyncAuthClient:
     async def with_test_certificate(
         self,
         *,
-        nip: str,
+        nip: str | None,
         verify_chain: bool = False,
         timeout: float = 60.0,
         poll_interval: float = 1.0,
@@ -310,6 +358,7 @@ class AsyncAuthClient:
             auth = await client.authentication.with_test_certificate(nip="5261040828")
             ```
         """
+        nip = _validated_nip(nip)
         if self._environment is not Environment.TEST:
             raise exceptions.KSeFUnsupportedEnvironmentError(
                 "with_test_certificate() is only available for Environment.TEST"

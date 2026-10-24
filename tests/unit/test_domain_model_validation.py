@@ -62,6 +62,18 @@ def test_batch_file_info_rejects_file_larger_than_5gb() -> None:
         )
 
 
+def test_invoice_filter_rejects_ranges_longer_than_100_days() -> None:
+    with pytest.raises(
+        KSeFValidationError,
+        match="Invalid InvoicesFilter input:.*must not exceed 100 days",
+    ) as caught:
+        _invoice_filter(date_to="2026-04-12T00:00:00")
+
+    assert isinstance(caught.value.__cause__, ValidationError)
+    assert caught.value.errors()
+    assert str(caught.value).count("Invalid InvoicesFilter input") == 1
+
+
 def test_batch_file_info_rejects_more_than_50_parts() -> None:
     parts = [
         _batch_part(ordinal_number=ordinal_number) for ordinal_number in range(1, 52)

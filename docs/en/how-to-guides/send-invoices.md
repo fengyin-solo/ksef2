@@ -92,6 +92,10 @@ with auth.online_session(form_code=FormSchema.FA3) as session:
 ```
 
 `send_invoice()` only means KSeF accepted the encrypted payload into the session.
+The SDK checks invoice XML against the documented default size limit of 1 MB
+before encryption when session limits are unknown. Fetch `auth.limits.get_context_limits()`
+before opening the session to use the effective session limit, including the
+attachment limit, for this check.
 `submission.wait()` waits for the per-invoice result and returns the KSeF
 number when processing succeeds. It also works after the session is closed, and
 `session.wait()` returns the terminal status of the closed session.
@@ -151,6 +155,9 @@ opens the batch session, uploads the parts, closes the session, and returns the 
 `BatchSessionClient`. Call its `wait()`, `list_failed_invoices()` and
 `download_upo()` next. `auth.batch.prepare()` and `submit()` take `bytes`, `str`,
 `Path` or `BatchInvoice` items.
+Invoice size is checked against the documented 1 MB default unless you first
+fetch `auth.limits.get_context_limits()`, in which case the effective batch
+session limit (including the attachment limit) is used.
 
 ### From paths
 

@@ -105,7 +105,7 @@ class TestAsyncAuthClient:
         async_fake_transport.enqueue(tokens_response.model_dump(mode="json"))
 
         result = asyncio.run(
-            client.with_token(ksef_token="ksef-token", nip="1234567890")
+            client.with_token(ksef_token="ksef-token", nip="5261040828")
         )
 
         assert isinstance(result, AsyncAuthenticatedClient)
@@ -121,7 +121,7 @@ class TestAsyncAuthClient:
         token_request = InitTokenAuthenticationRequest.model_validate(token_call.json)
         assert token_request.challenge == challenge.challenge
         assert token_request.contextIdentifier.type == "Nip"
-        assert token_request.contextIdentifier.value == "1234567890"
+        assert token_request.contextIdentifier.value == "5261040828"
         assert token_request.encryptedToken == VALID_BASE64
         assert token_request.publicKeyId == certificate.public_key_id
         assert status_call.method == "GET"
@@ -176,7 +176,7 @@ class TestAsyncAuthClient:
             match="may have succeeded",
         ) as exc_info:
             _ = asyncio.run(
-                client.with_token(ksef_token="ksef-token", nip="1234567890")
+                client.with_token(ksef_token="ksef-token", nip="5261040828")
             )
 
         assert exc_info.value.outcome_ambiguous is True
@@ -202,7 +202,7 @@ class TestAsyncAuthClient:
             NoCertificateAvailableError,
             match="No valid certificate for KsefTokenEncryption found",
         ):
-            asyncio.run(client.with_token(ksef_token="ksef-token", nip="1234567890"))
+            asyncio.run(client.with_token(ksef_token="ksef-token", nip="5261040828"))
 
     @patch("ksef2._clients.async_auth.encrypt_token", return_value=VALID_BASE64)
     def test_with_token_raises_when_authentication_fails(
@@ -229,7 +229,7 @@ class TestAsyncAuthClient:
         async_fake_transport.enqueue(failed_status.model_dump(mode="json"))
 
         with pytest.raises(KSeFAuthError, match="Authentication failed"):
-            asyncio.run(client.with_token(ksef_token="ksef-token", nip="1234567890"))
+            asyncio.run(client.with_token(ksef_token="ksef-token", nip="5261040828"))
 
     @patch("ksef2._clients.async_auth.encrypt_token", return_value=VALID_BASE64)
     def test_with_token_raises_on_timeout(
@@ -260,7 +260,7 @@ class TestAsyncAuthClient:
             asyncio.run(
                 client.with_token(
                     ksef_token="ksef-token",
-                    nip="1234567890",
+                    nip="5261040828",
                     timeout=0.0,
                     poll_interval=0.0,
                 )
@@ -304,11 +304,11 @@ class TestAsyncAuthClient:
         async_fake_transport.enqueue(init_response.model_dump(mode="json"))
         async_fake_transport.enqueue(status_response.model_dump(mode="json"))
         async_fake_transport.enqueue(tokens_response.model_dump(mode="json"))
-        cert, private_key = generate_test_certificate("1234567890")
+        cert, private_key = generate_test_certificate("5261040828")
 
         result = asyncio.run(
             client.with_xades(
-                nip="1234567890",
+                nip="5261040828",
                 cert=cert,
                 private_key=private_key,
                 verify_chain=True,
@@ -328,7 +328,7 @@ class TestAsyncAuthClient:
         )
 
         with pytest.raises(KSeFUnsupportedEnvironmentError):
-            asyncio.run(client.with_test_certificate(nip="1234567890"))
+            asyncio.run(client.with_test_certificate(nip="5261040828"))
 
     @patch.object(
         AsyncAuthClient,
@@ -351,7 +351,7 @@ class TestAsyncAuthClient:
 
         result = asyncio.run(
             client.with_test_certificate(
-                nip="1234567890",
+                nip="5261040828",
                 verify_chain=True,
                 timeout=5.0,
                 poll_interval=2.0,
@@ -360,7 +360,7 @@ class TestAsyncAuthClient:
 
         assert result is mock_with_xades.return_value
         _, kwargs = mock_with_xades.call_args
-        assert kwargs["nip"] == "1234567890"
+        assert kwargs["nip"] == "5261040828"
         assert isinstance(kwargs["cert"], Certificate)
         assert kwargs["private_key"] is not None
         assert kwargs["verify_chain"] is True

@@ -12,6 +12,13 @@ and method names remain functional throughout 1.x (#171). Read
 
 ### Highlights
 
+- Offline validation rejects invoice metadata ranges longer than 100 days, documents
+  metadata page-size bounds, checks invoice sizes before sending or batch
+  encryption, computes batch part counts before encryption, validates signing
+  certificates and transport configuration, and defaults FA(3) XML serialization
+  to compact output (#299). PDF exports reject malformed roots and KSeF numbers,
+  and the token example stops before a placeholder can be sent.
+
 - Public input handling follows one rule: `bytes` and `str` are content, while
   `Path` is a file. Batch preparation catches strings that name existing files,
   FA(3) parsing accepts XML text with declarations, and PEM helpers warn when

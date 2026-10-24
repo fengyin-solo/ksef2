@@ -110,7 +110,10 @@ class InvoiceMetadataParams(
     PageOffsetMixin,
     SortOrderMixin,
 ):
-    """Pagination parameters for invoice metadata queries."""
+    """Pagination parameters for invoice metadata queries.
+
+    ``page_size`` must be between 10 and 250 inclusive.
+    """
 
     wrap_validation_errors = True
 

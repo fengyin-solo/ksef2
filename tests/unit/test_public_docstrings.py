@@ -340,7 +340,7 @@ def audit() -> Report:
             with warnings.catch_warnings():
                 warnings.filterwarnings(
                     "ignore",
-                    message="FA3InvoiceBuilder is deprecated; use InvoiceBuilder instead.*",
+                    message="FA3InvoiceBuilder is deprecated; use InvoiceBuilder instead\\.",
                     category=DeprecationWarning,
                 )
                 obj = getattr(module, name)

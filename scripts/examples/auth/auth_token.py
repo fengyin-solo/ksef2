@@ -24,6 +24,10 @@ class ExampleConfig:
 
 
 def run(config: ExampleConfig) -> None:
+    if "<" in config.ksef_token or ">" in config.ksef_token:
+        raise ValueError(
+            "Replace KSEF_TOKEN with a real token before running this example."
+        )
     with Client(environment=config.environment) as client:
         print("Authenticating via KSeF token...")
         auth = client.authentication.with_token(

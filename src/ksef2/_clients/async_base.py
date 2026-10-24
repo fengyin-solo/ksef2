@@ -12,7 +12,7 @@ from ksef2._clients.async_authenticated import AsyncAuthenticatedClient
 from ksef2._clients.async_encryption import AsyncEncryptionClient
 from ksef2._clients.async_peppol import AsyncPeppolClient
 from ksef2._clients.async_testdata import AsyncTestDataClient
-from ksef2._config import Environment, TransportConfig
+from ksef2._config import Environment, TransportConfig, validate_transport_config
 from ksef2._core import exceptions, stores
 from ksef2._core.http_config import (
     apply_environment_base_url,
@@ -60,7 +60,7 @@ class AsyncClient:
         self,
         environment: Environment | str,
         *,
-        transport_config: TransportConfig | None = None,
+        transport_config: object | None = None,
         http_client: httpx.AsyncClient | None = None,
         certificate_store: stores.CertificateStoreProtocol | None = None,
     ) -> None:
@@ -74,7 +74,11 @@ class AsyncClient:
         """
         environment = coerce_enum(Environment, environment)
         self._environment = environment
-        self._transport_config = transport_config or TransportConfig()
+        self._transport_config = (
+            validate_transport_config(transport_config)
+            if transport_config is not None
+            else TransportConfig()
+        )
         self._http_client = http_client or self._build_http_client(
             environment=environment,
             config=self._transport_config,

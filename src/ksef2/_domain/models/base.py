@@ -32,6 +32,19 @@ def _validation_exception(error: ValidationError, model_name: str) -> Exception:
     return error_type(f"Invalid {model_name} input: {reason}", validation_error=error)
 
 
+def _wrapped_sdk_validation_error(error: ValidationError) -> Exception | None:
+    """Find an SDK validation error already embedded in Pydantic's error context."""
+    exception_module = import_module("ksef2._core.exceptions")
+    error_type = cast(type[Exception], getattr(exception_module, "KSeFValidationError"))
+    for detail in error.errors():
+        context = detail.get("ctx")
+        if isinstance(context, dict):
+            nested_error = context.get("error")
+            if isinstance(nested_error, error_type):
+                return nested_error
+    return None
+
+
 _AliasSpec = str | AliasPath | AliasChoices | None
 
 
@@ -112,6 +125,10 @@ class KSeFBaseModel(BaseModel):
             return super().model_validate(obj, **kwargs)  # pyright: ignore[reportAny]
         except ValidationError as exc:
             if cls.wrap_validation_errors:
+                wrapped_error = _wrapped_sdk_validation_error(exc)
+                if wrapped_error is not None:
+                    cause = wrapped_error.__cause__ or exc
+                    raise wrapped_error from cause
                 raise _validation_exception(exc, cls.__name__) from exc
             raise
 

@@ -20,6 +20,7 @@ from ksef2._domain.models.batch import (
     BatchSessionResumeState,
     PreparedBatch,
 )
+from ksef2._domain.models.limits import ContextLimits, SessionLimits
 from ksef2._domain.models.session import (
     FormSchema,
     SessionEncryptionMaterial,
@@ -75,6 +76,7 @@ class BatchService:
         upload_transport: Middleware,
         get_encryption_key: Callable[[], SessionEncryptionMaterial],
         open_batch_session: BatchSessionOpener,
+        get_context_limits: Callable[[], ContextLimits | None] | None = None,
     ) -> None:
         """Create the service.
 
@@ -83,12 +85,14 @@ class BatchService:
             upload_transport: Middleware used to upload batch parts to external storage.
             get_encryption_key: Coroutine function returning fresh session encryption material.
             open_batch_session: Callable that opens a batch session from a prepared batch.
+            get_context_limits: Returns context limits already fetched by the client, if available.
         """
         self._invoice_eps = InvoicesEndpoints(authed_transport)
         self._session_eps = SessionEndpoints(authed_transport)
         self._external_transfers = ExternalTransferClient(upload_transport)
         self._get_encryption_key = get_encryption_key
         self._open_batch_session = open_batch_session
+        self._get_context_limits = get_context_limits or (lambda: None)
 
     def prepare(
         self,
@@ -142,7 +146,11 @@ class BatchService:
         form_code: FormSchema,
         offline_mode: bool,
         max_part_size: int,
+        session_limits: SessionLimits | None = None,
     ) -> PreparedBatch:
+        context_limits = self._get_context_limits()
+        if session_limits is None and context_limits is not None:
+            session_limits = context_limits.batch_session
         material = self._get_encryption_key()
         return prepare_batch_package(
             invoices=invoices,
@@ -153,6 +161,7 @@ class BatchService:
             form_code=form_code,
             offline_mode=offline_mode,
             max_part_size=max_part_size,
+            session_limits=session_limits,
         )
 
     def submit(

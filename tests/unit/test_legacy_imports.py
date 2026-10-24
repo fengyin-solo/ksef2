@@ -195,6 +195,32 @@ def test_legacy_client_submodules_preserve_identity_and_warn_once() -> None:
     assert importlib.import_module("ksef2.clients") is clients
 
 
+def test_legacy_client_imports_bind_attributes_on_the_facade() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            """
+import warnings
+import ksef2
+
+with warnings.catch_warnings():
+    warnings.simplefilter('ignore', DeprecationWarning)
+    import ksef2.clients.authenticated as authenticated
+    assert ksef2.clients.authenticated is authenticated
+    import ksef2.clients.online as online
+    assert ksef2.clients.online is online
+
+assert authenticated is __import__('ksef2._clients.authenticated', fromlist=[''])
+assert online is __import__('ksef2._clients.online', fromlist=[''])
+""",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_modern_imports_do_not_activate_legacy_packages() -> None:
     result = subprocess.run(
         [

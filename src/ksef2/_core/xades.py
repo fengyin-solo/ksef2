@@ -20,6 +20,7 @@ from signxml.algorithms import (
 )
 from signxml.xades.xades import XAdESSigner
 
+from ksef2._core.paths import reject_path_like_content
 from ksef2._core.xml import parse_xml_bytes
 
 # OID 2.5.4.97 = organizationIdentifier (used in company-seal certificates)
@@ -53,6 +54,7 @@ def _certificate_input_bytes(source: bytes | str | Path) -> bytes:
             stacklevel=3,
         )
         return path.read_bytes()
+    reject_path_like_content(source, content_type="PEM or PKCS#12", missing_file=True)
     return source.encode("utf-8")
 
 
@@ -62,16 +64,20 @@ def load_certificate_from_pem(source: bytes | str | Path) -> Certificate:
     Args:
         source: PEM content as bytes or text, or a ``Path`` to a ``.pem`` / ``.crt`` file.
 
+    Raises:
+        KSeFArgumentError: If a short string looks like a missing file path.
+
     Returns:
         The certificate, ready to pass to ``client.authentication.with_xades()``.
 
     Example:
         ```python
+        from pathlib import Path
         from ksef2 import Client, Environment
         from ksef2.xades import load_certificate_from_pem, load_private_key_from_pem
 
-        cert = load_certificate_from_pem("cert.pem")
-        key = load_private_key_from_pem("key.pem")
+        cert = load_certificate_from_pem(Path("cert.pem"))
+        key = load_private_key_from_pem(Path("key.pem"))
 
         auth = Client(Environment.DEMO).authentication.with_xades(
             nip="1234567890", cert=cert, private_key=key
@@ -98,6 +104,7 @@ def load_private_key_from_pem(
         :class:`~cryptography.hazmat.primitives.asymmetric.ec.EllipticCurvePrivateKey`.
 
     Raises:
+        KSeFArgumentError: If a short string looks like a missing file path.
         TypeError: If the decoded key is not an RSA or EC private key.
     """
     data = _certificate_input_bytes(source)
@@ -127,6 +134,7 @@ def load_certificate_and_key_from_p12(
         :func:`load_certificate_from_pem` + :func:`load_private_key_from_pem` — no conversion needed.
 
     Raises:
+        KSeFArgumentError: If a short string looks like a missing file path.
         ValueError: If the archive does not contain a certificate.
         TypeError: If the decoded key is not an RSA or EC private key.
     """

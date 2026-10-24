@@ -54,3 +54,20 @@ def test_ruff_uses_repo_config_for_generated_formatting(
     assert len(commands) == 2
     assert all("--config" in command for command in commands)
     assert all(config in command for command in commands)
+
+
+def test_async_close_guard_does_not_replace_generated_cleanup(tmp_path: Path) -> None:
+    (tmp_path / "async_session.py").write_text(
+        "class AsyncSession:\n"
+        "    def close(self) -> None:\n"
+        "        raise TypeError('Use await session.aclose()')\n"
+        "    async def aclose(self) -> str:\n"
+        "        return 'closed'\n"
+    )
+    pair = GeneratedPair(Path("async_session.py"), Path("session.py"))
+    namespace: dict[str, object] = {}
+    exec(
+        generate_source(pair, repo_root=tmp_path) + "\nresult = Session().close()\n",
+        namespace,
+    )
+    assert namespace["result"] == "closed"

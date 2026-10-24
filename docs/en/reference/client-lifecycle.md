@@ -54,6 +54,11 @@ feature guards aligned.
 | `close()` | `Client` | `None` | Idempotently closes an SDK-owned sync HTTP client and invalidates cached branches. |
 | `aclose()` | `AsyncClient` | `None` | Idempotently closes async resources and invalidates cached branches. |
 
+`AsyncClient.close()`, `AsyncOnlineSessionClient.close()`, and
+`AsyncBatchSessionClient.close()` raise `KSeFArgumentError` immediately and leave
+resources open. Use `await client.aclose()`, `await session.aclose()`, or
+`async with`. These `close()` guards are synchronous and cannot be awaited.
+
 Branch properties are cached while the root client is open. After the root
 client closes, branch access and operations guarded by lifecycle middleware
 raise `KSeFClientClosedError`.

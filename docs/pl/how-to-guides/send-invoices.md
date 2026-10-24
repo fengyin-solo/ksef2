@@ -156,6 +156,9 @@ i `submit()` przyjmują elementy `bytes`, `str`, `Path` lub `BatchInvoice`.
 Rozmiar faktury jest sprawdzany względem udokumentowanego limitu domyślnego
 1 MB, chyba że wcześniej pobrano `auth.limits.get_context_limits()`; wtedy
 używany jest efektywny limit sesji batch, w tym limit dla faktur z załącznikiem.
+`send_invoice()`, `auth.batch.prepare()` i `submit()` odrzucają krótkie napisy
+wyglądające jak ścieżki, zgłaszając `KSeFArgumentError`. Przekaż treść XML lub
+odczytaj plik przez `Path(...).read_bytes()`. Wejścia wsadowe przyjmują też `Path`.
 
 ### Z plików
 

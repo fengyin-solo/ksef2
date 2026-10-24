@@ -7,20 +7,23 @@ Użyj pomocników XAdES, gdy uwierzytelniasz się materiałem certyfikatu albo
 diagnozujesz podpisany XML uwierzytelniania. Większość aplikacji powinna nadal
 wywoływać `client.authentication.with_xades()` zamiast podpisywać ręcznie.
 
+Przekaż `Path`, aby odczytać plik PEM lub PKCS#12. Napisy i bajty są treścią. Ścieżki tekstowe do istniejących plików działają z ostrzeżeniem o wycofaniu przez całą serię 1.x; usunięcie może nastąpić najwcześniej w 2.0.0. Krótkie napisy wyglądające jak ścieżki do brakujących plików zgłaszają `KSeFArgumentError` ze wskazówką `Path(...)`. Błąd nie zawiera treści wejścia.
+
 ## Załaduj materiał certyfikatu
 
 ### Z PEM
 
 ```python
 import os
+from pathlib import Path
 
 from ksef2.xades import load_certificate_from_pem, load_private_key_from_pem
 
 password = os.environ.get("KSEF2_KEY_PASSWORD")
 
-cert = load_certificate_from_pem("company.pem")
+cert = load_certificate_from_pem(Path("company.pem"))
 private_key = load_private_key_from_pem(
-    "company.key",
+    Path("company.key"),
     password=password.encode() if password else None,
 )
 ```
@@ -49,13 +52,14 @@ credentials = XAdESCredentials.from_der(
 
 ```python
 import os
+from pathlib import Path
 
 from ksef2.xades import load_certificate_and_key_from_p12
 
 password = os.environ.get("KSEF2_P12_PASSWORD")
 
 cert, private_key = load_certificate_and_key_from_p12(
-    "company.p12",
+    Path("company.p12"),
     password=password.encode() if password else None,
 )
 ```

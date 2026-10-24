@@ -1,4 +1,5 @@
 import asyncio
+import random
 from collections.abc import Awaitable, Callable
 from typing import cast, final, override
 
@@ -20,9 +21,12 @@ class AsyncRetryMiddleware(AsyncBaseMiddleware):
         self,
         transport: AsyncMiddleware,
         config: RetryConfig,
+        *,
+        _uniform: Callable[[float, float], float] | None = None,
     ) -> None:
         self._next = transport
         self._config = config
+        self._uniform = random.uniform if _uniform is None else _uniform
 
     def _is_retryable_request(self, method: str, path: str) -> bool:
         if method in {"GET", "PUT", "DELETE"}:
@@ -63,7 +67,8 @@ class AsyncRetryMiddleware(AsyncBaseMiddleware):
         delay = self._config.initial_delay * (
             self._config.backoff_multiplier ** max(0, attempt - 1)
         )
-        return min(delay, self._config.max_delay)
+        delay = min(delay, self._config.max_delay)
+        return self._uniform(0.0, delay) if self._config.jitter else delay
 
     async def _sleep_for(
         self,

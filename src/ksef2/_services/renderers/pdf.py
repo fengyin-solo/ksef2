@@ -13,6 +13,7 @@ from typing import Any, final
 from lxml import etree
 
 from ksef2._config import Environment
+from ksef2._core.paths import reject_path_like_content
 from ksef2._core import exceptions
 from ksef2._domain.models._enum import coerce_enum
 from ksef2._services.fa3 import parse_invoice_xml
@@ -188,11 +189,13 @@ class InvoicePDFExporter:
             The PDF as bytes.
 
         Raises:
+            KSeFArgumentError: If a short string looks like a file path instead of XML content.
             KSeFInvoiceRenderingError: If HTML rendering fails.
             RuntimeError: If WeasyPrint does not return PDF bytes.
             ValueError: If QR output is requested with an empty number or invalid FA(3) XML.
         """
         if isinstance(invoice_xml, str):
+            reject_path_like_content(invoice_xml, content_type="XML")
             invoice_xml = invoice_xml.encode("utf-8")
         parser = etree.XMLParser(no_network=True, resolve_entities=False)
         try:

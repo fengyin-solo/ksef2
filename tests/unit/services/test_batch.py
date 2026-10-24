@@ -107,6 +107,12 @@ def test_batch_string_that_names_existing_file_fails_with_path_hint(
     assert load_batch_items([invoice_path])[0].content == b"<Invoice />"
 
 
+def test_batch_long_xml_text_is_content() -> None:
+    xml = f"<Invoice><Description>{'x' * 300}</Description></Invoice>"
+
+    assert load_batch_items([xml])[0].content == xml.encode("utf-8")
+
+
 def test_prepared_batch_sensitive_export_round_trips(
     prepared_batch: PreparedBatch,
 ) -> None:

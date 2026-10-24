@@ -1,5 +1,6 @@
 """Parse FA(3) XML into public invoice models."""
 
+import re
 from typing import cast
 
 from lxml import etree
@@ -28,9 +29,15 @@ def parse_invoice_xml(invoice_xml: bytes | str) -> KsefInvoice:
             be mapped to a valid invoice. The original cause is preserved.
     """
     try:
-        xml_bytes = (
-            invoice_xml.encode("utf-8") if isinstance(invoice_xml, str) else invoice_xml
-        )
+        if isinstance(invoice_xml, str):
+            declaration = re.compile(
+                r'(<\?xml\b[^?]*?\bencoding\s*=\s*)(["\']).*?\2',
+                flags=re.IGNORECASE | re.DOTALL,
+            )
+            invoice_xml = declaration.sub(r'\1"UTF-8"', invoice_xml, count=1)
+            xml_bytes = invoice_xml.encode("utf-8")
+        else:
+            xml_bytes = invoice_xml
         root = parse_xml_bytes(xml_bytes)
         if cast(etree.DTD | None, root.getroottree().docinfo.internalDTD) is not None:
             raise ValueError("FA(3) invoice XML must not contain a DTD")

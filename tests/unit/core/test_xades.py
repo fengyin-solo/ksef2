@@ -169,6 +169,15 @@ def test_load_certificate_from_pem_bytes_and_path(
     assert load_certificate_from_pem(path) == cert
 
 
+def test_malformed_long_certificate_text_does_not_echo_content() -> None:
+    content = "not-a-certificate-" + "sensitive-material-" * 30
+
+    with pytest.raises(ValueError) as error:
+        load_certificate_from_pem(content)
+
+    assert content not in str(error.value)
+
+
 def test_load_certificate_and_key_from_p12(
     tmp_path: Path,
     rsa_key_and_cert: tuple[x509.Certificate, rsa.RSAPrivateKey],

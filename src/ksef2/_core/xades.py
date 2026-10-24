@@ -40,7 +40,11 @@ def _certificate_input_bytes(source: bytes | str | Path) -> bytes:
     if source.lstrip("\ufeff \t\r\n").startswith("-----BEGIN"):
         return source.encode("utf-8")
     path = Path(source)
-    if path.is_file():
+    try:
+        is_file = path.is_file()
+    except (OSError, ValueError):
+        is_file = False
+    if is_file:
         warnings.warn(
             "Passing a string path is deprecated; pass Path(...) to read a file. "
             "String paths remain supported throughout 1.x and may be removed no "

@@ -50,6 +50,13 @@ def test_parse_preserves_xml_declared_encoding() -> None:
     assert parse_invoice_xml(text.encode("iso-8859-2")) == parse_invoice_xml(xml)
 
 
+def test_parse_unicode_string_normalizes_declared_encoding() -> None:
+    xml = (SAMPLES / "FA_3_Przykład_1.xml").read_bytes()
+    text = xml.decode("utf-8").replace('encoding="UTF-8"', 'encoding="ISO-8859-2"')
+
+    assert parse_invoice_xml(text) == parse_invoice_xml(xml)
+
+
 @pytest.mark.parametrize("kind", ["correction_advance", "correction_settlement"])
 def test_public_builder_serializes_rowless_corrections(kind: str) -> None:
     invoice = parse_invoice_xml((SAMPLES / "FA_3_Przykład_1.xml").read_bytes())

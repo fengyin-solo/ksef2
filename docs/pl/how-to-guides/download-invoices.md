@@ -260,6 +260,9 @@ Kod zawiera NIP sprzedawcy, datę wystawienia oraz SHA-256 **oryginalnych bajtó
 zakodowany jako Base64URL bez dopełnienia, zgodnie z
 [specyfikacją kodów QR Ministerstwa Finansów](https://github.com/CIRFMF/ksef-docs/blob/main/kody-qr.md).
 Do `export_from_string()` przekazuj bajty; tekst jest kodowany jako UTF-8.
+Krótkie napisy wyglądające jak ścieżki przekazane do `export_from_string()` lub
+`InvoiceXSLTRenderer.render_from_string()` zgłaszają `KSeFArgumentError`.
+Do odczytu plików użyj metod `export_from_path()` lub `render_from_path()`.
 Ponowna serializacja faktury zmienia skrót. Eksport nie sprawdza przyjęcia faktury
 ani tego, czy podany numer KSeF należy do niej.
 

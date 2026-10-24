@@ -510,6 +510,8 @@ If you already have a complete `KsefInvoice`, reopen it in the builder with
 
 `parse_invoice_xml` accepts XML bytes and returns the public `KsefInvoice` model.
 No private schema or mapper imports are needed.
+Short filename-like strings raise `KSeFArgumentError`; read files with
+`Path(...).read_bytes()` before parsing.
 
 ```python
 from pathlib import Path

@@ -95,12 +95,18 @@ retryable HTTP responses for retryable request types.
 | `max_retry_after` | `120.0` |
 | `backoff_multiplier` | `2.0` |
 | `retryable_status_codes` | `(429, 502, 503, 504)` |
+| `jitter` | `True` |
 
-Retry delay is exponential:
+The exponential backoff ceiling is:
 
 ```text
 min(initial_delay * backoff_multiplier ** (attempt - 1), max_delay)
 ```
+
+`jitter=True` uses full jitter: each retry samples uniformly from zero to the
+ceiling above. Set `jitter=False` to use that ceiling as the exact delay.
+This also applies to HTTP retries made by polling helpers; their regular
+`poll_interval` stays fixed. `Retry-After` is never jittered.
 
 `max_delay` caps only the exponential backoff. A `Retry-After` header (seconds
 or HTTP-date form) is honored exactly when it is at or below

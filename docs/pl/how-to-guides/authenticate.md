@@ -119,13 +119,14 @@ zwrócone certyfikat oraz klucz.
 
 ```python
 import os
+from pathlib import Path
 
 from ksef2.xades import load_certificate_from_pem, load_private_key_from_pem
 
 password = os.environ.get("KSEF2_KEY_PASSWORD")
-cert = load_certificate_from_pem("company.pem")
+cert = load_certificate_from_pem(Path("company.pem"))
 private_key = load_private_key_from_pem(
-    "company.key",
+    Path("company.key"),
     password=password.encode() if password else None,
 )
 
@@ -166,12 +167,13 @@ Forma z obiektami pozostaje wspierana:
 
 ```python
 import os
+from pathlib import Path
 
 from ksef2.xades import load_certificate_and_key_from_p12
 
 password = os.environ.get("KSEF2_P12_PASSWORD")
 cert, private_key = load_certificate_and_key_from_p12(
-    "company.p12",
+    Path("company.p12"),
     password=password.encode() if password else None,
 )
 

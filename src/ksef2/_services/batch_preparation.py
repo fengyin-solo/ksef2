@@ -5,6 +5,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 from pydantic import ValidationError
 
+from ksef2._core.paths import reject_path_like_content
 from ksef2._core import exceptions
 from ksef2._core.crypto import encrypt_invoice, sha256_b64
 from ksef2._domain.models.batch import (
@@ -63,6 +64,7 @@ def load_batch_items(
         One batch invoice payload per item, in order.
 
     Raises:
+        KSeFArgumentError: If a short string looks like a file path instead of XML content.
         KSeFValidationError: If a single invoice is passed instead of a list.
         FileNotFoundError: If a path does not exist.
         OSError: If a path cannot be read.
@@ -90,6 +92,7 @@ def load_batch_items(
                         "Invoice content looks like an existing file path; pass Path(...) "
                         "to read a file, or pass the XML content as str or bytes."
                     )
+            reject_path_like_content(item, content_type="XML")
             invoices.append(
                 BatchInvoice(
                     file_name=f"invoice-{position}.xml", content=item.encode("utf-8")

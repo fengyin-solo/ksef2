@@ -223,6 +223,17 @@ class AsyncClient:
             AuthenticationResumeState.from_tokens(auth_tokens)
         )
 
+    def close(self) -> None:
+        """Raise a usage error without closing resources.
+
+        Raises:
+            KSeFArgumentError: Always. Use ``await client.aclose() or async with``.
+        """
+        raise exceptions.KSeFArgumentError(
+            "This is an async client; use await client.aclose() or async with.",
+            hint="Use await client.aclose() or async with.",
+        )
+
     async def aclose(self) -> None:
         """Close owned resources and invalidate cached child clients."""
         if self._lifecycle_state.closed:

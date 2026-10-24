@@ -2,6 +2,8 @@ from typing import Literal, final, override
 
 import httpx
 
+from ksef2._core import exceptions
+
 from ksef2._core.middlewares.async_base import AsyncBaseMiddleware
 from ksef2._core.types import Headers, JsonObject, QueryParamsInput
 
@@ -44,6 +46,17 @@ class AsyncHttpTransport(AsyncBaseMiddleware):
             json=json,
             content=content,
             params=params,
+        )
+
+    def close(self) -> None:
+        """Raise a usage error without closing resources.
+
+        Raises:
+            KSeFArgumentError: Always. Use ``await transport.aclose()``.
+        """
+        raise exceptions.KSeFArgumentError(
+            "This is an async transport; use await transport.aclose().",
+            hint="Use await transport.aclose().",
         )
 
     async def aclose(self) -> None:

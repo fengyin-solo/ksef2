@@ -147,6 +147,10 @@ with auth.online_session(state=session_state_json) as session:
     status = submission.wait(timeout=120.0)
 ```
 
+`send_invoice()`, `auth.batch.prepare()`, and `submit()` reject short
+filename-like strings with `KSeFArgumentError`. Pass XML content, or read a file
+with `Path(...).read_bytes()`. Batch inputs also accept `Path` directly.
+
 ## Send a batch
 
 Use a batch when you need to submit many XML files as one KSeF batch workflow.

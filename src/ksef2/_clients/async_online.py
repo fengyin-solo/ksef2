@@ -10,6 +10,7 @@ from typing_extensions import deprecated
 from ksef2._domain.models.base import validation_errors
 
 from ksef2._clients._async_handles import AsyncOperationHandle
+from ksef2._core.paths import reject_path_like_content
 from ksef2._core import exceptions
 from ksef2._core.async_protocols import AsyncMiddleware
 from ksef2._core.crypto import encrypt_invoice
@@ -300,6 +301,7 @@ class AsyncOnlineSessionClient:
             A handle exposing the submission's ``reference_number``. Call its ``wait()`` for the processing result and ``download_upo()`` for the invoice UPO.
 
         Raises:
+            KSeFArgumentError: If a short string looks like a file path instead of XML content.
             KSeFEncryptionError: If invoice encryption fails.
 
         Example:
@@ -311,6 +313,8 @@ class AsyncOnlineSessionClient:
             ```
         """
         self._ensure_open()
+        if isinstance(invoice_xml, str):
+            reject_path_like_content(invoice_xml, content_type="XML")
         xml_bytes = (
             invoice_xml.encode("utf-8") if isinstance(invoice_xml, str) else invoice_xml
         )
@@ -703,6 +707,17 @@ class AsyncOnlineSessionClient:
             )
             for page in pages
         ]
+
+    def close(self) -> None:
+        """Raise a usage error without closing resources.
+
+        Raises:
+            KSeFArgumentError: Always. Use ``await session.aclose() or async with``.
+        """
+        raise exceptions.KSeFArgumentError(
+            "This is an async session; use await session.aclose() or async with.",
+            hint="Use await session.aclose() or async with.",
+        )
 
     async def aclose(self) -> None:
         """Terminate the online session if it is still open.

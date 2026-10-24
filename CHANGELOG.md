@@ -2,6 +2,14 @@
 
 ### Fixed
 
+- Add safe filename/path hints for PEM, PKCS#12, and XML content inputs. Existing
+  PEM string paths retain their 1.x deprecation behavior.
+- Report synchronous `close()` misuse on async clients and sessions with
+  `KSeFArgumentError` and guidance to use `await ...aclose()` or `async with`.
+- Enable full jitter for retry backoff through `RetryConfig.jitter`, including
+  HTTP retries during polling. `jitter=False` keeps deterministic backoff;
+  `Retry-After` values and their existing ceiling remain unchanged.
+
 - Wrap invalid non-builder public model and request-conversion inputs in the
   SDK validation-error hierarchy, preserving the Pydantic cause and naming the
   public parameter. Validate KSeF invoice-number filters at construction,

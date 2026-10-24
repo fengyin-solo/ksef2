@@ -8,7 +8,8 @@ from typing import Annotated
 
 from pydantic import Field, field_validator, model_validator
 
-from ksef2._domain.models import KSeFBaseModel
+from ksef2._domain.models.base import KSeFBaseModel as KSeFBaseModel
+from ksef2._domain.models.fa3.base import Fa3Model
 from ksef2._domain.models.fa3.body.description import AdditionalDescriptionEntry
 from ksef2._domain.models.fa3.body.advance_payment import (
     AdvancePaymentInvoiceContext,
@@ -49,7 +50,7 @@ class InvoiceType(StrEnum):
     )
 
 
-class InvoiceSummaryOverrides(KSeFBaseModel):
+class InvoiceSummaryOverrides(Fa3Model):
     """Imported FA(3) summary totals preserved when line-level data is incomplete."""
 
     base_rate_net_total: Decimal | None = None
@@ -120,7 +121,7 @@ def get_placeholder_invoice_number() -> str:
     return f"DEMO-{datetime.now().strftime('%Y%m%d%H%M%S')}"
 
 
-class KsefInvoiceBody(KSeFBaseModel):
+class KsefInvoiceBody(Fa3Model):
     """Main ``Fa`` body aggregate for an FA(3) invoice."""
 
     currency: str = Field(

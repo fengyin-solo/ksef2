@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
-from pydantic import ValidationError
+from ksef2 import KSeFValidationError
 
 from ksef2._domain.models.fa3 import (
     AdvanceInvoiceReference,
@@ -53,7 +53,7 @@ def test_corrected_seller_entity_accepts_prefix_and_address() -> None:
 
 
 def test_corrected_buyer_entity_rejects_no_id_with_identifiers() -> None:
-    with pytest.raises(ValidationError, match="no_id cannot be combined"):
+    with pytest.raises(KSeFValidationError, match="no_id cannot be combined"):
         CorrectedBuyerEntity(
             no_id=True,
             tax_id="1234567890",
@@ -62,7 +62,7 @@ def test_corrected_buyer_entity_rejects_no_id_with_identifiers() -> None:
 
 
 def test_invoice_body_rejects_correction_parties_on_non_correcting_invoice() -> None:
-    with pytest.raises(ValidationError, match="only valid for correcting invoices"):
+    with pytest.raises(KSeFValidationError, match="only valid for correcting invoices"):
         KsefInvoiceBody(
             issue_date=date(2026, 3, 29),
             issue_place=None,
@@ -79,7 +79,7 @@ def test_invoice_body_rejects_correction_parties_on_non_correcting_invoice() -> 
 
 
 def test_invoice_body_rejects_correction_context_on_non_correcting_invoice() -> None:
-    with pytest.raises(ValidationError, match="correction is only valid"):
+    with pytest.raises(KSeFValidationError, match="correction is only valid"):
         KsefInvoiceBody(
             issue_date=date(2026, 3, 29),
             issue_place=None,
@@ -154,7 +154,7 @@ def test_invoice_body_accepts_advance_context() -> None:
 
 
 def test_invoice_body_rejects_advance_context_on_standard_invoice() -> None:
-    with pytest.raises(ValidationError, match="advance is only valid"):
+    with pytest.raises(KSeFValidationError, match="advance is only valid"):
         KsefInvoiceBody(
             issue_date=date(2026, 3, 29),
             issue_place=None,

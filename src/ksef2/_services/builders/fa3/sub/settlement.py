@@ -18,11 +18,11 @@ class SettlementState(TypedDict):
     """Typed state for Settlement fields."""
 
     charges: list[SettlementCharge]
-    charges_total: Decimal | None
+    charges_total: Decimal | int | float | str | None
     deductions: list[SettlementDeduction]
-    deductions_total: Decimal | None
-    amount_due: Decimal | None
-    amount_to_settle: Decimal | None
+    deductions_total: Decimal | int | float | str | None
+    amount_due: Decimal | int | float | str | None
+    amount_to_settle: Decimal | int | float | str | None
 
 
 adapter = TypeAdapter(SettlementState)
@@ -77,7 +77,7 @@ class SettlementBuilder[TParent]:
         self,
         *,
         amount: Annotated[
-            Decimal,
+            Decimal | int | float | str,
             builder_param(
                 "Additional charge amount included in the settlement.",
                 examples=["50.00"],
@@ -101,7 +101,9 @@ class SettlementBuilder[TParent]:
         Returns:
             The builder, for chaining.
         """
-        self._state["charges"].append(SettlementCharge(amount=amount, reason=reason))
+        self._state["charges"].append(
+            SettlementCharge.model_validate({"amount": amount, "reason": reason})
+        )
         return self
 
     def add_charge_model(self, charge: SettlementCharge) -> Self:
@@ -129,7 +131,7 @@ class SettlementBuilder[TParent]:
     def charges_total(
         self,
         amount: Annotated[
-            Decimal | None,
+            Decimal | int | float | str | None,
             builder_param(
                 "Explicit total of settlement charges when it should be preserved instead of recomputed.",
                 examples=["50.00"],
@@ -153,7 +155,7 @@ class SettlementBuilder[TParent]:
         self,
         *,
         amount: Annotated[
-            Decimal,
+            Decimal | int | float | str,
             builder_param(
                 "Deduction amount included in the settlement.",
                 examples=["100.00"],
@@ -178,7 +180,7 @@ class SettlementBuilder[TParent]:
             The builder, for chaining.
         """
         self._state["deductions"].append(
-            SettlementDeduction(amount=amount, reason=reason)
+            SettlementDeduction.model_validate({"amount": amount, "reason": reason})
         )
         return self
 
@@ -207,7 +209,7 @@ class SettlementBuilder[TParent]:
     def deductions_total(
         self,
         amount: Annotated[
-            Decimal | None,
+            Decimal | int | float | str | None,
             builder_param(
                 "Explicit total of settlement deductions when it should be preserved instead of recomputed.",
                 examples=["100.00"],
@@ -230,7 +232,7 @@ class SettlementBuilder[TParent]:
     def amount_due(
         self,
         amount: Annotated[
-            Decimal | None,
+            Decimal | int | float | str | None,
             builder_param(
                 "Amount due after charges and deductions are applied.",
                 examples=["950.00"],
@@ -253,7 +255,7 @@ class SettlementBuilder[TParent]:
     def amount_to_settle(
         self,
         amount: Annotated[
-            Decimal | None,
+            Decimal | int | float | str | None,
             builder_param(
                 "Remaining amount to settle after taking the settlement context into account.",
                 examples=["450.00"],
@@ -279,7 +281,7 @@ class SettlementBuilder[TParent]:
         Returns:
             The built ``InvoiceSettlement``.
         """
-        return InvoiceSettlement(**self._state)
+        return InvoiceSettlement.model_validate({**self._state})
 
     def _is_empty(self) -> bool:
         return self._state == _default_state()

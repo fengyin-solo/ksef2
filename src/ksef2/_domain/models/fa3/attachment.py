@@ -7,13 +7,14 @@ from typing import Literal, Self
 
 from pydantic import field_validator, Field, model_validator
 
-from ksef2._domain.models import KSeFBaseModel
+from ksef2._domain.models.base import KSeFBaseModel as KSeFBaseModel
+from ksef2._domain.models.fa3.base import Fa3Model
 
 ValueType = Literal["date", "datetime", "decimal", "integer", "time", "txt"]
 NUMERIC_TYPES = {"decimal", "integer"}
 
 
-class AttachmentTable(KSeFBaseModel):
+class AttachmentTable(Fa3Model):
     """FA(3) invoice attachment table structure.
 
     References:
@@ -145,7 +146,7 @@ class AttachmentTable(KSeFBaseModel):
         return self
 
 
-class DataBlock(KSeFBaseModel):
+class DataBlock(Fa3Model):
     """FA(3) invoice attachment data block.
 
     References:
@@ -199,7 +200,7 @@ class DataBlock(KSeFBaseModel):
         return value
 
 
-class Attachment(KSeFBaseModel):
+class Attachment(Fa3Model):
     """FA(3) invoice attachment containing data blocks.
 
     References:

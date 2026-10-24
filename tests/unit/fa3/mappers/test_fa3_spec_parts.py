@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
-from pydantic import ValidationError
+from ksef2 import KSeFValidationError
 
 from ksef2._domain.models.fa3.body import MarginProcedure, TaxRegime
 from ksef2._domain.models.fa3.header import _default_system_info
@@ -257,7 +257,7 @@ def test_maps_the_other_tax_exemption_basis() -> None:
 
 def test_exemption_marker_without_any_basis_still_breaks_the_domain_rule() -> None:
     """A ``P_19`` marker that names no basis stays rejected by the domain."""
-    with pytest.raises(ValidationError, match="Exactly one exemption legal basis"):
+    with pytest.raises(KSeFValidationError, match="Exactly one exemption legal basis"):
         annotations_from_spec(
             adnotacje(zwolnienie=FakturaFaAdnotacjeZwolnienie(p_19=Twybor1.VALUE_1))
         )

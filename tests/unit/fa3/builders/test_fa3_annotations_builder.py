@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
-from pydantic import ValidationError
+from ksef2 import KSeFValidationError
 
 from ksef2.fa3 import InvoiceBuilder, VatRate
 from ksef2._domain.models.fa3.body import (
@@ -230,7 +230,7 @@ def test_the_article_42_5_marker_without_items_is_rejected() -> None:
     """A supply needs at least one item, so the marker alone cannot be built."""
     _, body = started_standard_body()
 
-    with pytest.raises(ValidationError, match="at least 1 item"):
+    with pytest.raises(KSeFValidationError, match="at least 1 item"):
         body.annotations().new_transport_supply(article_42_5_required=False).build()
 
 
@@ -324,7 +324,7 @@ def test_the_article_42_5_marker_alone_counts_as_annotation_details() -> None:
     _, body = started_standard_body()
     annotations = body.annotations().new_transport_supply(article_42_5_required=True)
 
-    with pytest.raises(ValidationError, match="at least 1 item"):
+    with pytest.raises(KSeFValidationError, match="at least 1 item"):
         annotations.done()
 
 

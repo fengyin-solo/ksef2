@@ -6,6 +6,11 @@
   helpers, and `export().wait()` returns an empty metadata list for these packages.
 - In-memory export downloads verify encrypted and plaintext sizes and SHA-256
   hashes using the same checks as downloads to disk.
+- Require an explicit FA(3) partial-payment status before building payment entries,
+  correct both builder guides, and report invalid builder fields as
+  `KSeFValidationError` with the original validation error as the cause. Builder
+  amount, quantity, price, and exchange-rate hints now accept floats and numeric
+  strings, matching runtime decimal conversion.
 
 - Restore deprecated `ksef2.clients.*` submodule imports throughout 1.x.
 

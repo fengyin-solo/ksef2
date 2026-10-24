@@ -71,14 +71,16 @@ class CorrectionBodyBuilder[TParent](
         Returns:
             The built ``KsefInvoiceBody``.
         """
-        return KsefInvoiceBody(
-            **self._state,
-            invoice_type=InvoiceType.CORRECTING,
-            rows=list(self._rows),
-            payment=self._payment,
-            annotations=self._annotations,
-            transaction_conditions=self._transaction_conditions,
-            correction=self._correction,
+        return KsefInvoiceBody.model_validate(
+            {
+                **self._state,
+                "invoice_type": InvoiceType.CORRECTING,
+                "rows": list(self._rows),
+                "payment": self._payment,
+                "annotations": self._annotations,
+                "transaction_conditions": self._transaction_conditions,
+                "correction": self._correction,
+            }
         )
 
     @override

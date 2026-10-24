@@ -2,6 +2,7 @@
 
 import io
 import json
+import os
 import zipfile
 from pathlib import Path
 
@@ -9,9 +10,15 @@ import pytest
 from polyfactory import BaseFactory
 
 from ksef2._clients.exported_invoices import ExportedInvoices
-from ksef2._core.exceptions import KSeFResponseValidationError
+from ksef2._core.exceptions import KSeFArgumentError, KSeFResponseValidationError
 from ksef2._domain.models.invoices import InvoiceMetadata
 from ksef2._infra.schema.api import spec
+
+requires_unchecked_types = pytest.mark.skipif(
+    bool(os.environ.get("KSEF2_RUNTIME_CHECKS")),
+    reason="beartype rejects the out-of-contract value before the guard runs",
+)
+
 
 KSEF_1 = "5265877635-20260101-0100100AB5B5-4B"
 KSEF_2 = "5265877635-20260102-0100100AB5B5-5C"
@@ -157,6 +164,21 @@ class TestSave:
         assert not target.exists()
         assert not (tmp_path / "evil.xml").exists()
         assert not Path("/etc/evil.xml").exists()
+
+    def test_from_path_refuses_unsafe_entry_paths(self, tmp_path: Path) -> None:
+        path = tmp_path / "export.zip"
+        path.write_bytes(_zip({"../evil.xml": b"<evil />"}))
+        target = tmp_path / "out"
+
+        with pytest.raises(ValueError, match="Unsafe archive entry path"):
+            ExportedInvoices.from_path(path).save(target)
+
+        assert not (tmp_path / "evil.xml").exists()
+
+    @requires_unchecked_types
+    def test_from_path_rejects_string_paths(self, tmp_path: Path) -> None:
+        with pytest.raises(KSeFArgumentError):
+            ExportedInvoices.from_path(str(tmp_path / "export.zip"))  # pyright: ignore[reportArgumentType]
 
     def test_refuses_an_entry_that_resolves_outside_through_a_symlink(
         self, tmp_path: Path

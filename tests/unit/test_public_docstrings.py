@@ -17,6 +17,7 @@ import sys
 import textwrap
 import types
 import typing
+import warnings
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from enum import Enum
@@ -336,7 +337,13 @@ def audit() -> Report:
     for module_name in PUBLIC_MODULES:
         module = importlib.import_module(module_name)
         for name in getattr(module, "__all__", ()):
-            obj = getattr(module, name)
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message="FA3InvoiceBuilder is deprecated; use InvoiceBuilder instead.*",
+                    category=DeprecationWarning,
+                )
+                obj = getattr(module, name)
             if isinstance(obj, types.ModuleType):
                 continue
             if inspect.isclass(obj):

@@ -11,6 +11,7 @@ from ksef2._clients._metadata_pagination import (
 from ksef2._core.async_protocols import AsyncMiddleware
 from ksef2._core.crypto import encrypt_symmetric_key, generate_session_key
 from ksef2._domain.models.compression import (
+    CompressionType as _CompressionType,
     CompressionTypeInput,
     normalize_compression_type,
 )
@@ -25,6 +26,8 @@ from ksef2._domain.models.invoices import (
 from ksef2._domain.models.pagination import InvoiceMetadataParams
 from ksef2._endpoints.async_invoices import AsyncInvoicesEndpoints
 from ksef2._infra.mappers.invoices import from_spec, to_spec
+
+CompressionType = _CompressionType
 
 
 @final

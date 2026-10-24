@@ -1,6 +1,7 @@
 """Async high-level invoice workflow service."""
 
 import asyncio
+import io
 import os
 from collections.abc import (
     AsyncIterator,
@@ -33,7 +34,9 @@ from ksef2._clients.exported_invoices import ExportedInvoices
 from ksef2._core import exceptions
 from ksef2._core.async_protocols import AsyncMiddleware
 from ksef2._core.async_external_transfer import AsyncExternalTransferClient
-from ksef2._core.crypto import decrypt_aes_cbc
+
+# Preserve the legacy service-module re-export throughout 1.x.
+from ksef2._core.crypto import decrypt_aes_cbc as decrypt_aes_cbc
 from ksef2._core.paths import require_path
 from ksef2._core.polling import async_poll_until
 from ksef2._core.stores import CertificateStoreProtocol
@@ -60,6 +63,10 @@ from ksef2._services.export_parts import (
 )
 
 logger = get_logger(__name__)
+
+
+def _export_is_pending(status: InvoiceExportStatusResponse) -> bool:
+    return status.status.code < 200
 
 
 @final
@@ -126,7 +133,7 @@ class AsyncExportJob(
 
     @override
     def _is_pending(self, status: InvoiceExportStatusResponse) -> bool:
-        return status.status.code < 200
+        return _export_is_pending(status)
 
     @override
     def _check_status(self, status: InvoiceExportStatusResponse) -> None:
@@ -932,12 +939,16 @@ class AsyncInvoicesService:
             reference_number=export.reference_number,
             part_ordinal=part.ordinal_number,
         )
-        return await asyncio.to_thread(
-            decrypt_aes_cbc,
+        output = io.BytesIO()
+        await asyncio.to_thread(
+            decrypt_verified_part,
             encrypted_part,
+            part=part,
             key=export.aes_key,
             iv=export.iv,
+            output=output,
         )
+        return output.getvalue()
 
     async def _download_package_to(
         self, *, package: InvoicePackage | None, export: ExportHandle, path: Path
@@ -1057,9 +1068,7 @@ class AsyncInvoicesService:
             operation=lambda: self._client.get_export_status(
                 reference_number=reference_number
             ),
-            retry_predicate=lambda status: (
-                not (status.package and status.package.parts)
-            ),
+            retry_predicate=_export_is_pending,
             poll_interval=poll_interval,
             timeout_seconds=timeout,
             timeout_error_factory=lambda: exceptions.KSeFExportTimeoutError(
@@ -1128,19 +1137,9 @@ class AsyncInvoicesService:
             only_metadata=only_metadata,
             compression_type=compression_type,
         )
-        status = await async_poll_until(
-            operation=lambda: self._client.get_export_status(
-                reference_number=handle.reference_number
-            ),
-            retry_predicate=lambda status: (
-                not (status.package and status.package.parts)
-            ),
+        package = await self._wait_for_export_package(
+            reference_number=handle.reference_number,
+            timeout=timeout,
             poll_interval=poll_interval,
-            timeout_seconds=timeout,
-            timeout_error_factory=lambda: exceptions.KSeFExportTimeoutError(
-                reference_number=handle.reference_number,
-                timeout=timeout,
-            ),
         )
-        assert status.package is not None
-        return await self._download_package_parts(package=status.package, export=handle)
+        return await self._download_package_parts(package=package, export=handle)

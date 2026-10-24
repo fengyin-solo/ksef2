@@ -247,9 +247,17 @@ class TestExport:
         # KSeF encrypts each part on its own; the SDK decrypts and then joins them.
         first, second = payload[: len(payload) // 2], payload[len(payload) // 2 :]
         flavor.transport.enqueue(package_status(inv_export_status_resp, 100))
-        flavor.transport.enqueue(package_status(inv_export_status_resp, 200, 2))
-        flavor.transport.enqueue(content=encrypt_invoice(first, key=KEY, iv=IV))
-        flavor.transport.enqueue(content=encrypt_invoice(second, key=KEY, iv=IV))
+        encrypted_first = encrypt_invoice(first, key=KEY, iv=IV)
+        encrypted_second = encrypt_invoice(second, key=KEY, iv=IV)
+        flavor.transport.enqueue(
+            package_status(
+                inv_export_status_resp,
+                200,
+                part_data=[(first, encrypted_first), (second, encrypted_second)],
+            )
+        )
+        flavor.transport.enqueue(content=encrypted_first)
+        flavor.transport.enqueue(content=encrypted_second)
 
         exported = flavor.run(job.wait(timeout=1.0, poll_interval=0.0))
 

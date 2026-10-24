@@ -14,6 +14,7 @@ from polyfactory import BaseFactory
 from ksef2 import Environment
 from ksef2._clients.async_authenticated import AsyncAuthenticatedClient
 from ksef2._clients.authenticated import AuthenticatedClient
+from ksef2._core.crypto import encrypt_invoice
 from ksef2._core.exceptions import KSeFInvoiceRejectedError
 from ksef2._core.stores import CertificateStore
 from ksef2._domain.models.auth import AuthTokens
@@ -607,7 +608,13 @@ class TestInvoicesServiceAliases:
     def _package(
         self, factory: BaseFactory[spec.InvoiceExportStatusResponse], parts: int
     ) -> InvoicePackage:
-        raw = package_status(factory, 200, parts)["package"]
+        part_data = [
+            (plaintext, encrypt_invoice(plaintext, key=KEY, iv=IV))
+            for plaintext in [
+                f"part-{ordinal}".encode() for ordinal in range(1, parts + 1)
+            ]
+        ]
+        raw = package_status(factory, 200, part_data=part_data)["package"]
         return InvoicePackage.model_validate(
             {
                 "invoice_count": raw["invoiceCount"],
@@ -619,10 +626,10 @@ class TestInvoicesServiceAliases:
                         "part_name": part["partName"],
                         "method": "GET",
                         "url": f"https://example.com/export/part-{part['ordinalNumber']}",
-                        "part_size": 1,
-                        "part_hash": "x",
-                        "encrypted_part_size": 1,
-                        "encrypted_part_hash": "x",
+                        "part_size": part["partSize"],
+                        "part_hash": part["partHash"],
+                        "encrypted_part_size": part["encryptedPartSize"],
+                        "encrypted_part_hash": part["encryptedPartHash"],
                         "expiration_date": datetime(2030, 1, 1, tzinfo=UTC),
                     }
                     for part in raw["parts"]
@@ -706,8 +713,14 @@ class TestInvoicesServiceAliases:
                 "schedule_export()",
                 "export()",
             )
-            flavor.transport.enqueue(package_status(inv_export_status_resp, 200, 1))
-            flavor.transport.enqueue(content=encrypt_invoice(archive(), key=KEY, iv=IV))
+            plaintext = archive()
+            ciphertext = encrypt_invoice(plaintext, key=KEY, iv=IV)
+            flavor.transport.enqueue(
+                package_status(
+                    inv_export_status_resp, 200, part_data=[(plaintext, ciphertext)]
+                )
+            )
+            flavor.transport.enqueue(content=ciphertext)
             parts = _once(
                 flavor,
                 lambda: service.export_and_download(

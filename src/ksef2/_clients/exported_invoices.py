@@ -83,7 +83,8 @@ class ExportedInvoices:
         """Get the invoice metadata stored in the package.
 
         Returns:
-            The parsed ``invoices`` list of ``_metadata.json``, or ``None`` if the package has no such file.
+            The parsed ``invoices`` list of ``_metadata.json``, an empty list if
+            the package reports zero invoices, or ``None`` if metadata is unavailable.
 
         Raises:
             KSeFResponseValidationError: If ``_metadata.json`` is not valid metadata.
@@ -225,6 +226,12 @@ class ExportedInvoices:
         return result
 
     def _is_empty(self) -> bool:
+        if (
+            self._package is not None
+            and self._package.invoice_count == 0
+            and not self._package.parts
+        ):
+            return True
         return self._archive_path is None and not self._archive
 
     def _open(self) -> zipfile.ZipFile | tarfile.TarFile:
@@ -243,7 +250,11 @@ class ExportedInvoices:
 
     def _read_metadata(self) -> list[InvoiceMetadata] | None:
         if self._is_empty():
-            return None
+            return (
+                []
+                if self._package is not None and self._package.invoice_count == 0
+                else None
+            )
         with self._open() as archive:
             for filename, is_directory, info in _archive_entries(archive):
                 if is_directory or PurePosixPath(filename).name != METADATA_FILE_NAME:

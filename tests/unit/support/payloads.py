@@ -9,6 +9,7 @@ from typing import Any
 from polyfactory import BaseFactory
 from polyfactory.factories.pydantic_factory import ModelFactory
 
+from ksef2._core.crypto import sha256_b64
 from ksef2._infra.schema.api import spec
 
 INVOICE_REF = "20250625-EE-319D7EE000-B67F415CDC-2C"
@@ -75,26 +76,31 @@ def package_status(
     factory: BaseFactory[spec.InvoiceExportStatusResponse],
     code: int,
     part_count: int = 0,
+    *,
+    part_data: list[tuple[bytes, bytes]] | None = None,
 ) -> dict[str, Any]:
     package = None
-    if part_count:
+    data = (
+        part_data if part_data is not None else [(b"x" * 64, b"y" * 128)] * part_count
+    )
+    if data:
         package = spec.InvoicePackage.model_validate(
             {
                 "invoiceCount": 2,
-                "size": 128,
+                "size": sum(len(plaintext) for plaintext, _ in data),
                 "parts": [
                     {
                         "ordinalNumber": ordinal,
                         "partName": f"part-{ordinal}.zip.aes",
                         "method": "GET",
                         "url": f"https://example.com/export/part-{ordinal}?sig=secret",
-                        "partSize": 64,
-                        "partHash": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
-                        "encryptedPartSize": 128,
-                        "encryptedPartHash": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
+                        "partSize": len(plaintext),
+                        "partHash": sha256_b64(plaintext),
+                        "encryptedPartSize": len(ciphertext),
+                        "encryptedPartHash": sha256_b64(ciphertext),
                         "expirationDate": datetime(2030, 1, 1, tzinfo=UTC),
                     }
-                    for ordinal in range(1, part_count + 1)
+                    for ordinal, (plaintext, ciphertext) in enumerate(data, start=1)
                 ],
                 "isTruncated": False,
             }

@@ -18,6 +18,7 @@ from ksef2._core.routes import EncryptionRoutes, InvoiceRoutes, SessionRoutes
 from ksef2._core.stores import CertificateStore
 from ksef2._domain.models.auth import AuthenticationResumeState, AuthTokens
 from ksef2._domain.models.encryption import PublicKeyCertificate
+from ksef2._domain.models.invoices import SendInvoiceResponse
 from ksef2._domain.models.session import FormSchema, OnlineSessionResumeState
 from ksef2._infra.schema.api import spec
 from tests.unit.fakes.transport import AsyncFakeTransport
@@ -46,6 +47,34 @@ def _build_authenticated_client(
 
 
 class TestAsyncOnlineSessionClient:
+    def test_send_invoice_accepts_known_attachment_limit(
+        self,
+        async_fake_transport: AsyncFakeTransport,
+        domain_online_session_state: BaseFactory[OnlineSessionResumeState],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        client = AsyncOnlineSessionClient(
+            async_fake_transport,
+            domain_online_session_state.build(),
+            max_invoice_size_bytes=2_000_000,
+        )
+        response = SendInvoiceResponse(reference_number="invoice-reference")
+        monkeypatch.setattr(
+            "ksef2._clients.async_online.encrypt_invoice", lambda **_: b"encrypted"
+        )
+        monkeypatch.setattr(
+            client._invoice_eps, "send", AsyncMock(return_value=response)
+        )
+        monkeypatch.setattr(
+            "ksef2._clients.async_online.invoice_from_spec", lambda value: value
+        )
+
+        async def _run() -> None:
+            submission = await client.send_invoice(b"x" * 1_500_000)
+            assert submission.reference_number == "invoice-reference"
+
+        asyncio.run(_run())
+
     def test_authenticated_client_resume_state_exports_authentication_state(
         self,
         async_fake_transport: AsyncFakeTransport,

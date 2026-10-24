@@ -8,6 +8,7 @@ from ksef2._clients.base import Client
 from ksef2._config import RetryConfig, TimeoutConfig
 from ksef2._core.exceptions import KSeFArgumentError, KSeFValidationError
 from ksef2._domain.models.batch import BatchInvoice
+from ksef2._domain.models.limits import SessionLimits
 from ksef2._services.batch_preparation import prepare_batch_package
 
 
@@ -49,6 +50,22 @@ def test_batch_preparation_rejects_invoice_over_default_size() -> None:
             iv=b"i" * 16,
             encrypted_key=b"encrypted",
         )
+
+
+def test_batch_preparation_uses_known_attachment_limit() -> None:
+    prepared = prepare_batch_package(
+        invoices=[BatchInvoice(file_name="large.xml", content=b"x" * 1_500_000)],
+        aes_key=b"k" * 32,
+        iv=b"i" * 16,
+        encrypted_key=b"encrypted",
+        session_limits=SessionLimits(
+            max_invoice_size_mb=1,
+            max_invoice_with_attachment_size_mb=2,
+            max_invoices=10,
+        ),
+    )
+
+    assert len(prepared.invoices) == 1
 
 
 @pytest.mark.parametrize(

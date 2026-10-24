@@ -14,10 +14,24 @@ from ksef2._domain.models.batch import (
     BatchPreparedPart,
     PreparedBatch,
 )
+from ksef2._domain.models.limits import SessionLimits
 from ksef2._domain.models.session import FormSchema
 
 MAX_BATCH_PART_SIZE = 100_000_000
 DEFAULT_MAX_INVOICE_SIZE_BYTES = 1_000_000
+
+
+def max_invoice_size_bytes(limits: SessionLimits | None) -> int:
+    """Return a conservative invoice ceiling, including the attachment limit."""
+    if limits is None:
+        return DEFAULT_MAX_INVOICE_SIZE_BYTES
+    return (
+        max(
+            limits.max_invoice_size_mb,
+            limits.max_invoice_with_attachment_size_mb,
+        )
+        * DEFAULT_MAX_INVOICE_SIZE_BYTES
+    )
 
 
 def load_batch_invoices(invoice_paths: Iterable[Path | str]) -> list[BatchInvoice]:
@@ -81,6 +95,7 @@ def prepare_batch_package(
     form_code: FormSchema = FormSchema.FA3,
     offline_mode: bool = False,
     max_part_size: int = MAX_BATCH_PART_SIZE,
+    session_limits: SessionLimits | None = None,
 ) -> PreparedBatch:
     """Build, split, and encrypt a batch package from invoice payloads.
 
@@ -93,6 +108,8 @@ def prepare_batch_package(
         form_code: Invoice schema of the batch.
         offline_mode: Whether the invoices were issued in offline mode.
         max_part_size: Maximum size in bytes of one encrypted part.
+        session_limits: Known effective limits for this session type; when omitted,
+            the documented default invoice size limit is used.
 
     Returns:
         The prepared batch: package metadata, encrypted parts and encryption material.
@@ -102,7 +119,7 @@ def prepare_batch_package(
         KSeFValidationError: If the invoice list or part size is invalid.
     """
     normalized = list(invoices)
-    validate_invoices(normalized)
+    validate_invoices(normalized, session_limits=session_limits)
     validate_max_part_size(max_part_size)
 
     zip_bytes = build_zip(normalized)
@@ -163,7 +180,9 @@ def prepare_batch_package(
     )
 
 
-def validate_invoices(invoices: list[BatchInvoice]) -> None:
+def validate_invoices(
+    invoices: list[BatchInvoice], *, session_limits: SessionLimits | None = None
+) -> None:
     """Validate invoice payloads before creating the ZIP package.
 
     Raises:
@@ -175,11 +194,13 @@ def validate_invoices(invoices: list[BatchInvoice]) -> None:
             "At least one invoice is required to build a batch package."
         )
 
+    invoice_size_limit = max_invoice_size_bytes(session_limits)
     for invoice in invoices:
-        if len(invoice.content) > DEFAULT_MAX_INVOICE_SIZE_BYTES:
+        if len(invoice.content) > invoice_size_limit:
             raise exceptions.KSeFValidationError(
-                f"Invoice {invoice.file_name!r} exceeds the default 1 MB size limit.",
-                hint="Reduce the invoice XML size or use auth.limits to check whether a larger invoice is allowed.",
+                f"Invoice {invoice.file_name!r} exceeds the applicable "
+                f"{invoice_size_limit // DEFAULT_MAX_INVOICE_SIZE_BYTES} MB size limit.",
+                hint="Reduce the invoice XML size or fetch the effective limits before preparing the batch.",
                 invoice_size_bytes=len(invoice.content),
             )
 

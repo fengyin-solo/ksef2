@@ -46,6 +46,7 @@ from ksef2._endpoints.session import SessionEndpoints
 from ksef2._infra.mappers.sessions import from_spec as session_from_spec
 from ksef2._infra.mappers.sessions import to_spec as session_to_spec
 from ksef2._services.batch import BatchService
+from ksef2._services.batch_preparation import max_invoice_size_bytes
 from ksef2._services.invoices import InvoicesService
 from ksef2.raw._facade import RawAuthenticatedClient
 
@@ -193,7 +194,14 @@ class AuthenticatedClient:
             valid_until=session_data.valid_until,
             form_code=form_code,
         )
-        return OnlineSessionClient(transport=self._authed_transport, state=state)
+        limits = self.limits.cached_context_limits
+        return OnlineSessionClient(
+            transport=self._authed_transport,
+            state=state,
+            max_invoice_size_bytes=max_invoice_size_bytes(
+                limits.online_session if limits is not None else None
+            ),
+        )
 
     @overload
     def online_session(
@@ -272,7 +280,14 @@ class AuthenticatedClient:
             else state
         )
         return OnlineSessionClient(
-            transport=self._authed_transport, state=resume, resumed=True
+            transport=self._authed_transport,
+            state=resume,
+            resumed=True,
+            max_invoice_size_bytes=max_invoice_size_bytes(
+                self.limits.cached_context_limits.online_session
+                if self.limits.cached_context_limits is not None
+                else None
+            ),
         )
 
     @deprecated(
@@ -645,6 +660,7 @@ class AuthenticatedClient:
             upload_transport=self._transfer_transport,
             get_encryption_key=self._get_encryption_material,
             open_batch_session=self._open_batch_session_with_material,
+            get_context_limits=lambda: self.limits.cached_context_limits,
         )
 
     @cached_property

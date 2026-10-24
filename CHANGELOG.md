@@ -9,7 +9,8 @@ and method names remain functional throughout 1.x (#171). Read
 ### Highlights
 
 - The documented import paths (`ksef2`, `ksef2.clients`, `ksef2.models`,
-  `ksef2.fa3`, `ksef2.xades`, `ksef2.profiles`, `ksef2.renderers`, `ksef2.raw`,
+  `ksef2.fa3`, `ksef2.xades`, `ksef2.logging`, `ksef2.profiles`,
+  `ksef2.renderers`, `ksef2.raw`,
   `ksef2.raw.mappers`, and the new `ksef2.testdata`) are the compatibility
   contract for the whole 1.x line. The rule is simple: a module path with no
   underscore is public, and anything with an underscore is private and may change
@@ -93,7 +94,7 @@ and method names remain functional throughout 1.x (#171). Read
   | `ksef2.services` | `ksef2._services` |
   | `ksef2.clients.<module>` (`base`, `auth`, `online`, `async_*`, ...) | `ksef2._clients.<module>` (`ksef2.clients` stays the public facade with the same `__all__`) |
   | `ksef2.config` | `ksef2._config` (names stay exported from `ksef2`) |
-  | `ksef2.logging` | `ksef2._logging` (names stay exported from `ksef2`) |
+  | `ksef2._logging` | `ksef2.logging` (`configure_logging`) |
   | `ksef2.raw.facade`, `ksef2.raw.async_facade` | `ksef2.raw._facade`, `ksef2.raw._async_facade` (names stay exported from `ksef2.raw`) |
 
   If you imported something from an old path, import it from the public module
@@ -124,6 +125,16 @@ on the public API page for every alias and its replacement.
   (#150, #162).
 
 ### Added
+
+- SDK events use the standard `ksef2` logger and remain silent unless the
+  application configures logging. `ksef2.logging.configure_logging()` opts in
+  to the SDK console or JSON renderer. SDK events use standard logging levels
+  and do not include tokens, cryptographic keys or presigned URLs (#301).
+- `ksef2.renderers` is the public path for XSLT and PDF rendering. PDF use
+  requires `ksef2[pdf]`; `InvoicePDFExporter` raises an actionable `ImportError`
+  on first use when that extra is absent. `InvoiceBuilder` is the canonical
+  `ksef2.fa3` name; `FA3InvoiceBuilder` remains a deprecated alias with removal
+  no earlier than 2.0.0 (#302).
 
 - `PreparedBatch.to_sensitive_dict()` and `to_sensitive_json()` export a prepared
   batch in full, including encrypted parts as URL-safe Base64 with `=` padding
@@ -324,6 +335,11 @@ on the public API page for every alias and its replacement.
 
 ### Fixed
 
+- Enum inputs now accept documented values case-insensitively across online session
+  form codes, invoice export compression and sort order, FA(3) VAT markers, and PDF
+  page sizes. Invalid enum inputs raise `KSeFArgumentError` with valid choices.
+  Numeric VAT rates such as `23` and `Decimal("0.23")` are rejected; pass the FA(3)
+  marker as a string, such as `"23"` or `"zw"` (#298).
 - FA(3) tax exemptions write only the selected legal basis, and new-transport
   annotations can be attached without supplying other annotation fields (#179, #176).
 - Give each invoice in the batch examples its own FA(3) number (#135).

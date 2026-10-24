@@ -68,7 +68,7 @@ class AsyncAuthenticatedClient:
         transport: AsyncMiddleware,
         auth_tokens: AuthTokens,
         certificate_store: CertificateStoreProtocol,
-        environment: Environment = Environment.PRODUCTION,
+        environment: Environment,
         transfer_transport: AsyncMiddleware | None = None,
         refresh_access_token: AsyncRefresh | None = None,
     ) -> None:

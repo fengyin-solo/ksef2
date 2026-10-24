@@ -327,6 +327,7 @@ class TestAsyncAuthClient:
             transport=async_fake_transport,
             auth_tokens=domain_auth_tokens.build(),
             certificate_store=CertificateStore(),
+            environment=Environment.TEST,
         )
 
         result = asyncio.run(
@@ -381,6 +382,7 @@ class TestAsyncAuthClient:
             transport=async_fake_transport,
             auth_tokens=domain_auth_tokens.build(),
             certificate_store=CertificateStore(),
+            environment=Environment.PRODUCTION,
         )
         mock_with_token = AsyncMock(return_value=expected)
 

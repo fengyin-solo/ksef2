@@ -39,6 +39,7 @@ from ksef2._infra.mappers.auth import from_spec, to_spec
 from ksef2.xades import XAdESPrivateKey, generate_test_certificate
 
 
+# [TODO] wtf why is this not inlined
 def _build_signed_xades(
     *,
     challenge: str,
@@ -71,7 +72,7 @@ class AuthClient:
         self,
         transport: Middleware,
         certificate_store: CertificateStoreProtocol,
-        environment: Environment = Environment.PRODUCTION,
+        environment: Environment,
         transfer_transport: Middleware | None = None,
         auto_refresh_tokens: bool = True,
     ) -> None:

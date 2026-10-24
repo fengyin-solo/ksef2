@@ -70,7 +70,7 @@ class AsyncAuthClient:
         self,
         transport: AsyncMiddleware,
         certificate_store: CertificateStoreProtocol,
-        environment: Environment = Environment.PRODUCTION,
+        environment: Environment,
         transfer_transport: AsyncMiddleware | None = None,
         auto_refresh_tokens: bool = True,
     ) -> None:

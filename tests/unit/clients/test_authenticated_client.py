@@ -5,6 +5,7 @@ import pytest
 from polyfactory import BaseFactory
 
 from ksef2._clients.authenticated import AuthenticatedClient
+from ksef2._config import Environment
 from ksef2._clients.batch import BatchSessionClient
 from ksef2._clients.certificates import CertificatesClient
 from ksef2._clients.invoice_sessions import InvoiceSessionsClient
@@ -45,6 +46,7 @@ def _build_client(  # [TODO] maybe we could just have client as a fixture, im no
         transport=fake_transport,
         auth_tokens=auth_tokens,
         certificate_store=certificate_store or CertificateStore(),
+        environment=Environment.TEST,
     )
 
 

@@ -70,7 +70,7 @@ class AuthenticatedClient:
         transport: Middleware,
         auth_tokens: AuthTokens,
         certificate_store: CertificateStoreProtocol,
-        environment: Environment = Environment.PRODUCTION,
+        environment: Environment,
         transfer_transport: Middleware | None = None,
         refresh_access_token: Refresh | None = None,
     ) -> None:

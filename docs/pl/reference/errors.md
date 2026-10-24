@@ -20,8 +20,9 @@ samego wyjątku podczas konwersji argumentów na modele żądań i odtwarzania s
 z niepoprawnego JSON. Komunikat wskazuje publiczny parametr, a `__cause__`
 zachowuje oryginalny błąd Pydantic. Metoda `errors()` udostępnia jego szczegóły.
 
-Nadawanie uprawnień sprawdza długość, cyfry i sumę kontrolną PESEL i NIP zgodnie
-z wybranym typem identyfikatora. Puste listy uprawnień, identyfikatory cofania
+Nadawanie uprawnień sprawdza długość i sumę kontrolną PESEL oraz wzorzec NIP
+z OpenAPI zgodnie z wybranym typem identyfikatora. Nie sprawdza sumy kontrolnej
+NIP. `with_test_certificate()` zachowuje dotychczasową kontrolę sumy NIP. Puste listy uprawnień, identyfikatory cofania
 i tokeny KSeF zgłaszają `KSeFArgumentError` z podpowiedzią `hint` przed wysłaniem
 żądania. Ten wyjątek dziedziczy też po `KSeFValidationError` i `KSeFException`.
 

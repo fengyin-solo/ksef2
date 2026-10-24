@@ -7,7 +7,8 @@ Use `auth.permissions` when the authenticated context needs to grant, inspect,
 or revoke KSeF permissions. Permission changes are asynchronous: grant and
 revoke methods return an operation reference first.
 
-Use an 11-digit PESEL or 10-digit NIP with a valid checksum. The identifier
+Use an 11-digit PESEL with a valid checksum or a NIP matching the 10-digit
+OpenAPI pattern. Permission grants do not check NIP checksums. The identifier
 must match `subject_type`. The SDK checks these values before sending a grant,
 and rejects empty permission lists and empty IDs passed to `revoke()` or
 `revoke_authorization()` with `KSeFArgumentError` and a corrective `hint`.

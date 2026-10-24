@@ -159,12 +159,20 @@ class KSeFBaseModel(BaseModel):
 
     def __init_subclass__(cls, **kwargs: Unpack[ConfigDict]) -> None:
         super().__init_subclass__(**kwargs)
-        # FA(3) models and private cursor schemas retain their own error handling.
-        # User subclasses inherit their parent's policy.
-        if cls.__module__.startswith("ksef2."):
+        # Explicit opt-ins, including Fa3Model, use this same SDK wrapper.
+        if "wrap_validation_errors" in cls.__dict__:
+            return
+        if cls.__module__.startswith("ksef2._domain.models.fa3."):
+            cls.wrap_validation_errors = any(
+                base.wrap_validation_errors
+                for base in cls.__bases__
+                if issubclass(base, KSeFBaseModel)
+                and base.__module__.startswith("ksef2._domain.models.fa3.")
+            )
+        elif cls.__module__.startswith("ksef2."):
             cls.wrap_validation_errors = cls.__module__.startswith(
                 "ksef2._domain.models."
-            ) and not cls.__module__.startswith("ksef2._domain.models.fa3.")
+            )
 
     def __init__(self, **data: Any) -> None:  # pyright: ignore[reportAny, reportExplicitAny]
         try:

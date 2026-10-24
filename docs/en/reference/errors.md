@@ -20,8 +20,9 @@ arguments into request models or restoring invalid JSON state. The message
 names the public parameter, and `__cause__` retains the original Pydantic error.
 `errors()` exposes its structured validation details.
 
-Permission grants check PESEL and NIP digit counts and checksums against the
-selected identifier type. Empty permission lists, revoke IDs, and KSeF token
+Permission grants check PESEL digit counts and checksums, and the OpenAPI NIP
+pattern, against the selected identifier type. NIP checksums are not checked
+for grants; `with_test_certificate()` keeps its existing NIP checksum check. Empty permission lists, revoke IDs, and KSeF token
 credentials raise `KSeFArgumentError` with a corrective `hint`, before a request
 is sent. This class also inherits from `KSeFValidationError` and `KSeFException`.
 

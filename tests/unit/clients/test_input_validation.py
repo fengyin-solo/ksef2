@@ -79,13 +79,11 @@ def test_invalid_public_input_is_sdk_validation_error(
         ("pesel", "44051401459"),
         ("pesel", "5261040828"),
         ("nip", "44051401458"),
-        ("nip", "5261040829"),
-        ("nip", "1234567890"),
         ("nip", "５２６１０４０８２８"),
     ],
 )
 @pytest.mark.parametrize("grant", ["grant_person", "grant_indirect", "grant_subunit"])
-def test_permission_identifier_matches_type_and_checksum(
+def test_permission_identifier_matches_type_and_pesel_checksum(
     flavor: Flavor,
     subject_type: str,
     subject_value: str,
@@ -290,3 +288,44 @@ def test_entity_permission_preserves_delegation_flag(flavor: Flavor) -> None:
     body = flavor.transport.calls[0].json
     assert body is not None
     assert body["permissions"] == [{"type": "InvoiceRead", "canDelegate": True}]
+
+
+@pytest.mark.parametrize(
+    "grant",
+    [
+        "grant_person",
+        "grant_entity",
+        "grant_authorization",
+        "grant_indirect",
+        "grant_subunit",
+    ],
+)
+def test_grants_accept_nip_accepted_by_ksef_test(flavor: Flavor, grant: str) -> None:
+    client = flavor.client(PermissionsClient, AsyncPermissionsClient)
+    flavor.transport.enqueue(
+        {"referenceNumber": "20250625-SO-2C3E6C8000-B675CF5D68-07"}
+    )
+    kwargs: dict[str, object] = {
+        "subject_value": "5250001009",
+        "description": "Test grant",
+    }
+    if grant != "grant_entity":
+        kwargs["subject_type"] = "nip"
+    if grant in {"grant_person", "grant_indirect", "grant_subunit"}:
+        kwargs.update(first_name="Jan", last_name="Kowalski")
+    else:
+        kwargs["entity_name"] = "Example"
+    if grant == "grant_authorization":
+        kwargs["permission"] = "self_invoicing"
+    elif grant == "grant_subunit":
+        kwargs.update(context_type="nip", context_value="5250001009")
+    else:
+        kwargs["permissions"] = ["invoice_read"]
+    if grant == "grant_indirect":
+        kwargs.update(target_type="nip", target_value="5250001009")
+    operation = flavor.run(getattr(client, grant)(**kwargs))
+    assert operation.reference_number == "20250625-SO-2C3E6C8000-B675CF5D68-07"
+    assert len(flavor.transport.calls) == 1
+    body = flavor.transport.calls[0].json
+    assert body is not None
+    assert body["subjectIdentifier"] == {"type": "Nip", "value": "5250001009"}

@@ -4,43 +4,59 @@ import re
 from ksef2._core import exceptions
 
 
-def validate_nip(
-    nip: str | None, *, parameter: str = "nip", normalize: bool = True
-) -> str:
+_NIP_PATTERN = re.compile(r"[1-9]((\d[1-9])|([1-9]\d))\d{7}")
+
+
+def _nip_value(nip: str | None, *, parameter: str, normalize: bool) -> str:
     if not isinstance(nip, str):
         raise exceptions.KSeFArgumentError(
             f"{parameter} must be a 10-digit Polish NIP.",
-            hint="Pass 10 digits; dashes and a leading PL prefix are accepted.",
+            hint="Pass a NIP matching the declared identifier type.",
         )
-    hint = (
-        "Pass 10 digits; dashes and a leading PL prefix are accepted."
-        if normalize
-        else "Pass a 10-digit NIP matching the declared identifier type."
-    )
-    normalized = re.sub(r"[-\s]", "", nip.strip()).upper()
-    if normalized.startswith("PL"):
-        normalized = normalized[2:]
     if not normalize:
-        normalized = nip
-    if not re.fullmatch(r"[0-9]{10}", normalized):
+        return nip
+    normalized = re.sub(r"[-\s]", "", nip.strip()).upper()
+    return normalized[2:] if normalized.startswith("PL") else normalized
+
+
+def validate_nip_pattern(nip: str | None, *, parameter: str = "nip") -> str:
+    """Validate the OpenAPI NIP pattern without imposing a checksum."""
+    value = _nip_value(nip, parameter=parameter, normalize=False)
+    if _NIP_PATTERN.fullmatch(value) is None:
+        raise exceptions.KSeFArgumentError(
+            f"{parameter} must match the 10-digit OpenAPI NIP pattern.",
+            hint="Pass 10 digits, starting with 1-9, with the next two digits not both zero.",
+        )
+    return value
+
+
+def validate_nip_checksum(
+    nip: str | None, *, parameter: str = "nip", normalize: bool = True
+) -> str:
+    """Keep the test-certificate NIP normalization and checksum checks."""
+    value = _nip_value(nip, parameter=parameter, normalize=normalize)
+    if re.fullmatch(r"[0-9]{10}", value) is None:
         raise exceptions.KSeFArgumentError(
             f"{parameter} must contain exactly 10 digits.",
-            hint=hint,
+            hint="Pass 10 digits; dashes and a leading PL prefix are accepted."
+            if normalize
+            else "Pass a 10-digit NIP.",
         )
-    weights = (6, 5, 7, 2, 3, 4, 5, 6, 7)
     checksum = (
         sum(
             int(digit) * weight
-            for digit, weight in zip(normalized[:9], weights, strict=True)
+            for digit, weight in zip(
+                value[:9], (6, 5, 7, 2, 3, 4, 5, 6, 7), strict=True
+            )
         )
         % 11
     )
-    if checksum == 10 or checksum != int(normalized[9]):
+    if checksum == 10 or checksum != int(value[9]):
         raise exceptions.KSeFArgumentError(
             f"{parameter} has an invalid checksum.",
             hint="Check the 10-digit NIP value.",
         )
-    return normalized
+    return value
 
 
 def validate_pesel(pesel: str, *, parameter: str = "pesel") -> str:
@@ -92,6 +108,6 @@ def validate_permission_identifiers(data: dict[str, object]) -> None:
         value = data.get(parameter)
         if isinstance(value, str):
             if kind == "nip":
-                _ = validate_nip(value, parameter=parameter, normalize=False)
+                _ = validate_nip_pattern(value, parameter=parameter)
             elif kind == "pesel":
                 _ = validate_pesel(value, parameter=parameter)

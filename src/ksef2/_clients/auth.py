@@ -26,8 +26,12 @@ from ksef2._core.crypto import encrypt_token
 from ksef2._core.polling import poll_until
 from ksef2._core.protocols import Middleware
 from ksef2._core.stores import CertificateStoreProtocol
-from ksef2._domain.identifiers import require_nonempty
-from ksef2._domain.identifiers import validate_nip as _validated_nip
+from ksef2._domain.identifiers import (
+    require_nonempty,
+)
+from ksef2._domain.identifiers import (
+    validate_nip_checksum as _validated_nip,
+)
 from ksef2._domain.models.auth import (
     AuthenticationResumeState,
     AuthOperationStatus,

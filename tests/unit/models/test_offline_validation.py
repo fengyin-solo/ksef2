@@ -7,6 +7,7 @@ from ksef2._clients.async_base import AsyncClient
 from ksef2._clients.base import Client
 from ksef2._config import Environment, RetryConfig, TimeoutConfig
 from ksef2._core.exceptions import KSeFArgumentError, KSeFValidationError
+from ksef2._domain.identifiers import validate_nip_pattern
 from ksef2._domain.models.batch import BatchInvoice
 from ksef2._domain.models.limits import SessionLimits
 from ksef2._services.batch_preparation import prepare_batch_package
@@ -16,7 +17,9 @@ def test_nip_accepts_dashes_and_pl_prefix_and_normalizes() -> None:
     assert _validated_nip("PL526-104-08-28") == "5261040828"
 
 
-@pytest.mark.parametrize("nip", [None, "123", "5261040829", "PL526-104-08-28x"])
+@pytest.mark.parametrize(
+    "nip", [None, "123", "5261040829", "5250001009", "PL526-104-08-28x"]
+)
 def test_nip_rejects_invalid_values_with_hint(nip: str | None) -> None:
     with pytest.raises(KSeFArgumentError, match="nip") as error:
         _validated_nip(nip)
@@ -91,3 +94,16 @@ def test_sync_root_client_rejects_dictionary_transport_config() -> None:
 def test_async_root_client_rejects_dictionary_transport_config() -> None:
     with pytest.raises(KSeFArgumentError, match="TransportConfig instance"):
         AsyncClient(environment=Environment.TEST, transport_config={})
+
+
+@pytest.mark.parametrize("nip", ["5250001009", "5261040829", "1234567890"])
+def test_permission_nip_pattern_does_not_require_checksum(nip: str) -> None:
+    assert validate_nip_pattern(nip) == nip
+
+
+@pytest.mark.parametrize(
+    "nip", ["", "123", "0000000000", "1000000000", "PL5250001009", "525-000-10-09"]
+)
+def test_permission_nip_rejects_values_outside_openapi_pattern(nip: str) -> None:
+    with pytest.raises(KSeFArgumentError, match="nip"):
+        validate_nip_pattern(nip)

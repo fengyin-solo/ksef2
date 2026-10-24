@@ -6,7 +6,7 @@
   SDK validation-error hierarchy, preserving the Pydantic cause and naming the
   public parameter. Validate KSeF invoice-number filters at construction,
   including both current and legacy formats.
-- Reject invalid PESEL/NIP lengths and checksums in permission grants, mismatched
+- Reject invalid PESEL checksums and PESEL/NIP formats in permission grants, mismatched
   identifier types, empty permission lists, empty revoke IDs, and empty KSeF
   token credentials before HTTP requests. Person and entity grants accept
   snake_case strings or permission enums; PascalCase permissions suggest the

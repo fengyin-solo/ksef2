@@ -7,7 +7,8 @@ Użyj `auth.permissions`, gdy uwierzytelniony kontekst ma nadawać, sprawdzać a
 cofać uprawnienia KSeF. Zmiany uprawnień są asynchroniczne: metody grant i
 revoke najpierw zwracają referencję operacji.
 
-Podaj 11-cyfrowy PESEL lub 10-cyfrowy NIP z poprawną sumą kontrolną.
+Podaj 11-cyfrowy PESEL z poprawną sumą kontrolną lub NIP zgodny z 10-cyfrowym
+wzorcem OpenAPI. Nadawanie uprawnień nie sprawdza sumy kontrolnej NIP.
 Identyfikator musi odpowiadać `subject_type`. SDK sprawdza te wartości przed
 wysłaniem nadania uprawnień. Puste listy uprawnień oraz puste identyfikatory
 w `revoke()` i `revoke_authorization()` zgłaszają `KSeFArgumentError` z podpowiedzią

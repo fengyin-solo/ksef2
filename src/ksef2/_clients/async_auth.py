@@ -8,7 +8,10 @@ from typing import final
 import httpx
 from cryptography.x509 import Certificate
 
-from ksef2._domain.identifiers import validate_nip as _validated_nip, require_nonempty
+from ksef2._domain.identifiers import (
+    validate_nip_checksum as _validated_nip,
+    require_nonempty,
+)
 from ksef2._domain.models.base import validation_errors
 
 from ksef2._clients.async_authenticated import AsyncAuthenticatedClient

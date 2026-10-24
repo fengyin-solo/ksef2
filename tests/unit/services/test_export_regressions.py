@@ -37,10 +37,10 @@ def _ready(flavor: Flavor, package: dict[str, object]) -> None:
 
 @legacy_api
 @pytest.mark.parametrize(
-    "method", ["wait_for_export_package", "export_and_download", "wait"]
+    "method", ["wait_for_export_package", "export_and_download", "wait", "download"]
 )
 def test_empty_export_finishes_on_first_status_without_sleeping(
-    flavor: Flavor, method: str, monkeypatch: pytest.MonkeyPatch
+    flavor: Flavor, method: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     service = flavor.invoices_service()
     _ready(flavor, _empty_package())
@@ -70,7 +70,12 @@ def test_empty_export_finishes_on_first_status_without_sleeping(
         assert result == []
     else:
         job = flavor.run(service.export(state=ExportResumeState.from_handle(_handle())))
-        result = flavor.run(job.wait(timeout=0.0))
+        if method == "download":
+            target = tmp_path / "empty.zip"
+            result = flavor.run(job.download(target, timeout=0.0))
+            assert target.read_bytes() == b""
+        else:
+            result = flavor.run(job.wait(timeout=0.0))
         assert isinstance(result, ExportedInvoices)
         assert result.archive == b""
         assert result.metadata == []

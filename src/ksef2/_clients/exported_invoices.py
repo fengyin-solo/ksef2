@@ -226,6 +226,12 @@ class ExportedInvoices:
         return result
 
     def _is_empty(self) -> bool:
+        if (
+            self._package is not None
+            and self._package.invoice_count == 0
+            and not self._package.parts
+        ):
+            return True
         return self._archive_path is None and not self._archive
 
     def _open(self) -> zipfile.ZipFile | tarfile.TarFile:

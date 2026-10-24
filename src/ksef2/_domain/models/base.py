@@ -127,7 +127,19 @@ class KSeFBaseModel(BaseModel):
         by_alias: bool | None = None,
         by_name: bool | None = None,
     ) -> Self:
-        """Validate JSON, optionally wrapping errors for SDK-facing models."""
+        """Validate JSON, optionally wrapping errors for SDK-facing models.
+
+        Args:
+            json_data: JSON text or bytes to validate.
+            strict: Whether to validate strictly.
+            extra: How to handle extra input fields.
+            context: Additional data available to validators.
+            by_alias: Whether to accept field aliases.
+            by_name: Whether to accept field names.
+
+        Returns:
+            The validated model.
+        """
         try:
             return super().model_validate_json(
                 json_data,

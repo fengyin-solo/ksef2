@@ -65,9 +65,10 @@ to batch preparation names an existing file, preparation raises an argument
 error with this hint.
 
 PEM helpers accept PEM content as bytes or text and files as `Path` objects.
-For compatibility, an existing file path passed as a string still works during
-1.x and emits a deprecation warning; pass `Path(...)` instead. String paths may
-be removed no earlier than 2.0.0.
+PKCS#12 helpers accept archive bytes or a `Path`. For compatibility, an
+existing file path passed as a string to a certificate helper still works
+during 1.x and emits a deprecation warning; pass `Path(...)` instead. String
+paths may be removed no earlier than 2.0.0.
 
 ## Main nouns
 

@@ -65,7 +65,8 @@ przekazany do przygotowania paczki wskazuje istniejący plik, metoda zgłasza
 błąd argumentu z podpowiedzią.
 
 Helpery PEM przyjmują treść PEM jako bajty lub tekst, a pliki jako obiekty
-`Path`. Dla zgodności istniejąca ścieżka do pliku przekazana jako tekst nadal
+`Path`. Helpery PKCS#12 przyjmują bajty archiwum lub `Path`. Dla zgodności
+istniejąca ścieżka do pliku przekazana jako tekst do helpera certyfikatów nadal
 działa w wersji 1.x i wyświetla ostrzeżenie o wycofaniu. Zamiast tego przekaż
 `Path(...)`. Obsługa ścieżek tekstowych może zostać usunięta nie wcześniej niż
 w wersji 2.0.0.

@@ -1,7 +1,9 @@
 """Existing application imports work with canonical modules and one warning."""
 
+import importlib
 import subprocess
 import sys
+import warnings
 
 import pytest
 
@@ -134,35 +136,63 @@ assert 'weasyprint' not in sys.modules
 
 
 def test_legacy_client_submodules_preserve_identity_and_warn_once() -> None:
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            """
-import importlib
-import warnings
-import ksef2
+    from ksef2 import _legacy_imports, clients
 
-paths = ['authenticated', 'base', 'online', 'batch', 'auth', 'invoices', 'tokens']
-with warnings.catch_warnings(record=True) as caught:
-    warnings.simplefilter('always', DeprecationWarning)
+    paths = [
+        "_async_session",
+        "_metadata_pagination",
+        "async_auth",
+        "async_authenticated",
+        "async_base",
+        "async_batch",
+        "async_certificates",
+        "async_collective_identifiers",
+        "async_encryption",
+        "async_invoice_sessions",
+        "async_invoices",
+        "async_limits",
+        "async_online",
+        "async_peppol",
+        "async_permissions",
+        "async_session_management",
+        "async_testdata",
+        "async_tokens",
+        "auth",
+        "authenticated",
+        "base",
+        "batch",
+        "certificates",
+        "collective_identifiers",
+        "encryption",
+        "invoice_sessions",
+        "invoices",
+        "limits",
+        "online",
+        "peppol",
+        "permissions",
+        "profiles",
+        "session_management",
+        "testdata",
+        "tokens",
+    ]
     for path in paths:
-        old = importlib.import_module('ksef2.clients.' + path)
-        new = importlib.import_module('ksef2._clients.' + path)
-        assert old is new, path
+        sys.modules.pop("ksef2.clients." + path, None)
+    _legacy_imports._warned_clients = False
 
-messages = [str(w.message) for w in caught if w.category is DeprecationWarning]
-assert len(messages) == 1, messages
-assert 'ksef2.clients' in messages[0], messages
-assert 'use the public `ksef2.clients` facade' in messages[0], messages
-assert 'no earlier than ksef2 2.0.0' in messages[0], messages
-assert importlib.import_module('ksef2.clients') is ksef2.clients
-""",
-        ],
-        capture_output=True,
-        text=True,
-    )
-    assert result.returncode == 0, result.stderr
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", DeprecationWarning)
+        for path in paths:
+            sys.modules.pop(f"ksef2.clients.{path}", None)
+            old = importlib.import_module(f"ksef2.clients.{path}")
+            new = importlib.import_module(f"ksef2._clients.{path}")
+            assert old is new, path
+
+    messages = [str(w.message) for w in caught if w.category is DeprecationWarning]
+    assert len(messages) == 1, messages
+    assert "ksef2.clients" in messages[0], messages
+    assert "use the public `ksef2.clients` facade" in messages[0], messages
+    assert "no earlier than ksef2 2.0.0" in messages[0], messages
+    assert importlib.import_module("ksef2.clients") is clients
 
 
 def test_modern_imports_do_not_activate_legacy_packages() -> None:

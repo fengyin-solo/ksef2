@@ -12,6 +12,7 @@ PUBLIC_MODULES = frozenset(
         "ksef2",
         "ksef2.clients",
         "ksef2.fa3",
+        "ksef2.logging",
         "ksef2.models",
         "ksef2.profiles",
         "ksef2.raw",
@@ -87,7 +88,6 @@ def test_other_internal_paths_remain_private() -> None:
     old_internal = {
         "ksef2.endpoints",
         "ksef2.config",
-        "ksef2.logging",
         "ksef2.clients.base",
         "ksef2.raw.facade",
     }

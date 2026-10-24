@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from lxml import etree
 
+from ksef2 import KSeFValidationError
 from ksef2._domain.models.fa3.body import InvoiceRow
 from ksef2.fa3 import (
     InvoiceBuilder,
@@ -235,10 +236,11 @@ def test_builder_requires_exchange_rate_for_foreign_currency_without_alternative
         .done()
     )
     with pytest.raises(
-        ValueError,
+        KSeFValidationError,
         match="Foreign-currency invoices require a body or row exchange rate",
-    ):
+    ) as error:
         _ = builder.build()
+    assert isinstance(error.value, ValueError)
 
 
 def test_builder_accepts_foreign_currency_with_per_row_exchange_rate() -> None:

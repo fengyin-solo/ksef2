@@ -1028,7 +1028,7 @@ class StandardInvoiceBuilder(
             )
             and not has_pln_vat_summary_override
         ):
-            raise ValueError(
+            raise _validation_error(
                 "Foreign-currency invoices require a body or row exchange rate, "
                 "or explicit PLN VAT summary overrides"
             )

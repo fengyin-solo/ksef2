@@ -115,6 +115,21 @@ class KSeFBaseModel(BaseModel):
                 raise _validation_exception(exc, cls.__name__) from exc
             raise
 
+    @classmethod
+    @override
+    def model_validate_json(
+        cls,
+        json_data: str | bytes | bytearray,
+        **kwargs: Any,
+    ) -> Self:  # pyright: ignore[reportAny, reportExplicitAny]
+        """Validate JSON, optionally wrapping errors for SDK-facing models."""
+        try:
+            return super().model_validate_json(json_data, **kwargs)  # pyright: ignore[reportAny]
+        except ValidationError as exc:
+            if cls.wrap_validation_errors:
+                raise _validation_exception(exc, cls.__name__) from exc
+            raise
+
     @model_validator(mode="before")
     @classmethod
     def _warn_extra_fields(cls, data: Any) -> Any:

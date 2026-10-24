@@ -6,7 +6,7 @@ from pydantic import ValidationError
 from ksef2._domain.models.batch import BatchFileInfo, BatchFilePart
 from ksef2._domain.models.invoices import InvoicesFilter
 from ksef2._domain.models.pagination import InvoiceMetadataParams
-from ksef2._core.exceptions import KSeFValidationError
+from ksef2._core.exceptions import KSeFException, KSeFValidationError
 
 
 def test_public_model_validation_wraps_pydantic_errors() -> None:
@@ -18,6 +18,16 @@ def test_public_model_validation_wraps_pydantic_errors() -> None:
     assert isinstance(caught.value.__cause__, ValidationError)
     assert caught.value.errors()[0]["loc"] == ("page_size",)
     assert isinstance(caught.value, ValueError)
+
+
+@pytest.mark.parametrize("json_data", ["{", "null", '{"page_size":5}'])
+def test_public_model_json_validation_wraps_pydantic_errors(json_data: str) -> None:
+    with pytest.raises(KSeFException) as caught:
+        InvoiceMetadataParams.model_validate_json(json_data)
+
+    assert isinstance(caught.value, KSeFValidationError)
+    assert isinstance(caught.value.__cause__, ValidationError)
+    assert caught.value.errors()
 
 
 def _batch_part(

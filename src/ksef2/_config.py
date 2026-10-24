@@ -129,7 +129,7 @@ class RetryConfig:
     max_attempts: int = 3
     """Total number of attempts per request, including the first."""
     initial_delay: float = 0.5
-    """Seconds to wait before the first retry."""
+    """Backoff ceiling in seconds before the first retry, before jitter."""
     max_delay: float = 4.0
     """Upper bound in seconds for the exponential backoff delay between retries."""
     max_retry_after: float = 120.0
@@ -147,6 +147,12 @@ class RetryConfig:
 
     Invoice submission uses only 429 from this set; it is never retried for a
     transport failure or another status because the result could be ambiguous.
+    """
+
+    jitter: bool = True
+    """Use full jitter: sample uniformly from zero to the capped backoff delay.
+
+    Set to ``False`` for deterministic backoff. ``Retry-After`` is never jittered.
     """
 
     def __post_init__(self) -> None:

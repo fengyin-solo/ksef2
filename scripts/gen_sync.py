@@ -306,9 +306,28 @@ class AsyncToSyncTransformer(cst.CSTTransformer):
     def leave_ClassDef(
         self, original_node: cst.ClassDef, updated_node: cst.ClassDef
     ) -> cst.ClassDef:
-        return updated_node.with_changes(
-            body=_rewrite_docstring_in_suite(updated_node.body)
-        )
+        body = updated_node.body
+        if isinstance(body, cst.IndentedBlock) and any(
+            isinstance(member, cst.FunctionDef)
+            and member.name.value == "aclose"
+            and member.asynchronous is not None
+            for member in original_node.body.body
+        ):
+            # Async close() only diagnoses misuse; aclose() generates sync cleanup.
+            body = body.with_changes(
+                body=[
+                    member
+                    for original, member in zip(
+                        original_node.body.body, body.body, strict=True
+                    )
+                    if not (
+                        isinstance(original, cst.FunctionDef)
+                        and original.name.value == "close"
+                        and original.asynchronous is None
+                    )
+                ]
+            )
+        return updated_node.with_changes(body=_rewrite_docstring_in_suite(body))
 
     @override
     def leave_Module(

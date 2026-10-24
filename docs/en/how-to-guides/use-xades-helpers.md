@@ -7,6 +7,8 @@ Use XAdES helpers when you authenticate with certificate material or need to
 diagnose the signed authentication XML. Most applications should still call
 `client.authentication.with_xades()` instead of signing manually.
 
+Pass `Path` to read a PEM or PKCS#12 file. Strings and bytes are content. Existing-file string paths still work with a deprecation warning throughout 1.x; removal may happen no earlier than 2.0.0. Short filename-like strings that name missing files raise `KSeFArgumentError` with a `Path(...)` hint. Input content is not included in the error.
+
 ## Load certificate material
 
 ### With PEM

@@ -55,6 +55,12 @@ ograniczenia funkcji TEST pozostają zgodne.
 | `close()` | `Client` | `None` | Idempotentnie zamyka klienta HTTP sync należącego do SDK i unieważnia moduły w cache. |
 | `aclose()` | `AsyncClient` | `None` | Idempotentnie zamyka zasoby async i unieważnia moduły w cache. |
 
+`AsyncClient.close()`, `AsyncOnlineSessionClient.close()` i
+`AsyncBatchSessionClient.close()` natychmiast zgłaszają `KSeFArgumentError`
+i pozostawiają zasoby otwarte. Użyj `await client.aclose()`,
+`await session.aclose()` lub `async with`. Metody `close()` są synchroniczne
+i nie można ich używać z `await`.
+
 Właściwości modułów są cache'owane, dopóki klient bazowy jest otwarty. Po
 zamknięciu klienta dostęp do modułów i operacje chronione middleware cyklu życia
 rzucają `KSeFClientClosedError`.

@@ -202,7 +202,7 @@ class TestRetryMiddleware:
         sync_transport.enqueue_error(httpx.ReadError("first response lost"))
         sync_transport.enqueue_error(httpx.ConnectError("second connect failed"))
         sync_error_layer = KSeFExceptionMiddleware(
-            RetryMiddleware(sync_transport, RetryConfig(max_attempts=2))
+            RetryMiddleware(sync_transport, RetryConfig(max_attempts=2, jitter=False))
         )
         sync_delays: list[float] = []
         with pytest.raises(KSeFTransportError) as sync_error:
@@ -212,7 +212,9 @@ class TestRetryMiddleware:
         async_transport.enqueue_error(httpx.ReadError("first response lost"))
         async_transport.enqueue_error(httpx.ConnectError("second connect failed"))
         async_error_layer = AsyncKSeFExceptionMiddleware(
-            AsyncRetryMiddleware(async_transport, RetryConfig(max_attempts=2))
+            AsyncRetryMiddleware(
+                async_transport, RetryConfig(max_attempts=2, jitter=False)
+            )
         )
         async_delays: list[float] = []
 
@@ -576,7 +578,11 @@ class TestRetryAfterCeiling:
         middleware = RetryMiddleware(
             transport,
             RetryConfig(
-                max_attempts=5, initial_delay=0.5, backoff_multiplier=2.0, max_delay=4.0
+                max_attempts=5,
+                initial_delay=0.5,
+                backoff_multiplier=2.0,
+                max_delay=4.0,
+                jitter=False,
             ),
         )
 
@@ -606,3 +612,140 @@ class TestRetryAfterCeiling:
         assert exc_info.value.status_code == 401
         assert len(transport.calls) == 1
         sleep_mock.assert_not_called()
+
+
+@pytest.mark.parametrize("is_async", [False, True])
+@pytest.mark.parametrize("jitter", [False, True])
+def test_full_jitter_backoff_with_injected_rng(is_async: bool, jitter: bool) -> None:
+    transport = AsyncFakeTransport() if is_async else FakeTransport()
+    for _ in range(5):
+        transport.enqueue(status_code=503)
+    transport.enqueue(status_code=200)
+    bounds: list[tuple[float, float]] = []
+    fractions = iter([0.0, 0.25, 0.5, 1.0, 0.75])
+
+    def uniform(low: float, high: float) -> float:
+        bounds.append((low, high))
+        return low + next(fractions) * (high - low)
+
+    config = RetryConfig(
+        max_attempts=6, initial_delay=0.5, max_delay=2.0, jitter=jitter
+    )
+    delays: list[float] = []
+    if is_async:
+        assert isinstance(transport, AsyncFakeTransport)
+        middleware = AsyncRetryMiddleware(transport, config, _uniform=uniform)
+
+        async def run() -> httpx.Response:
+            async def sleep(delay: float) -> None:
+                delays.append(delay)
+
+            return await middleware.request("GET", "/resource", _sleep_fn=sleep)
+
+        response = asyncio.run(run())
+    else:
+        assert isinstance(transport, FakeTransport)
+        response = RetryMiddleware(transport, config, _uniform=uniform).request(
+            "GET", "/resource", _sleep_fn=delays.append
+        )
+    assert response.status_code == 200
+    assert delays == (
+        [0.0, 0.25, 1.0, 2.0, 1.5] if jitter else [0.5, 1.0, 2.0, 2.0, 2.0]
+    )
+    assert bounds == (
+        [(0.0, 0.5), (0.0, 1.0), (0.0, 2.0), (0.0, 2.0), (0.0, 2.0)] if jitter else []
+    )
+
+
+def test_jitter_is_on_by_default() -> None:
+    assert RetryConfig().jitter is True
+
+
+@pytest.mark.parametrize("is_async", [False, True])
+@pytest.mark.parametrize("retry_after", ["0", "3", "120"])
+def test_retry_after_bypasses_rng(is_async: bool, retry_after: str) -> None:
+    transport = AsyncFakeTransport() if is_async else FakeTransport()
+    transport.enqueue(status_code=503, headers={"Retry-After": retry_after})
+    transport.enqueue(status_code=200)
+
+    def unexpected_rng(low: float, high: float) -> float:
+        raise AssertionError("Retry-After must not use jitter")
+
+    delays: list[float] = []
+    if is_async:
+        assert isinstance(transport, AsyncFakeTransport)
+        middleware = AsyncRetryMiddleware(
+            transport, RetryConfig(), _uniform=unexpected_rng
+        )
+
+        async def run() -> httpx.Response:
+            async def sleep(delay: float) -> None:
+                delays.append(delay)
+
+            return await middleware.request("GET", "/resource", _sleep_fn=sleep)
+
+        response = asyncio.run(run())
+    else:
+        assert isinstance(transport, FakeTransport)
+        response = RetryMiddleware(
+            transport, RetryConfig(), _uniform=unexpected_rng
+        ).request("GET", "/resource", _sleep_fn=delays.append)
+    assert response.status_code == 200
+    assert delays == [float(retry_after)]
+
+
+@pytest.mark.parametrize("is_async", [False, True])
+def test_polling_requests_use_jittered_retries(is_async: bool) -> None:
+    from ksef2._core.polling import async_poll_until, poll_until
+
+    transport = AsyncFakeTransport() if is_async else FakeTransport()
+    for status in [503, 200, 503, 200]:
+        transport.enqueue(status_code=status)
+    retry_delays: list[float] = []
+    poll_delays: list[float] = []
+    fractions = iter([0.25, 0.75])
+
+    def uniform(low: float, high: float) -> float:
+        return next(fractions) * high
+
+    results = iter([True, False])
+    if is_async:
+        assert isinstance(transport, AsyncFakeTransport)
+        middleware = AsyncRetryMiddleware(transport, RetryConfig(), _uniform=uniform)
+
+        async def run() -> httpx.Response:
+            async def retry_sleep(delay: float) -> None:
+                retry_delays.append(delay)
+
+            async def poll_sleep(delay: float) -> None:
+                poll_delays.append(delay)
+
+            async def operation() -> httpx.Response:
+                return await middleware.request("GET", "/status", _sleep_fn=retry_sleep)
+
+            return await async_poll_until(
+                operation=operation,
+                retry_predicate=lambda _: next(results),
+                poll_interval=1.0,
+                max_attempts=2,
+                timeout_error_factory=TimeoutError,
+                sleep=poll_sleep,
+            )
+
+        response = asyncio.run(run())
+    else:
+        assert isinstance(transport, FakeTransport)
+        sync_middleware = RetryMiddleware(transport, RetryConfig(), _uniform=uniform)
+        response = poll_until(
+            operation=lambda: sync_middleware.request(
+                "GET", "/status", _sleep_fn=retry_delays.append
+            ),
+            retry_predicate=lambda _: next(results),
+            poll_interval=1.0,
+            max_attempts=2,
+            timeout_error_factory=TimeoutError,
+            sleep=poll_delays.append,
+        )
+    assert response.status_code == 200
+    assert retry_delays == [0.125, 0.375]
+    assert poll_delays == [1.0]

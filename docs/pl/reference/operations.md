@@ -103,12 +103,19 @@ ponawialne odpowiedzi HTTP dla ponawialnych typów requestów.
 | `max_retry_after` | `120.0` |
 | `backoff_multiplier` | `2.0` |
 | `retryable_status_codes` | `(429, 502, 503, 504)` |
+| `jitter` | `True` |
 
-Opóźnienie retry jest wykładnicze:
+Limit opóźnienia wykładniczego wynosi:
 
 ```text
 min(initial_delay * backoff_multiplier ** (attempt - 1), max_delay)
 ```
+
+`jitter=True` włącza pełny jitter: każde ponowienie losuje opóźnienie
+jednostajnie od zera do limitu z powyższego wzoru. Ustaw `jitter=False`, aby
+używać tego limitu jako dokładnego opóźnienia. Dotyczy to także ponowień HTTP
+w helperach pollingu; zwykły `poll_interval` pozostaje stały. `Retry-After`
+nie podlega losowaniu.
 
 `max_delay` ogranicza tylko eksponencjalne backoffy. Nagłówek `Retry-After`
 (sekundy albo data HTTP) jest stosowany dokładnie, gdy mieści się w

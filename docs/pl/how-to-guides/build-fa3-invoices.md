@@ -508,6 +508,8 @@ Jeżeli masz już kompletny `KsefInvoice`, otwórz go ponownie w builderze przez
 
 `parse_invoice_xml` przyjmuje bajty XML i zwraca publiczny model `KsefInvoice`.
 Nie wymaga importowania prywatnych schematów ani mapperów.
+Krótkie napisy wyglądające jak ścieżki zgłaszają `KSeFArgumentError`;
+przed parsowaniem odczytaj plik przez `Path(...).read_bytes()`.
 
 ```python
 from pathlib import Path

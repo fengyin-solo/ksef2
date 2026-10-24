@@ -701,7 +701,11 @@ class TestAsyncRetryAfterCeiling:
             fake.enqueue(json_body={"error": "unavailable"}, status_code=503)
 
         config = RetryConfig(
-            max_attempts=5, initial_delay=0.5, backoff_multiplier=2.0, max_delay=4.0
+            max_attempts=5,
+            initial_delay=0.5,
+            backoff_multiplier=2.0,
+            max_delay=4.0,
+            jitter=False,
         )
         sleep_calls: list[float] = []
         mock_sleep = AsyncMock(side_effect=lambda s: sleep_calls.append(s))

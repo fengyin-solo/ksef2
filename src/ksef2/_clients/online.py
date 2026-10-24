@@ -12,6 +12,7 @@ from typing_extensions import deprecated
 from ksef2._clients._handles import OperationHandle
 from ksef2._core import exceptions
 from ksef2._core.crypto import encrypt_invoice
+from ksef2._core.paths import reject_path_like_content
 from ksef2._core.polling import poll_until
 from ksef2._core.protocols import Middleware
 from ksef2._domain.models import invoices
@@ -301,6 +302,7 @@ class OnlineSessionClient:
             A handle exposing the submission's ``reference_number``. Call its ``wait()`` for the processing result and ``download_upo()`` for the invoice UPO.
 
         Raises:
+            KSeFArgumentError: If a short string looks like a file path instead of XML content.
             KSeFEncryptionError: If invoice encryption fails.
 
         Example:
@@ -312,6 +314,8 @@ class OnlineSessionClient:
             ```
         """
         self._ensure_open()
+        if isinstance(invoice_xml, str):
+            reject_path_like_content(invoice_xml, content_type="XML")
         xml_bytes = (
             invoice_xml.encode("utf-8") if isinstance(invoice_xml, str) else invoice_xml
         )

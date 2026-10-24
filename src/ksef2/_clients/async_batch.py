@@ -393,6 +393,17 @@ class AsyncBatchSessionClient:
                     prepared_batch=self._prepared_batch,
                 ) from exc
 
+    def close(self) -> None:
+        """Raise a usage error without closing resources.
+
+        Raises:
+            KSeFArgumentError: Always. Use ``await session.aclose() or async with``.
+        """
+        raise exceptions.KSeFArgumentError(
+            "This is an async session; use await session.aclose() or async with.",
+            hint="Use await session.aclose() or async with.",
+        )
+
     async def aclose(self) -> None:
         """Close the batch session and start processing.
 

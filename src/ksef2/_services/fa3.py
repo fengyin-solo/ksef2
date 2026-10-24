@@ -8,6 +8,7 @@ from xsdata.exceptions import ParserError
 from xsdata.formats.dataclass.parsers import XmlParser
 from xsdata.formats.dataclass.parsers.handlers.lxml import LxmlEventHandler
 
+from ksef2._core.paths import reject_path_like_content
 from ksef2._core.xml import parse_xml_bytes
 from ksef2._domain.models.fa3 import KsefInvoice
 from ksef2._infra.mappers.invoices.fa3.spec.invoice import from_spec
@@ -25,9 +26,12 @@ def parse_invoice_xml(invoice_xml: bytes | str) -> KsefInvoice:
         not full XSD validation or a lossless XML representation.
 
     Raises:
+        KSeFArgumentError: If a short string looks like a file path instead of XML content.
         ValueError: If XML is malformed, uses a DTD, is not FA(3), or cannot
             be mapped to a valid invoice. The original cause is preserved.
     """
+    if isinstance(invoice_xml, str):
+        reject_path_like_content(invoice_xml, content_type="XML")
     try:
         if isinstance(invoice_xml, str):
             declaration = re.compile(

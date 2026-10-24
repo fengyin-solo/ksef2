@@ -258,6 +258,9 @@ The QR identifies the seller NIP, issue date and SHA-256 of the **original XML
 bytes**, encoded as unpadded Base64URL, according to the
 [Ministry's verification QR specification](https://github.com/CIRFMF/ksef-docs/blob/main/kody-qr.md).
 Use bytes when calling `export_from_string()`; a string is encoded as UTF-8.
+Short filename-like strings passed to `export_from_string()` or
+`InvoiceXSLTRenderer.render_from_string()` raise `KSeFArgumentError`.
+Use their `export_from_path()` or `render_from_path()` methods to read files.
 Reserializing an invoice changes its hash. Rendering does not check its acceptance
 or verify that the supplied KSeF number belongs to it.
 

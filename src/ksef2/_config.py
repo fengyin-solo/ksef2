@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Literal
+import warnings
 
 
 class Environment(Enum):
@@ -43,6 +44,24 @@ def coerce_environment(environment: Environment | str) -> Environment:
             f"Unsupported KSeF environment {environment!r}; "
             "use 'PRODUCTION', 'TEST', or 'DEMO'."
         ) from None
+
+
+def resolve_legacy_environment(
+    environment: Environment | None,
+    *,
+    replacement: str,
+) -> Environment:
+    """Keep old public branch constructors working while warning on omission."""
+    if environment is not None:
+        return environment
+    warnings.warn(
+        "Omitting `environment` from this constructor is deprecated. "
+        f"Use {replacement} instead. This call shape remains available "
+        "throughout 1.x; removal, if any, may happen no earlier than 2.0.0.",
+        DeprecationWarning,
+        stacklevel=3,
+    )
+    return Environment.PRODUCTION
 
 
 @dataclass(frozen=True, slots=True)

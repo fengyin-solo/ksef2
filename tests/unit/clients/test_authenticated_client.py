@@ -51,6 +51,18 @@ def _build_client(  # [TODO] maybe we could just have client as a fixture, im no
 
 
 class TestAuthenticatedClientFacade:
+    def test_legacy_constructor_without_environment_still_works(
+        self,
+        fake_transport: FakeTransport,
+        domain_auth_tokens: BaseFactory[AuthTokens],
+    ) -> None:
+        with pytest.warns(DeprecationWarning, match="authentication.resume"):
+            _ = AuthenticatedClient(
+                fake_transport,
+                domain_auth_tokens.build(),
+                CertificateStore(),
+            )
+
     def test_properties_expose_tokens(
         self,
         fake_transport: FakeTransport,

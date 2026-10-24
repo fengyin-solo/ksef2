@@ -277,7 +277,7 @@ correction = (
     .add_corrected_invoice(
         issue_date=date(2026, 6, 24),
         invoice_number="FV/1/2026",
-        ksef_id="5261040828-20260624-ABCDEF-ABCDEF-FF",
+        ksef_id="5261040828-20260624-ABCDEFABCDEF-FF",
     )
     .done()
     .done()
@@ -367,7 +367,7 @@ settlement_xml = (
             )
         .done()
         .advance()
-            .add_invoice_reference(ksef_id="5261040828-20260801-ABCDEF-ABCDEF-FF")
+            .add_invoice_reference(ksef_id="5261040828-20260801-ABCDEFABCDEF-FF")
         .done()
         .payment()
             .via("bank_transfer")

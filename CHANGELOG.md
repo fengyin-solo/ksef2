@@ -2,6 +2,9 @@
 
 ### Fixed
 
+- Fix English and Polish documentation examples for limits, authentication,
+  token activation, imports, async entry points, certificate file paths, and
+  sample identifiers. Document client and session concurrency boundaries.
 - Wrap invalid non-builder public model and request-conversion inputs in the
   SDK validation-error hierarchy, preserving the Pydantic cause and naming the
   public parameter. Validate KSeF invoice-number filters at construction,

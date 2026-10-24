@@ -155,7 +155,7 @@ filters = InvoicesFilter.for_seller(
     date_type="permanent_storage",
     date_from=now - timedelta(days=30),
     date_to=now,
-    ksef_number="1234567890-20260625-...",
+    ksef_number="5261040828-20260625-ABCDEF012345-67",
 )
 
 page = auth.invoices.search(filters).first_page()

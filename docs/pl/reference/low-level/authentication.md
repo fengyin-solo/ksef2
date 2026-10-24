@@ -51,17 +51,26 @@ sieciowych.
 
 ## Wiązanie raw tokenów
 
+Przekaż odpowiedź `init` zwróconą przez `token_auth()` albo `xades_auth()` do
+`bind_tokens()` po odpytaniu operacji aż do statusu sukcesu. Funkcja zwraca
+uwierzytelnionego klienta:
+
 ```python
+from ksef2 import Client
+from ksef2.clients import AuthenticatedClient
 from ksef2.models import AuthenticationResumeState
+from ksef2.raw import spec
 from ksef2.raw.mappers import auth as auth_mapper
 
-raw_tokens = client.raw.auth.redeem_token(init.authenticationToken.token)
-auth_tokens = auth_mapper.from_spec(raw_tokens)
-auth = client.authentication.resume(AuthenticationResumeState.from_tokens(auth_tokens))
+def bind_tokens(client: Client, init: spec.AuthenticationInitResponse) -> AuthenticatedClient:
+    raw_tokens = client.raw.auth.redeem_token(init.authenticationToken.token)
+    auth_tokens = auth_mapper.from_spec(raw_tokens)
+    return client.authentication.resume(AuthenticationResumeState.from_tokens(auth_tokens))
 ```
 
-Po powiązaniu możesz używać gałęzi workflow, takich jak `auth.invoices`, albo
-uwierzytelnionych gałęzi raw, takich jak `auth.raw.invoices`.
+Przypisz wynik przez `auth = bind_tokens(client, init)`. Potem możesz używać
+gałęzi workflow, takich jak `auth.invoices`, albo uwierzytelnionych gałęzi raw,
+takich jak `auth.raw.invoices`.
 
 ## Kontrakt statusu pollingu
 

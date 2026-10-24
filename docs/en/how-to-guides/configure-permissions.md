@@ -176,20 +176,21 @@ for grant in grants:
 
 ## Revoke permissions
 
-Use the permission id returned by a listing. Revocation also returns a
-`PermissionOperation` handle.
+Use the `permission` record selected from a listing above. Revocation also
+returns a `PermissionOperation` handle.
 
 ```python
-operation = auth.permissions.revoke(permission_id="permission-id")
+operation = auth.permissions.revoke(permission_id=permission.id)
 status = operation.wait()
 print(status.status.code, status.status.description)
 ```
 
-For authorization grants, use the authorization-specific revocation method:
+For the `grant` selected from the authorization listing, use the
+authorization-specific revocation method:
 
 ```python
 operation = auth.permissions.revoke_authorization(
-    permission_id="authorization-id",
+    permission_id=grant.id,
 )
 ```
 

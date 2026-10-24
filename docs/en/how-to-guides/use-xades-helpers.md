@@ -13,14 +13,15 @@ diagnose the signed authentication XML. Most applications should still call
 
 ```python
 import os
+from pathlib import Path
 
 from ksef2.xades import load_certificate_from_pem, load_private_key_from_pem
 
 password = os.environ.get("KSEF2_KEY_PASSWORD")
 
-cert = load_certificate_from_pem("company.pem")
+cert = load_certificate_from_pem(Path("company.pem"))
 private_key = load_private_key_from_pem(
-    "company.key",
+    Path("company.key"),
     password=password.encode() if password else None,
 )
 ```
@@ -49,13 +50,14 @@ credentials = XAdESCredentials.from_der(
 
 ```python
 import os
+from pathlib import Path
 
 from ksef2.xades import load_certificate_and_key_from_p12
 
 password = os.environ.get("KSEF2_P12_PASSWORD")
 
 cert, private_key = load_certificate_and_key_from_p12(
-    "company.p12",
+    Path("company.p12"),
     password=password.encode() if password else None,
 )
 ```
@@ -90,10 +92,18 @@ Or pass the credential holder. The async branch awaits the same call inside an
 `async def main()` function.
 
 ```python
-auth = await client.authentication.with_xades(
-    nip="5261040828",
-    credentials=credentials,
-)
+import asyncio
+
+from ksef2 import AsyncClient, Environment
+
+async def main() -> None:
+    async with AsyncClient(Environment.DEMO) as client:
+        auth = await client.authentication.with_xades(
+            nip="5261040828",
+            credentials=credentials,
+        )
+
+asyncio.run(main())
 ```
 
 ## Generate TEST certificate material

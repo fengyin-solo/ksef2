@@ -63,7 +63,7 @@ limits and the change is part of a controlled test or administration procedure.
 from ksef2.models import CollectiveIdentifierLimits, ContextLimits, SessionLimits
 
 limits = ContextLimits(
-    collective_identifier=CollectiveIdentifierLimits(),
+    collective_identifier=CollectiveIdentifierLimits(max_invoices=1000),
     online_session=SessionLimits(
         max_invoice_size_mb=10,
         max_invoice_with_attachment_size_mb=20,

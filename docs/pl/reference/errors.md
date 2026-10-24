@@ -64,6 +64,14 @@ aktualne sformułowania KSeF i mogą zmienić się między wydaniami. To samo do
 odzyskiwania.
 
 ```python
+from ksef2 import (
+    KSeFApiError,
+    KSeFException,
+    KSeFNotReadyError,
+    KSeFRateLimitError,
+    KSeFTransportError,
+)
+
 try:
     result = auth.invoices.query_metadata(filters=filters)
 except KSeFRateLimitError as exc:

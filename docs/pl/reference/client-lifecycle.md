@@ -9,7 +9,7 @@ konfiguracji.
 
 ## Konstruktory klienta bazowego
 
-```python
+```text
 Client(
     environment=Environment.TEST,
     *,
@@ -115,6 +115,34 @@ głównego. Nie posiadają osobnego klienta HTTP.
 Gdy `http_client` jest podany, ustawienia HTTP takie jak timeout, pool, TLS,
 proxy, `trust_env`, HTTP/2, custom transporty i event hooki pochodzą z tego
 obiektu. Middleware retry SDK nadal używa `transport_config.retry`.
+
+## Wątki, zadania i serializacja
+
+Używaj osobnego `Client` i jego uwierzytelnionych gałęzi w każdym wątku roboczym.
+Bazowy `httpx.Client` obsługuje współbieżne żądania, a `threading.Lock` w SDK
+serializuje odświeżanie tokenów w obrębie jednego uwierzytelnionego klienta.
+Ta blokada nie chroni jednak pamięci podręcznej certyfikatów i limitów ani stanu
+cyklu życia klienta, więc SDK nie gwarantuje bezpieczeństwa całego klienta
+przy współdzieleniu między wątkami.
+
+`AsyncClient` i jego uwierzytelnione gałęzie mogą obsługiwać niezależne żądania
+wielu zadań w jednej pętli zdarzeń. Odświeżanie tokenów używa `asyncio.Lock`.
+Nie współdziel ich między wątkami ani pętlami zdarzeń. Przed zamknięciem klienta
+poczekaj na wszystkie zadania i koordynuj zmiany pamięci podręcznej limitów
+lub magazynów certyfikatów.
+
+Przypisz każdej sesji online lub wsadowej jednego właściciela albo serializuj
+jej operacje blokadą aplikacji. Flagi zamknięcia sesji i stan wysyłki nie mają
+blokady współbieżności. Wysyłanie faktur lub części paczki nie może konkurować
+z zamykaniem sesji ani ponownym wysyłaniem tej samej paczki.
+
+Limity żądań KSeF obowiązują dla kontekstu niezależnie od liczby klientów, wątków
+czy zadań, które go używają. Ograniczaj współbieżność łącznie dla tych workerów.
+
+Klienci z założenia nie obsługują pickle ani głębokiego kopiowania; stany
+wznowienia i modele faktur można serializować, więc przekazuj je i twórz klienta
+w procesie odbierającym. Zapisuj stany wznowienia przez `to_json()` i odtwarzaj je
+przez odpowiednią uwierzytelnioną gałąź.
 
 ## Błędy lifecycle
 

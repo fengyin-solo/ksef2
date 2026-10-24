@@ -62,7 +62,7 @@ delegowania:
 from ksef2.models import EntityPermission
 
 operation = auth.permissions.grant_entity(
-    subject_value="1234567890",
+    subject_value="5261040828",
     permissions=[EntityPermission(type="invoice_read", can_delegate=False)],
     description="Accounting office read access",
     entity_name="Accounting Sp. z o.o.",

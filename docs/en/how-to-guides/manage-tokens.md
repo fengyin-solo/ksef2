@@ -48,8 +48,6 @@ After persisting the credential, wait explicitly when the next operation needs
 an active token:
 
 ```python
-status = auth.tokens.generate(...).wait(timeout=60.0, poll_interval=1.0)
-# or, on the handle you already hold:
 status = token.wait(timeout=60.0, poll_interval=1.0)
 ```
 
@@ -91,7 +89,7 @@ for item in auth.tokens.list():
 
 # TokenInfo
 # {
-#   "reference_number": "20260625-TOKEN-...",
+#   "reference_number": "20260625-EC-0123456789-ABCDEF0123-45",
 #   "description": "nightly invoice export",
 #   "requested_permissions": ["invoice_read"],
 #   "status": "active"
@@ -138,17 +136,17 @@ same read is `second = await auth.tokens.list().page(cursor)`.
 Use the token reference number for later lifecycle operations.
 
 ```python
-status = auth.tokens.get_status(reference_number="20260625-TOKEN-...")
+status = auth.tokens.get_status(reference_number="20260625-EC-0123456789-ABCDEF0123-45")
 
 # TokenStatusResponse
 # {
-#   "reference_number": "20260625-TOKEN-...",
+#   "reference_number": "20260625-EC-0123456789-ABCDEF0123-45",
 #   "status": "active"
 # }
 ```
 
 ```python
-auth.tokens.revoke(reference_number="20260625-TOKEN-...")
+auth.tokens.revoke(reference_number="20260625-EC-0123456789-ABCDEF0123-45")
 ```
 
 :::tip[Keep reference and secret separately]

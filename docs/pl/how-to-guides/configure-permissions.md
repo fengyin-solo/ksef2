@@ -177,20 +177,20 @@ for grant in grants:
 
 ## Cofnij uprawnienia
 
-Użyj identyfikatora uprawnienia zwróconego przez listę. Cofnięcie też zwraca
+Użyj rekordu `permission` wybranego z listy powyżej. Cofnięcie też zwraca
 uchwyt `PermissionOperation`.
 
 ```python
-operation = auth.permissions.revoke(permission_id="permission-id")
+operation = auth.permissions.revoke(permission_id=permission.id)
 status = operation.wait()
 print(status.status.code, status.status.description)
 ```
 
-Dla nadań autoryzacji użyj metody cofania autoryzacji:
+Dla rekordu `grant` wybranego z listy autoryzacji użyj metody cofania autoryzacji:
 
 ```python
 operation = auth.permissions.revoke_authorization(
-    permission_id="authorization-id",
+    permission_id=grant.id,
 )
 ```
 

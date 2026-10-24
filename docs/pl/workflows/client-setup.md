@@ -24,8 +24,8 @@ with Client(Environment.TEST) as client:
 
 ### Async
 
-Ten przykład async umieść wewnątrz `async def main()` i uruchom przez
-`asyncio.run(main())`, jak pokazano w [przewodniku konfiguracji klienta](../how-to-guides/client-setup.md).
+Uruchom przykład przez `asyncio.run(main())`. Wzorce zarządzania cyklem życia
+znajdziesz w [przewodniku konfiguracji klienta](../how-to-guides/client-setup.md).
 
 ```python
 import asyncio

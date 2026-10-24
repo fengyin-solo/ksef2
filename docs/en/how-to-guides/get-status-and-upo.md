@@ -26,9 +26,9 @@ with auth.online_session(form_code=FormSchema.FA3) as session:
     # SessionInvoiceStatusResponse
     # {
     #   "ordinal_number": 1,
-    #   "reference_number": "20260625-ABCD-EF1234567890",
+    #   "reference_number": "20260625-SO-0123456789-ABCDEF0123-45",
     #   "invoice_number": "FV/42/2026",
-    #   "ksef_number": "1234567890-20260625-...",
+    #   "ksef_number": "5261040828-20260625-ABCDEF012345-67",
     #   "status": {
     #     "code": 200,
     #     "description": "Processed"

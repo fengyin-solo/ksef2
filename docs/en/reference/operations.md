@@ -27,6 +27,14 @@ base URL is filled from that environment; a different URL raises
 client already configured for another environment is rejected.
 
 ```python
+from ksef2 import (
+    ConnectionPoolConfig,
+    RetryConfig,
+    TimeoutConfig,
+    TlsConfig,
+    TransportConfig,
+)
+
 TransportConfig(
     timeouts=TimeoutConfig(),
     pool=ConnectionPoolConfig(),
@@ -201,6 +209,8 @@ To manage tokens yourself, turn the behavior off. Expired tokens then surface
 as `KSeFAuthError` and `client.authentication.refresh()` stays available.
 
 ```python
+from ksef2 import Client, Environment, TransportConfig
+
 client = Client(Environment.PRODUCTION, transport_config=TransportConfig(auto_refresh_tokens=False))
 ```
 

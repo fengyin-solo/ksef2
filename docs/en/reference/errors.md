@@ -64,6 +64,14 @@ Catch narrower subclasses before `KSeFException` when the workflow has a
 specific recovery action.
 
 ```python
+from ksef2 import (
+    KSeFApiError,
+    KSeFException,
+    KSeFNotReadyError,
+    KSeFRateLimitError,
+    KSeFTransportError,
+)
+
 try:
     result = auth.invoices.query_metadata(filters=filters)
 except KSeFRateLimitError as exc:

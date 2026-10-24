@@ -120,11 +120,23 @@ class KSeFBaseModel(BaseModel):
     def model_validate_json(
         cls,
         json_data: str | bytes | bytearray,
-        **kwargs: Any,
-    ) -> Self:  # pyright: ignore[reportAny, reportExplicitAny]
+        *,
+        strict: bool | None = None,
+        extra: Literal["allow", "ignore", "forbid"] | None = None,
+        context: object | None = None,
+        by_alias: bool | None = None,
+        by_name: bool | None = None,
+    ) -> Self:
         """Validate JSON, optionally wrapping errors for SDK-facing models."""
         try:
-            return super().model_validate_json(json_data, **kwargs)  # pyright: ignore[reportAny]
+            return super().model_validate_json(
+                json_data,
+                strict=strict,
+                extra=extra,
+                context=context,
+                by_alias=by_alias,
+                by_name=by_name,
+            )
         except ValidationError as exc:
             if cls.wrap_validation_errors:
                 raise _validation_exception(exc, cls.__name__) from exc

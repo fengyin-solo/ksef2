@@ -164,5 +164,5 @@ def test_pdf_page_size_overrides_css(size: PDFPageSize, css_size: str) -> None:
     reason="Runtime type checks reject strings before the enum value boundary runs.",
 )
 def test_invalid_pdf_page_size_raises_sdk_argument_error() -> None:
-    with pytest.raises(KSeFArgumentError, match="Unsupported PDF page size"):
-        InvoicePDFExporter(page_size=cast(PDFPageSize, cast(object, "A4")))
+    with pytest.raises(KSeFArgumentError, match="Invalid PDFPageSize value"):
+        InvoicePDFExporter(page_size=cast(PDFPageSize, cast(object, "A7")))

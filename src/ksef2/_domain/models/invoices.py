@@ -20,9 +20,11 @@ from ksef2._domain.models.base import (
     PersistedFormatVersion,
 )
 from ksef2._domain.models.compression import (
-    CompressionType,
+    CompressionType as CompressionType,
+    CompressionTypeInput,
     normalize_compression_type,
 )
+from ksef2._domain.models._enum import coerce_enum
 from ksef2._domain.models.session import (
     FormSchema,
     _validate_encoded_session_secret,  # pyright: ignore[reportPrivateUsage]
@@ -31,6 +33,7 @@ from ksef2._domain.types import CurrencyCodes, KsefInvoiceTypes
 
 
 type SortOrder = Literal["asc", "desc"]
+type SortOrderInput = SortOrder | SortOrderEnum | str
 type BuyerIdentifierType = Literal["nip", "vat_ue", "other", "none"]
 type InvoiceType = KsefInvoiceTypes
 type InvoicingMode = Literal["online", "offline"]
@@ -109,29 +112,17 @@ _INVOICING_MODE_FROM_SPEC: dict[InvoicingModeSpecValue, InvoicingMode] = {
 _WARSAW_TIMEZONE = ZoneInfo("Europe/Warsaw")
 
 
-def normalize_sort_order(value: SortOrder | SortOrderEnum | str) -> SortOrder:
+def normalize_sort_order(value: SortOrderInput | str) -> SortOrder:
     """Normalize SDK or OpenAPI sort order values to SDK literals.
 
     Raises:
-        ValueError: If ``value`` is not a supported sort order.
+        KSeFArgumentError: If ``value`` is not a supported sort order.
     """
-    if isinstance(value, SortOrderEnum):
-        return _SORT_ORDER_FROM_SPEC[value.value]
-
-    lowered_value = value.strip().lower()
-    if lowered_value in _SORT_ORDER_TO_SPEC:
-        return lowered_value  # pyright: ignore[reportReturnType]
-
-    if value in _SORT_ORDER_FROM_SPEC:
-        return _SORT_ORDER_FROM_SPEC[value]
-
-    raise ValueError(
-        f"Invalid sort order: {value}. Valid sort orders are: "
-        f"{', '.join(_SORT_ORDER_TO_SPEC)}"
-    )
+    member = coerce_enum(SortOrderEnum, value)
+    return _SORT_ORDER_FROM_SPEC[member.value]
 
 
-def sort_order_to_spec(value: SortOrder | SortOrderEnum | str) -> SortOrderSpecValue:
+def sort_order_to_spec(value: SortOrderInput | str) -> SortOrderSpecValue:
     """Convert a sort order value to the OpenAPI representation."""
     return _SORT_ORDER_TO_SPEC[normalize_sort_order(value)]
 
@@ -901,7 +892,7 @@ class ExportInvoicesPayload(KSeFBaseModel):
     """Identifier of the KSeF public key used for encryption; ``None`` to use the default."""
     only_metadata: bool = False
     """Export only invoice metadata instead of full invoice XML."""
-    compression_type: CompressionType | None = None
+    compression_type: CompressionTypeInput | None = None
     """Compression applied to the package; ``None`` for the server default."""
 
     @field_validator("compression_type", mode="before")

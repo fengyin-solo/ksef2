@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from ksef2 import Environment
 from ksef2._clients.async_authenticated import AsyncAuthenticatedClient
 from ksef2._clients.async_online import AsyncOnlineSessionClient
 from ksef2._clients.authenticated import AuthenticatedClient
@@ -86,10 +87,16 @@ def test_enum_inputs_are_case_insensitive_and_invalid_values_are_sdk_errors() ->
         patch.object(pdf, "_load_weasyprint", return_value=object()),
         patch.object(pdf, "InvoiceXSLTRenderer", return_value=object()),
     ):
-        exporter = InvoicePDFExporter(page_size="a4")
+        exporter = InvoicePDFExporter(
+            verification_environment=Environment.TEST,
+            page_size="a4",
+        )
         assert isinstance(exporter, InvoicePDFExporter)
         with pytest.raises(KSeFArgumentError, match="Valid values"):
-            InvoicePDFExporter(page_size="A0")
+            InvoicePDFExporter(
+                verification_environment=Environment.TEST,
+                page_size="A0",
+            )
 
 
 @pytest.mark.parametrize("numeric_rate", [23, 0.23, Decimal("0.23")])

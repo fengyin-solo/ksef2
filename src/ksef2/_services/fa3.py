@@ -13,11 +13,11 @@ from ksef2._infra.mappers.invoices.fa3.spec.invoice import from_spec
 from ksef2._infra.schema.fa3.models.schemat import Faktura
 
 
-def parse_invoice_xml(invoice_xml: bytes) -> KsefInvoice:
-    """Parse FA(3) XML bytes without exposing generated schema types.
+def parse_invoice_xml(invoice_xml: bytes | str) -> KsefInvoice:
+    """Parse FA(3) XML content without exposing generated schema types.
 
     Args:
-        invoice_xml: Original XML bytes, including any encoding declaration.
+        invoice_xml: Original XML bytes or a Unicode XML string, including an XML declaration.
 
     Returns:
         The public invoice aggregate. Domain validation is applied; this is
@@ -28,7 +28,10 @@ def parse_invoice_xml(invoice_xml: bytes) -> KsefInvoice:
             be mapped to a valid invoice. The original cause is preserved.
     """
     try:
-        root = parse_xml_bytes(invoice_xml)
+        xml_bytes = (
+            invoice_xml.encode("utf-8") if isinstance(invoice_xml, str) else invoice_xml
+        )
+        root = parse_xml_bytes(xml_bytes)
         if cast(etree.DTD | None, root.getroottree().docinfo.internalDTD) is not None:
             raise ValueError("FA(3) invoice XML must not contain a DTD")
         if root.tag != f"{{{Faktura.Meta.namespace}}}Faktura":

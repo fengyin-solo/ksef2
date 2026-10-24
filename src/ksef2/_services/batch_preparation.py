@@ -62,6 +62,11 @@ def load_batch_items(
             invoices.append(
                 BatchInvoice(file_name=item.name, content=item.read_bytes())
             )
+        elif isinstance(item, str) and Path(item).is_file():
+            raise exceptions.KSeFArgumentError(
+                "Invoice content looks like an existing file path; pass Path(...) "
+                "to read a file, or pass the XML content as str or bytes."
+            )
         else:
             content = item.encode("utf-8") if isinstance(item, str) else item
             invoices.append(

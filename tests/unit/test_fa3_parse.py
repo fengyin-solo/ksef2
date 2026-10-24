@@ -17,6 +17,7 @@ SAMPLES = Path(__file__).parents[2] / "schemas" / "FA3" / "samples"
 def test_parse_and_rebuild_public_invoice(filename: str) -> None:
     invoice = parse_invoice_xml((SAMPLES / filename).read_bytes())
     xml = InvoiceBuilder.from_invoice(invoice).to_xml()
+    assert parse_invoice_xml(xml) == invoice
     assert parse_invoice_xml(xml.encode("utf-8")) == invoice
     assert invoice.seller.tax_id
     assert invoice.body.invoice_number

@@ -120,6 +120,9 @@ class FormSchema(Enum):
         return json_schema
 
 
+type FormSchemaInput = FormSchema | str
+
+
 class SessionEncryptionMaterial(KSeFBaseModel):
     """Raw and encrypted symmetric session key material."""
 

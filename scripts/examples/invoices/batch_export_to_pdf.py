@@ -2,6 +2,7 @@
 
 Prerequisites:
 - run from the repository checkout so the sample invoice path resolves
+- install ``ksef2[pdf]`` for PDF output
 
 What it demonstrates:
 - local XSLT rendering to HTML

@@ -1,5 +1,7 @@
 """Public FA(3) API facade."""
 
+from typing import TYPE_CHECKING
+
 from ksef2._domain.models.fa3 import (
     ContactInfo,
     InvoiceAddress,
@@ -66,8 +68,24 @@ class InvoiceBuilder(StandardInvoiceBuilder):
     """
 
 
-# compatability alias
-FA3InvoiceBuilder = InvoiceBuilder
+if TYPE_CHECKING:
+    FA3InvoiceBuilder = InvoiceBuilder
+
+
+def __getattr__(name: str):
+    if name == "FA3InvoiceBuilder":
+        import warnings
+
+        warnings.warn(
+            "FA3InvoiceBuilder is deprecated; use InvoiceBuilder instead. "
+            "It may be removed no earlier than ksef2 2.0.0.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        globals()[name] = InvoiceBuilder
+        return InvoiceBuilder
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "ContactInfo",

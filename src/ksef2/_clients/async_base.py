@@ -12,13 +12,14 @@ from ksef2._clients.async_authenticated import AsyncAuthenticatedClient
 from ksef2._clients.async_encryption import AsyncEncryptionClient
 from ksef2._clients.async_peppol import AsyncPeppolClient
 from ksef2._clients.async_testdata import AsyncTestDataClient
-from ksef2._config import Environment, TransportConfig, coerce_environment
+from ksef2._config import Environment, TransportConfig
 from ksef2._core import exceptions, stores
 from ksef2._core.http_config import (
     apply_environment_base_url,
     build_http_client_kwargs,
 )
 from ksef2._core.async_http import AsyncHttpTransport
+from ksef2._domain.models._enum import coerce_enum
 from ksef2._core.middlewares.async_exceptions import AsyncKSeFExceptionMiddleware
 from ksef2._core.middlewares.async_lifecycle import (
     AsyncClientLifecycleMiddleware,
@@ -71,7 +72,7 @@ class AsyncClient:
             http_client: Existing ``httpx.AsyncClient`` to use instead of building one. The caller then owns it and must close it.
             certificate_store: Store for KSeF public-key certificates; an in-memory store is created when omitted.
         """
-        environment = coerce_environment(environment)
+        environment = coerce_enum(Environment, environment)
         self._environment = environment
         self._transport_config = transport_config or TransportConfig()
         self._http_client = http_client or self._build_http_client(

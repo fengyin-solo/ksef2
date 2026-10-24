@@ -6,6 +6,15 @@ description: Transport configuration, retry behavior, workflow timeouts, logging
 This page records operational behavior that affects production integrations.
 It is not a sending or authentication walkthrough.
 
+## Logging fields
+
+The SDK emits structured events through the standard `ksef2` logger. It is
+silent by default, so the application can use its own handlers and formatting.
+To use the SDK console or JSON renderer, call
+`ksef2.logging.configure_logging()` during application startup. Events use
+standard `DEBUG`, `INFO`, `WARNING` and `ERROR` levels. The SDK does not log
+tokens, cryptographic keys or presigned URLs.
+
 ## TransportConfig
 
 `TransportConfig` is used only when the SDK creates the underlying `httpx`

@@ -1,3 +1,8 @@
+"""Build a FA(3) invoice and export it to PDF.
+
+Requirements: install ``ksef2[pdf]`` for PDF output.
+"""
+
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal

@@ -6,6 +6,15 @@ description: Konfiguracja transportu, retry, timeouty workflow, pola logowania i
 Ta strona zapisuje zachowania operacyjne ważne dla integracji produkcyjnych.
 Nie jest walkthrough wysyłki ani uwierzytelniania.
 
+## Pola logowania
+
+SDK emituje zdarzenia strukturalne przez standardowy logger `ksef2`. Domyślnie
+milczy, więc aplikacja może używać własnych handlerów i formatowania. Aby użyć
+renderera konsolowego lub JSON SDK, wywołaj `ksef2.logging.configure_logging()`
+podczas uruchamiania aplikacji. Zdarzenia korzystają ze standardowych poziomów
+`DEBUG`, `INFO`, `WARNING` i `ERROR`. SDK nie loguje tokenów, kluczy
+kryptograficznych ani presigned URL-i.
+
 ## TransportConfig
 
 `TransportConfig` jest używany tylko wtedy, gdy SDK tworzy wewnętrznego klienta

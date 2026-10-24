@@ -16,7 +16,8 @@ from ksef2._domain.models.base import (
     parse_format_version,
 )
 from ksef2._domain.models.compression import (
-    CompressionType,
+    CompressionType as CompressionType,
+    CompressionTypeInput,
     normalize_compression_type,
 )
 from ksef2._domain.models.session import (
@@ -90,7 +91,7 @@ class BatchFileInfo(KSeFBaseModel):
     file_hash: str
     """SHA-256 hash of the batch file, Base64 encoded."""
 
-    compression_type: CompressionType | None = None
+    compression_type: CompressionTypeInput | None = None
     """Compression used for the batch file. Defaults to KSeF's ZIP behavior."""
 
     parts: list[BatchFilePart] = Field(max_length=MAX_BATCH_FILE_PARTS)

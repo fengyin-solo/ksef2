@@ -981,6 +981,14 @@ class StandardInvoiceBuilder(
         if self._body is None:
             raise ValueError("Invoice body is required but not set.")
 
+        if (
+            self._body.currency.upper() != "PLN"
+            and self._body.vat_currency_exchange_rate is None
+        ):
+            raise ValueError(
+                "vat_currency_exchange_rate is required for non-PLN invoices"
+            )
+
         if self._third_parties is None:
             self._third_parties = []
 

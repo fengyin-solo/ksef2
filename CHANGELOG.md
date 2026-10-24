@@ -48,6 +48,14 @@ and method names remain functional throughout 1.x (#171). Read
   Connect failures are reported as non-ambiguous and lost invoice responses
   include a recovery hint (#300).
 
+### Fixed
+
+- **FA(3) builder (#293, #304).** Emit summary amounts for VAT buckets with
+  rows even when rounding or correction arithmetic produces zero, validate
+  foreign-currency VAT exchange rates, and document rounding, corrections, and
+  large-invoice performance. #304 parser string handling remains in #297; the
+  missing corrected-invoice error remains in #296.
+
 ### Breaking changes
 
 - **Explicit client environments and URL alignment (#294, #295).** `Client`,

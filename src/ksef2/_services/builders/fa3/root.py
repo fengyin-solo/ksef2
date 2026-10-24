@@ -13,7 +13,8 @@ from xsdata.formats.dataclass.serializers import XmlSerializer
 from xsdata.formats.dataclass.serializers.config import SerializerConfig
 
 from ksef2._domain.models.fa3 import Attachment, InvoiceFooter, KsefInvoiceDraft
-from ksef2._domain.models.fa3.body.root import KsefInvoiceBody
+from ksef2._domain.models.fa3.body.root import InvoiceType, KsefInvoiceBody
+from ksef2._domain.models.fa3.body.tax import SaleCategory, TaxRegime
 from ksef2._domain.protocols import BaseBuilderProtocol
 from ksef2._domain.models.fa3.header import InvoiceHeader
 from ksef2._domain.models.fa3.invoice import KsefInvoice
@@ -981,6 +982,56 @@ class StandardInvoiceBuilder(
             raise _validation_error("Invoice buyer is required but not set.")
         if self._body is None:
             raise _validation_error("Invoice body is required but not set.")
+
+        financial_rows = (
+            self._body.order_lines
+            if self._body.invoice_type == InvoiceType.ZAL
+            or (
+                self._body.invoice_type == InvoiceType.CORRECTING_ZAL
+                and self._body.order is not None
+            )
+            else self._body.rows
+        )
+        summary_overrides = self._body.summary_overrides
+        has_pln_vat_summary_override = summary_overrides is not None and any(
+            value is not None
+            for value in (
+                summary_overrides.base_rate_vat_total_pln,
+                summary_overrides.first_reduced_rate_vat_total_pln,
+                summary_overrides.second_reduced_rate_vat_total_pln,
+                summary_overrides.taxi_flat_rate_vat_total_pln,
+            )
+        )
+        rows_requiring_pln_vat_conversion = (
+            row
+            for row in financial_rows
+            if row.vat_amount is not None
+            and row.vat_amount != Decimal("0.00")
+            and (
+                row.sale_category
+                in {
+                    SaleCategory.RATE_23,
+                    SaleCategory.RATE_22,
+                    SaleCategory.RATE_8,
+                    SaleCategory.RATE_7,
+                    SaleCategory.RATE_5,
+                }
+                or row.tax_regime == TaxRegime.TAXI_FLAT_RATE
+            )
+        )
+        if (
+            self._body.currency.upper() != "PLN"
+            and self._body.vat_currency_exchange_rate is None
+            and any(
+                row.currency_exchange_rate is None
+                for row in rows_requiring_pln_vat_conversion
+            )
+            and not has_pln_vat_summary_override
+        ):
+            raise _validation_error(
+                "Foreign-currency invoices require a body or row exchange rate, "
+                "or explicit PLN VAT summary overrides"
+            )
 
         if self._third_parties is None:
             self._third_parties = []

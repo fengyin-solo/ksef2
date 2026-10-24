@@ -40,8 +40,6 @@ def normalize_compression_type(value: object) -> CompressionType:
     Raises:
         KSeFArgumentError: If ``value`` is not a supported compression type.
     """
-    if isinstance(value, str) and value.strip().casefold() in {"zip", "tar_gz"}:
-        return value.strip().casefold()  # pyright: ignore[reportReturnType]
     member = coerce_enum(CompressionTypeEnum, value)
     return _COMPRESSION_TYPE_FROM_SPEC[member.value]
 

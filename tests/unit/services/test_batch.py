@@ -35,8 +35,8 @@ from ksef2._infra.schema.api import spec
 from ksef2._services.batch import BatchService, BatchSessionOpener
 from ksef2._services.batch_preparation import load_batch_items
 from tests.unit.fakes.transport import FakeTransport
-from tests.unit.flavors import Flavor
-from tests.unit.helpers import VALID_PUBLIC_KEY_ID, legacy_api
+from tests.unit.support.flavors import Flavor
+from tests.unit.support.helpers import VALID_PUBLIC_KEY_ID, legacy_api
 
 
 def _build_service(

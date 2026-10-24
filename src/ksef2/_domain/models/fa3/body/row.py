@@ -2,11 +2,12 @@
 
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Literal, Self
+from typing import Literal, Self, cast
 
 from pydantic import Field, model_validator
 
 from ksef2._domain.models import KSeFBaseModel
+from ksef2._domain.models._enum import coerce_enum
 from ksef2._domain.models.fa3.body.tax import (
     SaleCategory,
     TaxRegime,
@@ -192,12 +193,10 @@ class InvoiceRow(KSeFBaseModel):
             vat_rate=vat_rate,
         )
 
-        if isinstance(raw_tax_regime, TaxRegime):
-            tax_regime = raw_tax_regime
-        elif raw_tax_regime is None:
+        if raw_tax_regime is None:
             tax_regime = inferred_tax_regime or TaxRegime.STANDARD
         else:
-            tax_regime = TaxRegime(str(raw_tax_regime))
+            tax_regime = coerce_enum(TaxRegime, cast(object, raw_tax_regime))
 
         if vat_classification is None:
             if sale_category is not None:

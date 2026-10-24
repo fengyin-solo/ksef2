@@ -38,6 +38,11 @@ module in the repository.
 
 For the exact compatibility boundary, use the public API contract page.
 
+Enum-backed inputs accept their documented string values without regard to case,
+as well as their enum members. Invalid values raise `KSeFArgumentError` and list
+the valid choices. VAT rates use FA(3) markers: pass strings such as `"23"` or
+`"zw"`; numeric values such as `23` and `Decimal("0.23")` are rejected.
+
 `PreparedBatch.to_sensitive_dict()` and `to_sensitive_json()` persist the full
 prepared batch as `{"version": "1", "payload": {...}}`, with encrypted parts as
 URL-safe padded Base64. Restore it with `from_sensitive_dict()` or

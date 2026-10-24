@@ -335,6 +335,11 @@ on the public API page for every alias and its replacement.
 
 ### Fixed
 
+- Enum inputs now accept documented values case-insensitively across online session
+  form codes, invoice export compression and sort order, FA(3) VAT markers, and PDF
+  page sizes. Invalid enum inputs raise `KSeFArgumentError` with valid choices.
+  Numeric VAT rates such as `23` and `Decimal("0.23")` are rejected; pass the FA(3)
+  marker as a string, such as `"23"` or `"zw"` (#298).
 - FA(3) tax exemptions write only the selected legal basis, and new-transport
   annotations can be attached without supplying other annotation fields (#179, #176).
 - Give each invoice in the batch examples its own FA(3) number (#135).

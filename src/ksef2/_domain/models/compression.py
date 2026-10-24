@@ -1,8 +1,9 @@
 """Compression choices accepted by invoice export and batch payloads."""
 
 from enum import StrEnum
-from importlib import import_module
-from typing import Callable, Literal, cast
+from typing import Literal
+
+from ksef2._domain.models._enum import coerce_enum
 
 type CompressionType = Literal["zip", "tar_gz"]
 type CompressionTypeSpecValue = Literal["Zip", "TarGz"]
@@ -15,6 +16,9 @@ class CompressionTypeEnum(StrEnum):
     TAR_GZ = "TarGz"
 
 
+type CompressionTypeInput = CompressionType | CompressionTypeEnum | str
+
+
 _COMPRESSION_TYPE_TO_SPEC: dict[CompressionType, CompressionTypeSpecValue] = {
     "zip": "Zip",
     "tar_gz": "TarGz",
@@ -24,9 +28,7 @@ _COMPRESSION_TYPE_FROM_SPEC: dict[CompressionTypeSpecValue, CompressionType] = {
 }
 
 
-def normalize_compression_type(
-    value: CompressionType | CompressionTypeEnum | str,
-) -> CompressionType:
+def normalize_compression_type(value: object) -> CompressionType:
     """Normalize SDK or OpenAPI compression values to SDK literals.
 
     Args:
@@ -36,34 +38,14 @@ def normalize_compression_type(
         Normalized SDK compression literal.
 
     Raises:
-        ValueError: If ``value`` is not a supported compression type.
+        KSeFArgumentError: If ``value`` is not a supported compression type.
     """
-    if isinstance(value, CompressionTypeEnum):
-        return _COMPRESSION_TYPE_FROM_SPEC[value.value]
-
-    lowered_value = value.strip().lower()
-    if lowered_value in _COMPRESSION_TYPE_TO_SPEC:
-        return lowered_value  # pyright: ignore[reportReturnType]
-
-    if value in _COMPRESSION_TYPE_FROM_SPEC:
-        return _COMPRESSION_TYPE_FROM_SPEC[value]  # pyright: ignore[index]
-
-    raise _validation_error(
-        f"Invalid compression type: {value}. Valid compression types are: "
-        f"{', '.join(_COMPRESSION_TYPE_TO_SPEC)}"
-    )
+    member = coerce_enum(CompressionTypeEnum, value)
+    return _COMPRESSION_TYPE_FROM_SPEC[member.value]
 
 
 def compression_type_to_spec(
-    value: CompressionType | CompressionTypeEnum | str,
+    value: CompressionTypeInput,
 ) -> CompressionTypeSpecValue:
     """Convert a compression value to the OpenAPI representation."""
     return _COMPRESSION_TYPE_TO_SPEC[normalize_compression_type(value)]
-
-
-def _validation_error(message: str):
-    exception_module = import_module("ksef2._core.exceptions")
-    error_type = cast(
-        Callable[[str], Exception], getattr(exception_module, "KSeFValidationError")
-    )
-    return error_type(message)

@@ -410,24 +410,6 @@
                 }
             }
         ],
-        "./src/ksef2/_domain/models/compression.py": [
-            {
-                "code": "reportUnnecessaryTypeIgnoreComment",
-                "range": {
-                    "startColumn": 48,
-                    "endColumn": 64,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportUnnecessaryTypeIgnoreComment",
-                "range": {
-                    "startColumn": 69,
-                    "endColumn": 74,
-                    "lineCount": 1
-                }
-            }
-        ],
         "./src/ksef2/_domain/models/fa3/attachment.py": [
             {
                 "code": "reportUnnecessaryComparison",
@@ -654,14 +636,6 @@
                 }
             },
             {
-                "code": "reportUnknownArgumentType",
-                "range": {
-                    "startColumn": 39,
-                    "endColumn": 53,
-                    "lineCount": 1
-                }
-            },
-            {
                 "code": "reportUnknownVariableType",
                 "range": {
                     "startColumn": 15,
@@ -691,14 +665,6 @@
             }
         ],
         "./src/ksef2/_domain/models/invoices.py": [
-            {
-                "code": "reportUnnecessaryTypeIgnoreComment",
-                "range": {
-                    "startColumn": 48,
-                    "endColumn": 64,
-                    "lineCount": 1
-                }
-            },
             {
                 "code": "reportUnnecessaryTypeIgnoreComment",
                 "range": {

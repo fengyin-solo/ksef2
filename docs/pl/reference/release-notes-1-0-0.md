@@ -38,6 +38,12 @@ moduł, który da się zaimportować z repozytorium.
 
 Dokładną granicę kompatybilności opisuje strona interfejsu publicznego.
 
+Pola oparte na enumach przyjmują udokumentowane wartości tekstowe bez względu
+na wielkość liter oraz odpowiadające im elementy enum. Nieprawidłowe wartości
+zgłaszają `KSeFArgumentError` z listą poprawnych opcji. Stawki VAT używają
+znaczników FA(3): podawaj tekst, na przykład `"23"` lub `"zw"`; wartości
+liczbowe, takie jak `23` i `Decimal("0.23")`, są odrzucane.
+
 `PreparedBatch.to_sensitive_dict()` i `to_sensitive_json()` zapisują pełną
 przygotowaną paczkę jako `{"version": "1", "payload": {...}}`, z zaszyfrowanymi
 częściami jako Base64 bezpieczne dla URL z dopełnieniem. Odtwórz ją przez

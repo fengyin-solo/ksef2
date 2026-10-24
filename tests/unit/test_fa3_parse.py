@@ -5,9 +5,11 @@ from pathlib import Path
 import pytest
 from lxml import etree
 
+from ksef2._domain.models.fa3.body import InvoiceRow
 from ksef2.fa3 import (
     InvoiceBuilder,
     InvoiceSummaryOverrides,
+    SaleCategory,
     VatRate,
     parse_invoice_xml,
 )
@@ -163,6 +165,38 @@ def test_builder_emits_zero_bucket_for_correction_rows_that_net_to_zero() -> Non
     assert document.xpath("//*[local-name()='P_14_1']/text()") == ["0.00"]
 
 
+def test_builder_omits_tax_bucket_for_classified_row_without_amounts() -> None:
+    builder = (
+        InvoiceBuilder()
+        .header(system_info="incomplete row")
+        .seller(
+            name="Seller",
+            tax_id="5261040828",
+            country_code="PL",
+            address_line_1="a",
+        )
+        .buyer(
+            name="Buyer",
+            tax_id="5250001009",
+            country_code="PL",
+            address_line_1="a",
+        )
+        .simplified()
+        .issue_date(date(2026, 10, 24))
+        .invoice_number("INCOMPLETE/1")
+        .summary_overrides(InvoiceSummaryOverrides(total_gross=Decimal("450.00")))
+        .rows()
+        .add_line_model(InvoiceRow(name="Item", vat_rate=VatRate.VAT_23))
+        .done()
+        .done()
+    )
+
+    document = etree.fromstring(builder.to_xml().encode("utf-8"))
+    assert document.xpath("//*[local-name()='P_13_1']") == []
+    assert document.xpath("//*[local-name()='P_14_1']") == []
+    assert document.xpath("//*[local-name()='P_15']/text()") == ["450.00"]
+
+
 def _foreign_currency_invoice_builder() -> InvoiceBuilder:
     return (
         InvoiceBuilder()
@@ -226,6 +260,28 @@ def test_builder_accepts_foreign_currency_with_per_row_exchange_rate() -> None:
     xml = builder.to_xml()
     document = etree.fromstring(xml.encode("utf-8"))
     assert document.xpath("//*[local-name()='P_14_1W']/text()") == ["1.04"]
+
+
+def test_builder_allows_zero_rated_foreign_currency_without_exchange_rate() -> None:
+    builder = (
+        _foreign_currency_invoice_builder()
+        .standard()
+        .currency("EUR")
+        .rows()
+        .add_line(
+            name="WDT goods",
+            quantity=Decimal("1"),
+            unit_price_net=Decimal("100.00"),
+            vat_rate=VatRate.VAT_0,
+            sale_category=SaleCategory.ZERO_WDT,
+        )
+        .done()
+        .done()
+    )
+
+    xml = builder.to_xml()
+    document = etree.fromstring(xml.encode("utf-8"))
+    assert document.xpath("//*[local-name()='P_13_6_2']/text()") == ["100.00"]
 
 
 def test_builder_accepts_foreign_currency_with_pln_vat_summary_override() -> None:

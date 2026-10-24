@@ -79,14 +79,44 @@ def _opt_optional_dec(value: Decimal | None, *, has_rows: bool = False) -> str |
 
 def _present_bucket_names(request: KsefInvoiceBody) -> set[str]:
     """Return summary buckets that contain at least one financial row."""
+    if request.summary_overrides is not None:
+        override_bucket_names = {
+            name
+            for field_name, name in (
+                ("base_rate_net_total", "base_rate"),
+                ("base_rate_vat_total", "base_rate"),
+                ("first_reduced_rate_net_total", "first_reduced_rate"),
+                ("first_reduced_rate_vat_total", "first_reduced_rate"),
+                ("second_reduced_rate_net_total", "second_reduced_rate"),
+                ("second_reduced_rate_vat_total", "second_reduced_rate"),
+                ("taxi_flat_rate_net_total", "taxi"),
+                ("taxi_flat_rate_vat_total", "taxi"),
+                ("special_procedure_xii_net_total", "special_procedure"),
+                ("special_procedure_xii_vat_total", "special_procedure"),
+                ("zero_rate_domestic_total", "zero_domestic"),
+                ("zero_rate_wdt_total", "zero_wdt"),
+                ("zero_rate_export_total", "zero_export"),
+                ("exempt_total", "exempt"),
+                ("out_of_territory_total", "out_of_territory"),
+                ("article_100_services_total", "article_100"),
+                ("reverse_charge_total", "reverse_charge"),
+                ("margin_total", "margin"),
+            )
+            if getattr(request.summary_overrides, field_name) is not None
+        }
+        if override_bucket_names:
+            return override_bucket_names
+
     names: set[str] = set()
     financial_rows = (
-        request.order_lines
-        if request.invoice_type == InvoiceType.ZAL
-        or (request.invoice_type == InvoiceType.CORRECTING_ZAL and request.order)
-        else request.rows
+        request.order_lines if request.invoice_type == InvoiceType.ZAL else request.rows
     )
     for line in financial_rows:
+        if all(
+            amount is None
+            for amount in (line.net_amount, line.vat_amount, line.gross_amount)
+        ):
+            continue
         if line.tax_regime == TaxRegime.STANDARD:
             if line.sale_category in {SaleCategory.RATE_23, SaleCategory.RATE_22}:
                 names.add("base_rate")

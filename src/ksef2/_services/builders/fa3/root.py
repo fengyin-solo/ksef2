@@ -13,6 +13,7 @@ from xsdata.formats.dataclass.serializers.config import SerializerConfig
 
 from ksef2._domain.models.fa3 import Attachment, InvoiceFooter, KsefInvoiceDraft
 from ksef2._domain.models.fa3.body.root import InvoiceType, KsefInvoiceBody
+from ksef2._domain.models.fa3.body.tax import SaleCategory, TaxRegime
 from ksef2._domain.protocols import BaseBuilderProtocol
 from ksef2._domain.models.fa3.header import InvoiceHeader
 from ksef2._domain.models.fa3.invoice import KsefInvoice
@@ -1000,11 +1001,29 @@ class StandardInvoiceBuilder(
                 summary_overrides.taxi_flat_rate_vat_total_pln,
             )
         )
+        rows_requiring_pln_vat_conversion = (
+            row
+            for row in financial_rows
+            if row.vat_amount is not None
+            and row.vat_amount != Decimal("0.00")
+            and (
+                row.sale_category
+                in {
+                    SaleCategory.RATE_23,
+                    SaleCategory.RATE_22,
+                    SaleCategory.RATE_8,
+                    SaleCategory.RATE_7,
+                    SaleCategory.RATE_5,
+                }
+                or row.tax_regime == TaxRegime.TAXI_FLAT_RATE
+            )
+        )
         if (
             self._body.currency.upper() != "PLN"
             and self._body.vat_currency_exchange_rate is None
-            and not any(
-                row.currency_exchange_rate is not None for row in financial_rows
+            and any(
+                row.currency_exchange_rate is None
+                for row in rows_requiring_pln_vat_conversion
             )
             and not has_pln_vat_summary_override
         ):

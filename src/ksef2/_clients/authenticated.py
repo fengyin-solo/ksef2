@@ -35,9 +35,11 @@ from ksef2._domain.models import (
     OpenBatchSessionRequest,
     PreparedBatch,
 )
+from ksef2._domain.models._enum import coerce_enum
 from ksef2._domain.models.auth import AuthenticationResumeState, AuthTokens
 from ksef2._domain.models.session import (
     FormSchema,
+    FormSchemaInput,
     OnlineSessionResumeState,
     OpenOnlineSessionRequest,
     SessionEncryptionMaterial,
@@ -199,7 +201,7 @@ class AuthenticatedClient:
     def online_session(
         self,
         *,
-        form_code: FormSchema,
+        form_code: FormSchemaInput,
     ) -> OnlineSessionClient: ...
 
     @overload
@@ -212,7 +214,7 @@ class AuthenticatedClient:
     def online_session(
         self,
         *,
-        form_code: FormSchema | None = None,
+        form_code: FormSchemaInput | None = None,
         state: OnlineSessionResumeState | str | None = None,
     ) -> OnlineSessionClient:
         """Open a new online invoice session, or resume one from saved state.
@@ -230,7 +232,7 @@ class AuthenticatedClient:
             A session client that can be used as a context manager and closes the session on exit.
 
         Raises:
-            KSeFArgumentError: If neither or both of ``form_code`` and ``state`` are given.
+            KSeFArgumentError: If ``form_code`` is invalid or neither or both of ``form_code`` and ``state`` are given.
             NoCertificateAvailableError: If no valid symmetric-key certificate is
                 available.
             KSeFEncryptionError: If symmetric-key encryption fails.
@@ -256,7 +258,7 @@ class AuthenticatedClient:
         if state is not None:
             return self._resume_online_session_async(state)
         assert form_code is not None
-        return self._open_online_session(form_code=form_code)
+        return self._open_online_session(form_code=coerce_enum(FormSchema, form_code))
 
     def _resume_online_session_async(
         self, state: OnlineSessionResumeState | str
@@ -308,7 +310,7 @@ class AuthenticatedClient:
         self,
         *,
         batch_file: BatchFileInfo,
-        form_code: FormSchema = FormSchema.FA3,
+        form_code: FormSchemaInput = FormSchema.FA3,
         offline_mode: bool = False,
     ) -> BatchSessionClient: ...
 
@@ -325,7 +327,7 @@ class AuthenticatedClient:
         *,
         prepared_batch: PreparedBatch | None = None,
         batch_file: BatchFileInfo | None = None,
-        form_code: FormSchema | None = None,
+        form_code: FormSchemaInput | None = None,
         offline_mode: bool | None = None,
         state: BatchSessionResumeState | str | None = None,
     ) -> BatchSessionClient:
@@ -396,7 +398,11 @@ class AuthenticatedClient:
         return self._open_batch_session_from_input(
             prepared_batch=prepared_batch,
             batch_file=batch_file,
-            form_code=form_code or FormSchema.FA3,
+            form_code=(
+                coerce_enum(FormSchema, form_code)
+                if form_code is not None
+                else FormSchema.FA3
+            ),
             offline_mode=bool(offline_mode),
         )
 
@@ -526,7 +532,7 @@ class AuthenticatedClient:
         iv: bytes,
         encrypted_key: bytes,
         public_key_id: str | None = None,
-        form_code: FormSchema = FormSchema.FA3,
+        form_code: FormSchemaInput = FormSchema.FA3,
         offline_mode: bool = False,
         prepared_batch: PreparedBatch | None = None,
     ) -> BatchSessionClient:
@@ -538,7 +544,7 @@ class AuthenticatedClient:
                 encrypted_key=encrypted_key,
                 public_key_id=public_key_id,
             ),
-            form_code=form_code,
+            form_code=coerce_enum(FormSchema, form_code),
             offline_mode=offline_mode,
             prepared_batch=prepared_batch,
         )
@@ -555,7 +561,7 @@ class AuthenticatedClient:
         iv: bytes,
         encrypted_key: bytes,
         public_key_id: str | None = None,
-        form_code: FormSchema = FormSchema.FA3,
+        form_code: FormSchemaInput = FormSchema.FA3,
         offline_mode: bool = False,
         prepared_batch: PreparedBatch | None = None,
     ) -> BatchSessionClient:
@@ -587,7 +593,7 @@ class AuthenticatedClient:
             iv=iv,
             encrypted_key=encrypted_key,
             public_key_id=public_key_id,
-            form_code=form_code,
+            form_code=coerce_enum(FormSchema, form_code),
             offline_mode=offline_mode,
             prepared_batch=prepared_batch,
         )

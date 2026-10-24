@@ -57,7 +57,7 @@ class InvoicePDFExporter:
         html_overrides: str | None = None,
         *,
         page_size: PDFPageSizeInput | None = None,
-        verification_environment: Environment = Environment.PRODUCTION,
+        verification_environment: Environment | str,
     ):
         """Create a PDF exporter.
 
@@ -66,7 +66,7 @@ class InvoicePDFExporter:
             enable_code_lookups: Allow the stylesheet to read local files and the network to resolve code descriptions. Use only with trusted stylesheets.
             html_overrides: CSS applied before PDF conversion; ``None`` uses the bundled defaults.
             page_size: Paper size and orientation; ``None`` preserves the stylesheet setting, normally A4 landscape. Overrides page size in ``html_overrides``.
-            verification_environment: KSeF environment used for verification QR links. QR output is enabled per export by supplying ``ksef_number``.
+            verification_environment: Required KSeF environment used for verification QR links. Accepts an ``Environment`` or a case-insensitive environment name. QR output is enabled per export by supplying ``ksef_number``.
 
         Raises:
             ImportError: If optional PDF dependencies are not installed.
@@ -75,7 +75,9 @@ class InvoicePDFExporter:
         self._page_size = (
             coerce_enum(PDFPageSize, page_size) if page_size is not None else None
         )
-        self._verification_environment = Environment(verification_environment)
+        self._verification_environment = coerce_enum(
+            Environment, verification_environment
+        )
         self._weasyprint = _load_weasyprint()
         self._xslt_renderer = InvoiceXSLTRenderer(
             stylesheet_path=stylesheet_path,

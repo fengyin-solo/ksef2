@@ -177,10 +177,22 @@ Builder wylicza kwoty każdej pozycji, zaokrągla je do dwóch miejsc metodą
 `ROUND_HALF_UP`, a potem sumuje zaokrąglone pozycje. Domyślnie obowiązuje
 zaokrąglanie per pozycja; builder nie udostępnia trybu obliczeń od sumy.
 
+Kwoty, ilości, ceny i kursy walut przyjmują `Decimal`, `int`, `float` oraz
+stringi liczbowe. Pydantic konwertuje wartości `float` na `Decimal` przez ich
+reprezentację tekstową, co odpowiada `Decimal(str(value))`, przed obliczeniami
+pozycji. Użyj `Decimal` lub stringów liczbowych, aby zachować dokładną wartość
+dziesiętną danych wejściowych.
+
 ## Dodaj płatności i adnotacje
 
 Builder płatności obsługuje formę płatności, terminy, płatności częściowe,
 rachunki bankowe, rachunki faktora, rabaty, linki płatności i IP KSeF.
+
+Gdy dodajesz płatności częściowe, wywołaj `partial_payment_status("partial")` dla
+faktury zapłaconej w części albo `partial_payment_status("final")` dla faktury
+zapłaconej w całości w ratach. Odpowiadają one wartościom flagi XSD `1` i `2`.
+Builder wymaga jawnego wyboru przy `done()` lub `build()`, ponieważ same wpisy
+płatności nie określają statusu.
 
 ```python
 _ = (
@@ -188,6 +200,7 @@ _ = (
     .payment()
         .via("bank_transfer")
         .due_on(date(2026, 7, 8))
+        .partial_payment_status("partial")
         .add_partial_payment(
             amount=Decimal("50.00"),
             payment_date=date(2026, 6, 24),

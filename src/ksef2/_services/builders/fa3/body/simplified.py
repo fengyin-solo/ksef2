@@ -71,14 +71,16 @@ class SimplifiedBodyBuilder[TParent](
         Returns:
             The built ``KsefInvoiceBody``.
         """
-        return KsefInvoiceBody(
-            **self._state,
-            invoice_type=InvoiceType.UPR,
-            rows=list(self._rows),
-            payment=self._payment,
-            annotations=self._annotations,
-            transaction_conditions=self._transaction_conditions,
-            settlement=self._settlement,
+        return KsefInvoiceBody.model_validate(
+            {
+                **self._state,
+                "invoice_type": InvoiceType.UPR,
+                "rows": list(self._rows),
+                "payment": self._payment,
+                "annotations": self._annotations,
+                "transaction_conditions": self._transaction_conditions,
+                "settlement": self._settlement,
+            }
         )
 
     @override

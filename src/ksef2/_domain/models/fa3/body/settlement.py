@@ -5,7 +5,8 @@ from typing import Self
 
 from pydantic import Field, field_validator, model_validator
 
-from ksef2._domain.models import KSeFBaseModel
+from ksef2._domain.models.base import KSeFBaseModel as KSeFBaseModel
+from ksef2._domain.models.fa3.base import Fa3Model
 
 
 def round_pln(value: Decimal) -> Decimal:
@@ -13,7 +14,7 @@ def round_pln(value: Decimal) -> Decimal:
     return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
-class SettlementCharge(KSeFBaseModel):
+class SettlementCharge(Fa3Model):
     """FA(3) settlement charge entry.
 
     References:
@@ -45,7 +46,7 @@ class SettlementCharge(KSeFBaseModel):
         return round_pln(value)
 
 
-class SettlementDeduction(KSeFBaseModel):
+class SettlementDeduction(Fa3Model):
     """FA(3) settlement deduction entry.
 
     References:
@@ -77,7 +78,7 @@ class SettlementDeduction(KSeFBaseModel):
         return round_pln(value)
 
 
-class InvoiceSettlement(KSeFBaseModel):
+class InvoiceSettlement(Fa3Model):
     """FA(3) settlement block attached to the invoice body.
 
     References:

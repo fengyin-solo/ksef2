@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
-from pydantic import ValidationError
+from ksef2 import KSeFValidationError
 
 from ksef2._domain.models.fa3.body.payment import (
     InvoicePayment,
@@ -14,7 +14,7 @@ from ksef2._domain.models.fa3.body.payment import (
 
 def test_payment_term_requires_date_or_description() -> None:
     with pytest.raises(
-        ValidationError,
+        KSeFValidationError,
         match="At least one of due_date or due_date_description must be provided",
     ):
         PaymentTerm()

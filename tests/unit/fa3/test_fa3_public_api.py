@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
-from pydantic import ValidationError
+from ksef2 import KSeFValidationError
 
 from ksef2.fa3 import InvoiceBuilder, KsefInvoice, VatRate
 
@@ -111,7 +111,7 @@ def test_fa3_public_builder_rejects_xsd_invalid_invoice_number() -> None:
         InvoiceBuilder().standard().issue_date(date(2026, 3, 29)).invoice_number("")
     )
 
-    with pytest.raises(ValidationError, match="invoice_number"):
+    with pytest.raises(KSeFValidationError, match="invoice_number"):
         body_builder.build()
 
 

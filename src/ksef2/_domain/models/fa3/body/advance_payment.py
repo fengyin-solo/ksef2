@@ -5,7 +5,8 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from pydantic import Field, field_validator, model_validator
 
-from ksef2._domain.models import KSeFBaseModel
+from ksef2._domain.models.base import KSeFBaseModel as KSeFBaseModel
+from ksef2._domain.models.fa3.base import Fa3Model
 from ksef2._domain.models.fa3.references import AdvanceInvoiceReference
 
 
@@ -19,7 +20,7 @@ def round_rate(value: Decimal) -> Decimal:
     return value.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
 
 
-class PartialAdvancePayment(KSeFBaseModel):
+class PartialAdvancePayment(Fa3Model):
     """FA(3) partial advance payment entry.
 
     References:
@@ -76,7 +77,7 @@ class PartialAdvancePayment(KSeFBaseModel):
         return round_rate(value)
 
 
-class AdvancePayment(KSeFBaseModel):
+class AdvancePayment(Fa3Model):
     """FA(3) referenced advance invoice entry.
 
     References:
@@ -119,7 +120,7 @@ class AdvancePayment(KSeFBaseModel):
         return self
 
 
-class AdvancePaymentInvoiceContext(KSeFBaseModel):
+class AdvancePaymentInvoiceContext(Fa3Model):
     """FA(3) advance-invoice-specific body data.
 
     References:

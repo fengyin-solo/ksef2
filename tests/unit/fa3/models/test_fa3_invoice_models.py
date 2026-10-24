@@ -2,7 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 import pytest
-from pydantic import ValidationError
+from ksef2 import KSeFValidationError
 
 from ksef2._domain.models.fa3 import (
     AdvanceOrderLine,
@@ -56,7 +56,7 @@ def test_invoice_entity_accepts_valid_polish_nip() -> None:
 
 
 def test_invoice_entity_rejects_invalid_polish_nip() -> None:
-    with pytest.raises(ValidationError, match="exactly 10 digits"):
+    with pytest.raises(KSeFValidationError, match="exactly 10 digits"):
         InvoiceEntity(
             tax_id="12345",
             name="ACME Sp. z o.o.",
@@ -80,7 +80,7 @@ def test_foreign_entity_may_omit_tax_id() -> None:
 
 
 def test_invoice_address_requires_country_code() -> None:
-    with pytest.raises(ValidationError, match="country_code"):
+    with pytest.raises(KSeFValidationError, match="country_code"):
         InvoiceAddress(country_code="", address_line_1="Unter den Linden 1")
 
 
@@ -113,7 +113,7 @@ def test_foreign_entity_accepts_tax_id_when_eu_vat_id_is_provided() -> None:
 
 
 def test_foreign_entity_rejects_tax_id_without_eu_vat_id() -> None:
-    with pytest.raises(ValidationError, match="eu_vat_id is required"):
+    with pytest.raises(KSeFValidationError, match="eu_vat_id is required"):
         InvoiceEntity(
             tax_id="DE123456789",
             name="Globex GmbH",
@@ -125,7 +125,7 @@ def test_foreign_entity_rejects_tax_id_without_eu_vat_id() -> None:
 
 
 def test_ksef_invoice_rejects_seller_without_tax_id() -> None:
-    with pytest.raises(ValidationError, match="seller tax_id is required"):
+    with pytest.raises(KSeFValidationError, match="seller tax_id is required"):
         KsefInvoice(
             header=InvoiceHeader(
                 generation_timestamp=datetime(2026, 2, 1, 12, 30, 45),
@@ -163,7 +163,7 @@ def test_invoice_body_defaults_currency_to_pln() -> None:
 def test_invoice_body_rejects_invoice_number_outside_xsd_constraints(
     invoice_number: str,
 ) -> None:
-    with pytest.raises(ValidationError, match="invoice_number"):
+    with pytest.raises(KSeFValidationError, match="invoice_number"):
         KsefInvoiceBody(
             issue_date=date(2026, 3, 29),
             issue_place=None,
@@ -199,7 +199,7 @@ def test_invoice_system_context_rejects_too_long_system_info() -> None:
         system_info="X" * 256,
     )
 
-    with pytest.raises(ValidationError, match="at most 256"):
+    with pytest.raises(KSeFValidationError, match="at most 256"):
         InvoiceHeader(
             generation_timestamp=datetime(2026, 2, 1, 12, 30, 45),
             system_info="X" * 257,
@@ -273,7 +273,7 @@ def test_invoice_line_computes_amounts_from_gross_unit_price() -> None:
 
 def test_invoice_line_special_xii_requires_vat_rate_xii() -> None:
     with pytest.raises(
-        ValidationError, match="special_xii tax_regime requires vat_rate_xii"
+        KSeFValidationError, match="special_xii tax_regime requires vat_rate_xii"
     ):
         InvoiceRow(
             name="Title XII service",
@@ -313,7 +313,7 @@ def test_invoice_line_requires_vat_classification_for_business_bearing_fields(
     field_name: str,
     field_value: Decimal,
 ) -> None:
-    with pytest.raises(ValidationError, match="vat classification is required"):
+    with pytest.raises(KSeFValidationError, match="vat classification is required"):
         InvoiceRow.model_validate(
             {
                 "name": "Consulting service",
@@ -355,7 +355,7 @@ def test_invoice_line_rounds_net_amount_half_up() -> None:
 
 def test_invoice_line_rejects_inconsistent_explicit_gross_amount() -> None:
     with pytest.raises(
-        ValidationError,
+        KSeFValidationError,
         match="gross_amount must equal net_amount \\+ vat_amount",
     ):
         InvoiceRow(
@@ -513,7 +513,7 @@ def test_invoice_line_rejects_amounted_standard_line_without_vat_classification(
 ):
     # Keep this message-agnostic: the exact validation text is not a documented
     # public API, so message-only mutants should be treated as low signal.
-    with pytest.raises(ValidationError):
+    with pytest.raises(KSeFValidationError):
         InvoiceRow(
             name="Consulting service",
             quantity=Decimal("1"),
@@ -572,7 +572,7 @@ def test_ksef_invoice_accepts_lines_collection() -> None:
 
 def test_ksef_invoice_rejects_empty_lines_collection() -> None:
     with pytest.raises(
-        ValidationError, match="At least one invoice line or order is required"
+        KSeFValidationError, match="At least one invoice line or order is required"
     ):
         KsefInvoice(
             header=InvoiceHeader(
@@ -654,7 +654,7 @@ def test_invoice_address_accepts_foreign_shape() -> None:
 
 
 def test_invoice_tax_exemption_requires_exactly_one_basis() -> None:
-    with pytest.raises(ValidationError, match="Exactly one exemption legal basis"):
+    with pytest.raises(KSeFValidationError, match="Exactly one exemption legal basis"):
         InvoiceTaxExemption(
             legal_basis_act="art. 43 ust. 1 pkt 2 ustawy",
             legal_basis_other="other basis",
@@ -663,7 +663,7 @@ def test_invoice_tax_exemption_requires_exactly_one_basis() -> None:
 
 def test_invoice_body_rejects_pln_vat_exchange_rate() -> None:
     with pytest.raises(
-        ValidationError,
+        KSeFValidationError,
         match="vat_currency_exchange_rate is only valid for non-PLN invoices",
     ):
         KsefInvoiceBody(

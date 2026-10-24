@@ -5,7 +5,8 @@ from typing import NamedTuple
 
 from pydantic import field_validator, model_validator
 
-from ksef2._domain.models.base import KSeFBaseModel
+from ksef2._domain.models.base import KSeFBaseModel as KSeFBaseModel
+from ksef2._domain.models.fa3.base import Fa3Model
 
 
 class ContactInfoTuple(NamedTuple):
@@ -17,7 +18,7 @@ class ContactInfoTuple(NamedTuple):
     """Phone number."""
 
 
-class ContactInfo(KSeFBaseModel):
+class ContactInfo(Fa3Model):
     """Optional contact channels exposed on invoice parties."""
 
     email: str | None = None
@@ -26,7 +27,7 @@ class ContactInfo(KSeFBaseModel):
     """Phone number."""
 
 
-class InvoiceAddress(KSeFBaseModel):
+class InvoiceAddress(Fa3Model):
     """Address shape aligned with FA(3) ``schemat.Tadres``."""
 
     country_code: str
@@ -47,7 +48,7 @@ class InvoiceAddress(KSeFBaseModel):
         return normalized
 
 
-class InvoiceEntity(KSeFBaseModel):
+class InvoiceEntity(Fa3Model):
     """Seller or buyer domain entity used by the public FA(3) invoice API."""
 
     tax_id: str | None = None

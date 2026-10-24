@@ -624,7 +624,7 @@ class StandardInvoiceBuilder(
             ),
         ] = None,
         share_percentage: Annotated[
-            Decimal | None,
+            Decimal | int | float | str | None,
             builder_param(
                 "Share percentage assigned to the third party when the invoice scenario requires it.",
                 examples=["50.00"],
@@ -734,24 +734,26 @@ class StandardInvoiceBuilder(
                 for contact in contacts
             ]
 
-        third_party = InvoiceThirdParty(
-            tax_id=tax_id,
-            internal_id=internal_id,
-            eu_vat_id=eu_vat_id,
-            country_code=identity_country_code,
-            other_id=other_id,
-            no_id=no_id,
-            name=name,
-            address=address,
-            correspondence_address=correspondence_address,
-            contact=built_contacts,
-            role=role,
-            other_role=other_role,
-            role_description=role_description,
-            share_percentage=share_percentage,
-            customer_number=customer_number,
-            eori_number=eori_number,
-            buyer_id=buyer_id,
+        third_party = InvoiceThirdParty.model_validate(
+            {
+                "tax_id": tax_id,
+                "internal_id": internal_id,
+                "eu_vat_id": eu_vat_id,
+                "country_code": identity_country_code,
+                "other_id": other_id,
+                "no_id": no_id,
+                "name": name,
+                "address": address,
+                "correspondence_address": correspondence_address,
+                "contact": built_contacts,
+                "role": role,
+                "other_role": other_role,
+                "role_description": role_description,
+                "share_percentage": share_percentage,
+                "customer_number": customer_number,
+                "eori_number": eori_number,
+                "buyer_id": buyer_id,
+            }
         )
         return self.add_third_party_model(third_party)
 

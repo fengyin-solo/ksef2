@@ -129,6 +129,8 @@ written = restored.save(Path("downloads"))
 The factory defaults to `compression="zip"`. For TarGz exports, store the archive
 bytes in a `.tar.gz` file and pass `compression="tar_gz"` when restoring. Use the
 same compression format as the original export; the factory does not detect it.
+If the archive is already on disk, use `ExportedInvoices.from_path(path,
+compression="zip")` to read invoice entries without loading the whole archive.
 
 Construction does not open or validate the archive. `metadata` reads
 `_metadata.json` on first access and caches the result: `None` means the file is

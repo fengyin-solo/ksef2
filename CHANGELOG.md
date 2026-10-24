@@ -8,6 +8,9 @@ and method names remain functional throughout 1.x (#171). Read
 
 ### Highlights
 
+- `ExportedInvoices.from_path()` reads ZIP and TarGz export archives directly
+  from disk, without loading the full archive into memory (#305).
+
 - The documented import paths (`ksef2`, `ksef2.clients`, `ksef2.models`,
   `ksef2.fa3`, `ksef2.xades`, `ksef2.profiles`, `ksef2.renderers`, `ksef2.raw`,
   `ksef2.raw.mappers`, and the new `ksef2.testdata`) are the compatibility

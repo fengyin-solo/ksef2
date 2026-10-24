@@ -38,6 +38,16 @@ def _package(payload: bytes) -> ExportedInvoices:
     )
 
 
+def test_from_path_reads_targz_entries_from_file(tmp_path: Path) -> None:
+    payload = _tar([(tarfile.TarInfo("invoice.xml"), b"<invoice />")])
+    path = tmp_path / "export.tar.gz"
+    path.write_bytes(payload)
+
+    exported = ExportedInvoices.from_path(path, compression="tar_gz")
+
+    assert list(exported.invoices()) == [("invoice", b"<invoice />")]
+
+
 def test_targz_metadata_and_invoice_selection(
     inv_query_metadata_resp: BaseFactory[spec.QueryInvoicesMetadataResponse],
     tmp_path: Path,

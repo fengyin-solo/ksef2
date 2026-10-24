@@ -39,6 +39,16 @@ def _metadata_json(
 
 
 class TestInvoicesAndArchive:
+    def test_from_path_reads_zip_entries_from_file(self, tmp_path: Path) -> None:
+        archive = _zip({f"{KSEF_1}.xml": b"<one />"})
+        path = tmp_path / "export.zip"
+        path.write_bytes(archive)
+
+        exported = ExportedInvoices.from_path(path)
+
+        assert list(exported.invoices()) == [(KSEF_1, b"<one />")]
+        assert exported.archive == archive
+
     def test_joins_decrypted_parts_into_one_archive_and_unzips_it(self) -> None:
         archive = _zip({f"{KSEF_1}.xml": b"<one />", f"{KSEF_2}.xml": b"<two />"})
         parts = _split(archive, 3)

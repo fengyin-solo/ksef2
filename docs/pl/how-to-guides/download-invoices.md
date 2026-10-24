@@ -130,6 +130,8 @@ written = restored.save(Path("downloads"))
 Fabryka domyślnie używa `compression="zip"`. Dla eksportu TarGz zapisz bajty
 archiwum w pliku `.tar.gz` i podaj `compression="tar_gz"` przy odtwarzaniu.
 Użyj formatu kompresji oryginalnego eksportu; fabryka nie wykrywa go automatycznie.
+Jeśli archiwum jest już na dysku, użyj `ExportedInvoices.from_path(path,
+compression="zip")`, aby czytać wpisy bez wczytywania całego archiwum.
 
 Utworzenie obiektu nie otwiera ani nie waliduje archiwum. `metadata` czyta
 `_metadata.json` przy pierwszym dostępie i zapamiętuje wynik: `None` oznacza brak

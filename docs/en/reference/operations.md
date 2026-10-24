@@ -120,7 +120,7 @@ Retryable `POST` groups:
 
 | Area | Operations |
 | --- | --- |
-| Authentication | challenge, refresh token |
+| Authentication | challenge; refresh token only after `429` |
 | Invoices | metadata query |
 | Certificates | query, retrieve |
 | Permissions | personal, authorization, EU entity, person, subordinate entity, and subunit queries |
@@ -138,6 +138,10 @@ Authentication token redemption is also never retried because KSeF returns its
 access/refresh pair only once. A lost redemption response raises
 `KSeFAuthTokenRedemptionError` with `outcome_ambiguous=True`; do not repeat the
 redemption automatically.
+
+Refresh-token requests are retried only after an explicit `429`. The SDK does
+not retry them after a transport error or `5xx`, since the token may already
+have rotated.
 
 ## Download concurrency
 

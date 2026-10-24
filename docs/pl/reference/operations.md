@@ -121,7 +121,7 @@ Ponawialne grupy `POST`:
 
 | Obszar | Operacje |
 | --- | --- |
-| Uwierzytelnianie | challenge, refresh token |
+| Uwierzytelnianie | challenge; refresh token tylko po `429` |
 | Faktury | query metadanych |
 | Certyfikaty | query, retrieve |
 | Uprawnienia | query personal, authorization, EU entity, person, subordinate entity i subunit |
@@ -139,6 +139,10 @@ Redeem tokenu uwierzytelnienia także nigdy nie jest ponawiany, ponieważ KSeF
 zwraca parę access/refresh tylko raz. Utrata odpowiedzi redeem rzuca
 `KSeFAuthTokenRedemptionError` z `outcome_ambiguous=True`; nie powtarzaj tej
 operacji automatycznie.
+
+Request refresh tokenu jest ponawiany wyłącznie po jawnej odpowiedzi `429`.
+SDK nie ponawia go po błędzie transportu ani `5xx`, ponieważ token mógł już
+zostać zmieniony.
 
 ## Równoległość pobierania
 

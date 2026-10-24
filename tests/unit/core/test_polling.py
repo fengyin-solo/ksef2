@@ -339,3 +339,55 @@ def test_async_poll_until_retries_transient_errors_until_timeout_with_fake_clock
         return result, sleeps
 
     assert asyncio.run(_run()) == (1, [2.0, 2.0])
+
+
+def test_poll_until_propagates_over_ceiling_rate_limit_without_sleeping() -> None:
+    error = KSeFRateLimitError(600, "slow down")
+    error.context["retry_after_exceeds_ceiling"] = True
+    sleeps: list[float] = []
+    now = 0.0
+
+    with pytest.raises(KSeFRateLimitError) as exc_info:
+        poll_until(
+            operation=lambda: (_ for _ in ()).throw(error),
+            retry_predicate=lambda _: False,
+            poll_interval=1.0,
+            timeout_seconds=30.0,
+            timeout_error_factory=PollTimeoutError,
+            sleep=sleeps.append,
+            clock=lambda: now,
+        )
+
+    assert exc_info.value is error
+    assert sleeps == []
+
+
+def test_async_poll_until_propagates_over_ceiling_rate_limit_without_sleeping() -> None:
+    async def _run() -> tuple[KSeFRateLimitError, list[float]]:
+        error = KSeFRateLimitError(600, "slow down")
+        error.context["retry_after_exceeds_ceiling"] = True
+        sleeps: list[float] = []
+        now = 0.0
+
+        async def _operation() -> int:
+            raise error
+
+        async def _sleep(delay: float) -> None:
+            sleeps.append(delay)
+
+        with pytest.raises(KSeFRateLimitError) as exc_info:
+            await async_poll_until(
+                operation=_operation,
+                retry_predicate=lambda _: False,
+                poll_interval=1.0,
+                timeout_seconds=30.0,
+                timeout_error_factory=PollTimeoutError,
+                sleep=_sleep,
+                clock=lambda: now,
+            )
+
+        return exc_info.value, sleeps
+
+    error, sleeps = asyncio.run(_run())
+    assert error.context["retry_after_exceeds_ceiling"] is True
+    assert sleeps == []

@@ -19,7 +19,12 @@ _RETRYABLE_POLL_ERRORS = (KSeFRateLimitError, KSeFServerError, KSeFTransportErro
 
 
 def _error_delay(error: Exception, poll_interval: float) -> float:
-    retry_after = error.retry_after if isinstance(error, KSeFRateLimitError) else None
+    if isinstance(error, KSeFRateLimitError):
+        if error.context.get("retry_after_exceeds_ceiling") is True:
+            raise error
+        retry_after = error.retry_after
+    else:
+        retry_after = None
     return float(retry_after) if retry_after is not None else poll_interval
 
 

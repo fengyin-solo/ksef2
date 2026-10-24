@@ -27,7 +27,9 @@ from ksef2._core.exceptions import (
     KSeFValidationError,
 )
 from ksef2._core.middlewares.async_exceptions import AsyncKSeFExceptionMiddleware
+from ksef2._core.middlewares.async_retry import AsyncRetryMiddleware
 from ksef2._core.middlewares.exceptions import KSeFExceptionMiddleware
+from ksef2._core.middlewares.retry import RetryMiddleware
 from ksef2._core.routes import LimitRoutes, PeppolRoutes, SessionRoutes
 from ksef2._domain.models.auth import AuthenticationResumeState, AuthTokens
 from ksef2._domain.models.session import OnlineSessionResumeState
@@ -388,12 +390,18 @@ def test_lost_invoice_send_response_has_status_recovery_hint(
         transport = AsyncFakeTransport()
         transport.enqueue_error(httpx.ReadError("response lost"))
         middleware: AsyncKSeFExceptionMiddleware | KSeFExceptionMiddleware = (
-            AsyncKSeFExceptionMiddleware(transport)
+            AsyncKSeFExceptionMiddleware(
+                AsyncRetryMiddleware(
+                    transport, RetryConfig(max_attempts=3, initial_delay=0.0)
+                )
+            )
         )
     else:
         transport = FakeTransport()
         transport.enqueue_error(httpx.ReadError("response lost"))
-        middleware = KSeFExceptionMiddleware(transport)
+        middleware = KSeFExceptionMiddleware(
+            RetryMiddleware(transport, RetryConfig(max_attempts=3, initial_delay=0.0))
+        )
 
     with pytest.raises(KSeFTransportError) as exc_info:
         _ = flavor.run(middleware.post(path, json={"invoice": "payload"}))
@@ -402,6 +410,7 @@ def test_lost_invoice_send_response_has_status_recovery_hint(
     assert exc_info.value.hint == (
         "Check `session.list_invoices()` before resending the invoice."
     )
+    assert len(transport.calls) == 1
 
 
 @pytest.mark.parametrize(

@@ -1,4 +1,4 @@
-from typing import final, override
+from typing import cast, final, override
 
 import httpx
 
@@ -19,9 +19,13 @@ _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 def _transport_error_details(
     method: str, path: str, error: Exception
 ) -> tuple[bool, str | None]:
-    if method.upper() in _SAFE_METHODS or isinstance(
-        error, (httpx.ConnectError, httpx.ConnectTimeout)
-    ):
+    if method.upper() in _SAFE_METHODS:
+        return False, None
+    prior_attempt_ambiguous = cast(
+        bool, error.__dict__.get("_ksef2_outcome_ambiguous", False)
+    )
+    is_connect_failure = isinstance(error, (httpx.ConnectError, httpx.ConnectTimeout))
+    if is_connect_failure and not prior_attempt_ambiguous:
         return False, None
     if (
         method.upper() == "POST"
@@ -49,7 +53,12 @@ class AsyncKSeFExceptionMiddleware(AsyncBaseMiddleware):
     def _handle(
         self, response: httpx.Response, method: str, path: str
     ) -> httpx.Response:
-        raise_for_ksef_status(response, method=method, path=path)
+        try:
+            raise_for_ksef_status(response, method=method, path=path)
+        except exceptions.KSeFRateLimitError as error:
+            if response.extensions.get("ksef2_retry_after_exceeds_ceiling") is True:
+                error.context["retry_after_exceeds_ceiling"] = True
+            raise
         return response
 
     @override

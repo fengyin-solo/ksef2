@@ -21,7 +21,7 @@ from ksef2._clients.profiles import (
     profile_context_type,
     resolve_profile_secret,
 )
-from ksef2._config import Environment
+from ksef2._config import Environment, resolve_legacy_environment
 from ksef2._core import exceptions
 from ksef2._core.crypto import encrypt_token
 from ksef2._core.polling import poll_until
@@ -102,7 +102,7 @@ class AuthClient:
         self,
         transport: Middleware,
         certificate_store: CertificateStoreProtocol,
-        environment: Environment = Environment.PRODUCTION,
+        environment: Environment | None = None,
         transfer_transport: Middleware | None = None,
         auto_refresh_tokens: bool = True,
     ) -> None:
@@ -111,14 +111,20 @@ class AuthClient:
         Args:
             transport: Middleware chain used for unauthenticated requests.
             certificate_store: Store holding the KSeF public-key certificates used to encrypt tokens.
-            environment: KSeF environment the client talks to.
+            environment: KSeF environment the client talks to. Omitting it is deprecated; use the root client's ``authentication`` branch.
             transfer_transport: Middleware used for transfers outside the KSeF API such as batch part uploads; defaults to ``transport``.
             auto_refresh_tokens: Whether authenticated clients refresh their access token automatically.
         """
         self._transport = transport
         self._transfer_transport = transfer_transport or transport
         self._certificate_store = certificate_store
-        self._environment = environment
+        self._environment = resolve_legacy_environment(
+            environment,
+            replacement=(
+                "`Client(environment).authentication` or "
+                "`AsyncClient(environment).authentication`"
+            ),
+        )
         self._auto_refresh_tokens = auto_refresh_tokens
         self._certificates = EncryptionClient(transport)
         self._auth_ep = AuthEndpoints(transport)

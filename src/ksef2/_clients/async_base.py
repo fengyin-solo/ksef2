@@ -14,8 +14,12 @@ from ksef2._clients.async_peppol import AsyncPeppolClient
 from ksef2._clients.async_testdata import AsyncTestDataClient
 from ksef2._config import Environment, TransportConfig, validate_transport_config
 from ksef2._core import exceptions, stores
-from ksef2._core.http_config import build_http_client_kwargs
+from ksef2._core.http_config import (
+    apply_environment_base_url,
+    build_http_client_kwargs,
+)
 from ksef2._core.async_http import AsyncHttpTransport
+from ksef2._domain.models._enum import coerce_enum
 from ksef2._core.middlewares.async_exceptions import AsyncKSeFExceptionMiddleware
 from ksef2._core.middlewares.async_lifecycle import (
     AsyncClientLifecycleMiddleware,
@@ -54,7 +58,7 @@ class AsyncClient:
 
     def __init__(
         self,
-        environment: Environment = Environment.PRODUCTION,
+        environment: Environment | str,
         *,
         transport_config: object | None = None,
         http_client: httpx.AsyncClient | None = None,
@@ -63,11 +67,12 @@ class AsyncClient:
         """Create the client.
 
         Args:
-            environment: KSeF environment to talk to. Defaults to production.
+            environment: Required KSeF environment to talk to. Accepts an ``Environment`` or a case-insensitive environment name.
             transport_config: HTTP transport settings (timeouts, retries, TLS, connection pool). Defaults are used when omitted.
             http_client: Existing ``httpx.AsyncClient`` to use instead of building one. The caller then owns it and must close it.
             certificate_store: Store for KSeF public-key certificates; an in-memory store is created when omitted.
         """
+        environment = coerce_enum(Environment, environment)
         self._environment = environment
         self._transport_config = (
             validate_transport_config(transport_config)
@@ -78,6 +83,11 @@ class AsyncClient:
             environment=environment,
             config=self._transport_config,
         )
+        if http_client is not None:
+            apply_environment_base_url(
+                http_client=http_client,
+                environment=environment,
+            )
         self._owns_http_client = http_client is None
         self._lifecycle_state = AsyncClientLifecycleState()
         self._http_transport = AsyncHttpTransport(

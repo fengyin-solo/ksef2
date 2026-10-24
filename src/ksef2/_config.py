@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, field
 from enum import Enum
+import warnings
 from typing import Literal, cast
 
 from ksef2._core.exceptions import KSeFArgumentError
@@ -52,6 +53,24 @@ class Environment(Enum):
             The base API URL for this environment.
         """
         return self.value
+
+
+def resolve_legacy_environment(
+    environment: Environment | None,
+    *,
+    replacement: str,
+) -> Environment:
+    """Keep old public branch constructors working while warning on omission."""
+    if environment is not None:
+        return environment
+    warnings.warn(
+        "Omitting `environment` from this constructor is deprecated. "
+        f"Use {replacement} instead. This call shape remains available "
+        "throughout 1.x; removal, if any, may happen no earlier than 2.0.0.",
+        DeprecationWarning,
+        stacklevel=3,
+    )
+    return Environment.PRODUCTION
 
 
 @dataclass(frozen=True, slots=True, init=False)

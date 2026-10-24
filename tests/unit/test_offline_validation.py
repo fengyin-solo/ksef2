@@ -5,7 +5,7 @@ import pytest
 from ksef2._clients.async_auth import _validated_nip
 from ksef2._clients.async_base import AsyncClient
 from ksef2._clients.base import Client
-from ksef2._config import RetryConfig, TimeoutConfig
+from ksef2._config import Environment, RetryConfig, TimeoutConfig
 from ksef2._core.exceptions import KSeFArgumentError, KSeFValidationError
 from ksef2._domain.models.batch import BatchInvoice
 from ksef2._domain.models.limits import SessionLimits
@@ -85,9 +85,9 @@ def test_transport_configuration_rejects_invalid_values(
 
 def test_sync_root_client_rejects_dictionary_transport_config() -> None:
     with pytest.raises(KSeFArgumentError, match="TransportConfig instance"):
-        Client(transport_config={})
+        Client(environment=Environment.TEST, transport_config={})
 
 
 def test_async_root_client_rejects_dictionary_transport_config() -> None:
     with pytest.raises(KSeFArgumentError, match="TransportConfig instance"):
-        AsyncClient(transport_config={})
+        AsyncClient(environment=Environment.TEST, transport_config={})

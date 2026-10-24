@@ -120,7 +120,11 @@ otoczka nie zmienia liczby prób.
 | `path` | `str \| None` | Ścieżka URL żądania bez userinfo, hosta, query i fragmentu. Presigned URL-e storage nigdy nie trafiają do tego pola. |
 | `cause_type` | `str \| None` | Typ oryginalnego błędu transportu albo `None`. |
 | `cause_message` | `str \| None` | Bezpieczne podsumowanie przyczyny; adresy URL i query są usuwane. |
-| `outcome_ambiguous` | `bool` | `True`, gdy żądanie mogło mimo wszystko dotrzeć do KSeF: wszystko poza `GET`, `HEAD` i `OPTIONS`, bo wcześniejsza próba mogła dotrzeć. |
+| `outcome_ambiguous` | `bool` | `True`, gdy żądanie mogło dotrzeć do KSeF. Błędy połączenia przed wysłaniem mają wartość `False`; utrata odpowiedzi dla niebezpiecznego żądania ma wartość `True`. |
+
+Gdy wynik wysyłki jest niejednoznaczny, sprawdź status przed ponowną próbą.
+Dla faktury online `session.list_invoices()` może pokazać, czy KSeF ją zapisał.
+Pole `hint` błędu podaje ten sposób odzyskiwania.
 
 Oryginalny wyjątek `httpx` pozostaje dostępny jako `__cause__`. Komunikat i
 `str(exc)` zawierają metodę żądania, oczyszczoną ścieżkę, typ przyczyny i jej

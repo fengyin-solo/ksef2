@@ -119,7 +119,11 @@ single attempt; the wrapping changes no attempt count.
 | `path` | `str \| None` | Pathname the SDK was asked for, kept without userinfo, host, query and fragment. Presigned storage URLs are never kept here. |
 | `cause_type` | `str \| None` | Type name of the original transport error, when available. |
 | `cause_message` | `str \| None` | Sanitized cause summary, when available. URLs and query strings are removed. |
-| `outcome_ambiguous` | `bool` | `True` when the request may have reached KSeF anyway: anything but `GET`, `HEAD` and `OPTIONS`, because an earlier attempt may have arrived. |
+| `outcome_ambiguous` | `bool` | `True` when the request may have reached KSeF. Connect failures raised before sending are `False`; lost responses on unsafe requests are `True`. |
+
+When a send operation has an ambiguous outcome, check its status before
+resending. For an online invoice, `session.list_invoices()` can show whether KSeF
+recorded it. The error's `hint` gives this recovery step.
 
 The original `httpx` exception stays available as `__cause__`. The message and
 `str(exc)` include the request method, sanitized pathname, cause type and a

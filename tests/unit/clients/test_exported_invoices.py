@@ -175,10 +175,22 @@ class TestSave:
 
         assert not (tmp_path / "evil.xml").exists()
 
+    def test_from_path_accepts_any_pathlike(self, tmp_path: Path) -> None:
+        class CustomPath:
+            def __fspath__(self) -> str:
+                return str(tmp_path / "export.zip")
+
+        (tmp_path / "export.zip").write_bytes(_zip({f"{KSEF_1}.xml": b"<one />"}))
+
+        exported = ExportedInvoices.from_path(CustomPath())
+
+        assert list(exported.invoices()) == [(KSEF_1, b"<one />")]
+
     @requires_unchecked_types
-    def test_from_path_rejects_string_paths(self, tmp_path: Path) -> None:
-        with pytest.raises(KSeFArgumentError):
-            ExportedInvoices.from_path(str(tmp_path / "export.zip"))  # pyright: ignore[reportArgumentType]
+    @pytest.mark.parametrize("value", ["export.zip", b"export.zip", None])
+    def test_from_path_rejects_non_paths(self, value: object) -> None:
+        with pytest.raises(KSeFArgumentError, match=r"pass Path\(\.\.\.\)"):
+            _ = ExportedInvoices.from_path(value)  # pyright: ignore[reportArgumentType]
 
     def test_refuses_an_entry_that_resolves_outside_through_a_symlink(
         self, tmp_path: Path

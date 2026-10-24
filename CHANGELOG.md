@@ -14,7 +14,8 @@ and method names remain functional throughout 1.x (#171). Read
 
 - `ExportJob.download(Path)` decrypts export parts to disk with per-part size and
   hash verification, and `ExportedInvoices.from_path()` reads ZIP and TarGz
-  archives without loading the whole archive into memory (#305).
+  archives without loading the whole archive into memory (#305). Both accept
+  any `os.PathLike` and reject `str`/`bytes` with `KSeFArgumentError`.
 
 - Offline validation rejects invoice metadata ranges longer than 100 days, documents
   metadata page-size bounds, checks invoice sizes before sending or batch

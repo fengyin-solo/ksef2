@@ -1,7 +1,6 @@
 """Public export result contracts over local HTTP mocks."""
 
 import base64
-import hashlib
 import io
 import json
 import tarfile
@@ -20,7 +19,7 @@ from cryptography.x509.oid import NameOID
 
 from ksef2 import AsyncClient, Client, Environment
 from ksef2.models import AuthenticationResumeState, ExportResumeState, InvoicesFilter
-from ksef2._core.crypto import encrypt_invoice
+from ksef2._core.crypto import encrypt_invoice, sha256_b64
 
 
 @pytest.mark.parametrize("compression", ["Zip", "TarGz"])
@@ -108,13 +107,9 @@ async def test_export_reads_and_saves_response_format(
                                 "method": "GET",
                                 "url": f"https://storage.mock/parts/{i}",
                                 "partSize": len(parts[i]),
-                                "partHash": base64.b64encode(
-                                    hashlib.sha256(parts[i]).digest()
-                                ).decode(),
+                                "partHash": sha256_b64(parts[i]),
                                 "encryptedPartSize": len(content),
-                                "encryptedPartHash": base64.b64encode(
-                                    hashlib.sha256(content).digest()
-                                ).decode(),
+                                "encryptedPartHash": sha256_b64(content),
                                 "expirationDate": "2030-01-01T00:00:00Z",
                             }
                             for i, content in enumerate(encrypted)

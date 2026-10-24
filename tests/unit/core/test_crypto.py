@@ -1,6 +1,7 @@
 import base64
 import datetime
 import hashlib
+import io
 
 import pytest
 from cryptography import x509
@@ -181,3 +182,35 @@ def test_sha256_b64_matches_hashlib() -> None:
         crypto.sha256_b64(b"abc")
         == base64.b64encode(hashlib.sha256(b"abc").digest()).decode()
     )
+
+
+@pytest.mark.parametrize("size", [0, 15, 16, 17, 100])
+@pytest.mark.parametrize("chunk_size", [16, 32, 64 * 1024])
+def test_streaming_decrypt_matches_in_memory_decrypt(
+    size: int, chunk_size: int
+) -> None:
+    key, iv = bytes(range(32)), bytes(range(16))
+    plaintext = bytes(range(256))[:size]
+    encrypted = crypto.encrypt_invoice(plaintext, key, iv)
+    output = io.BytesIO()
+
+    written, digest = crypto.decrypt_aes_cbc_to(
+        encrypted, key, iv, output, chunk_size=chunk_size
+    )
+
+    assert output.getvalue() == crypto.decrypt_aes_cbc(encrypted, key, iv)
+    assert (written, digest) == (size, crypto.sha256_b64(plaintext))
+
+
+def test_streaming_decrypt_rejects_padding_like_in_memory_decrypt() -> None:
+    key, iv = bytes(range(32)), bytes(range(16))
+    zero_pad = encryptor_for(key, iv, bytes(16))
+    forged = encryptor_for(key, iv, bytes(11) + bytes([1, 2, 3, 4, 5]))
+
+    with pytest.raises(KSeFEncryptionError, match="Invalid PKCS#7 padding byte"):
+        _ = crypto.decrypt_aes_cbc_to(zero_pad, key, iv, io.BytesIO())
+    with pytest.raises(KSeFEncryptionError, match="Invalid PKCS#7 padding"):
+        _ = crypto.decrypt_aes_cbc_to(forged, key, iv, io.BytesIO())
+    for ciphertext in (b"", b"not-a-block-multiple"):
+        with pytest.raises(KSeFEncryptionError, match="invalid block length"):
+            _ = crypto.decrypt_aes_cbc_to(ciphertext, key, iv, io.BytesIO())

@@ -1,6 +1,7 @@
 """Async high-level invoice workflow service."""
 
 import asyncio
+import os
 from collections.abc import (
     AsyncIterator,
     Awaitable,
@@ -31,6 +32,7 @@ from ksef2._core import exceptions
 from ksef2._core.async_protocols import AsyncMiddleware
 from ksef2._core.async_external_transfer import AsyncExternalTransferClient
 from ksef2._core.crypto import decrypt_aes_cbc
+from ksef2._core.paths import require_path
 from ksef2._core.polling import async_poll_until
 from ksef2._core.stores import CertificateStoreProtocol
 from ksef2._domain.models.compression import (
@@ -51,7 +53,6 @@ from ksef2._domain.models.pagination import InvoiceMetadataParams, Page
 from ksef2._logging import get_logger
 from ksef2._services.export_parts import (
     decrypt_verified_part,
-    require_path,
     safe_part_filename,
 )
 
@@ -172,7 +173,11 @@ class AsyncExportJob(
         return await self._wait(timeout, poll_interval)
 
     async def download(
-        self, path: Path, *, timeout: float = 120.0, poll_interval: float = 2.0
+        self,
+        path: os.PathLike[str],
+        *,
+        timeout: float = 120.0,
+        poll_interval: float = 2.0,
     ) -> ExportedInvoices:
         """Wait for the export and decrypt its parts to an archive file.
 
@@ -180,18 +185,18 @@ class AsyncExportJob(
         transport; decryption and output are processed in bounded chunks.
 
         Args:
-            path: Destination archive path.
+            path: Destination archive path, as any ``os.PathLike``.
             timeout: Maximum seconds to wait for the export to become ready.
             poll_interval: Delay between export status checks.
 
         Raises:
-            KSeFArgumentError: If ``path`` is not a ``pathlib.Path``.
+            KSeFArgumentError: If ``path`` is a ``str``, ``bytes`` or not ``os.PathLike``.
             KSeFExportTimeoutError: If polling exceeds ``timeout``.
 
         Returns:
             An ``ExportedInvoices`` object backed by the written file.
         """
-        path = require_path(path)
+        target = require_path(path)
         status = await async_poll_until(
             operation=self._poll,
             retry_predicate=self._is_pending,
@@ -199,7 +204,7 @@ class AsyncExportJob(
             timeout_seconds=timeout,
             timeout_error_factory=lambda: self._timeout_error(timeout),
         )
-        return await self._download_to(status.package, path)
+        return await self._download_to(status.package, target)
 
 
 @final

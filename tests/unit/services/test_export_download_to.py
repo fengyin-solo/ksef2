@@ -1,9 +1,7 @@
 """Integrity and cleanup behavior for disk-backed export downloads."""
 
 import asyncio
-import base64
 import os
-import hashlib
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock
@@ -11,7 +9,8 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
-from ksef2._core.crypto import encrypt_invoice
+from ksef2._clients.exported_invoices import ExportedInvoices
+from ksef2._core.crypto import encrypt_invoice, sha256_b64
 from ksef2._core.exceptions import (
     KSeFArgumentError,
     KSeFEncryptionError,
@@ -20,6 +19,8 @@ from ksef2._core.exceptions import (
 from ksef2._domain.models.invoices import (
     ExportHandle,
     ExportResumeState,
+    ExportStatusInfo,
+    InvoiceExportStatusResponse,
     InvoicePackage,
     PackagePart,
 )
@@ -36,10 +37,6 @@ requires_unchecked_types = pytest.mark.skipif(
 KEY, IV = b"k" * 32, b"i" * 16
 
 
-def _digest(data: bytes) -> str:
-    return base64.b64encode(hashlib.sha256(data).digest()).decode()
-
-
 def _part(ordinal: int, plaintext: bytes, ciphertext: bytes) -> dict[str, object]:
     return {
         "ordinal_number": ordinal,
@@ -47,9 +44,9 @@ def _part(ordinal: int, plaintext: bytes, ciphertext: bytes) -> dict[str, object
         "method": "GET",
         "url": "https://storage.invalid/signed-capability",
         "part_size": len(plaintext),
-        "part_hash": _digest(plaintext),
+        "part_hash": sha256_b64(plaintext),
         "encrypted_part_size": len(ciphertext),
-        "encrypted_part_hash": _digest(ciphertext),
+        "encrypted_part_hash": sha256_b64(ciphertext),
         "expiration_date": datetime(2030, 1, 1, tzinfo=UTC),
     }
 
@@ -122,11 +119,11 @@ def test_disk_download_rejects_part_integrity_mismatch_and_removes_partial(
     first_part = _part(1, plaintext, ciphertext)
     second_part = _part(2, plaintext, ciphertext)
     if mismatch == "plain_hash":
-        second_part["part_hash"] = _digest(b"wrong")
+        second_part["part_hash"] = sha256_b64(b"wrong")
     elif mismatch == "plain_size":
         second_part["part_size"] = len(plaintext) + 1
     elif mismatch == "encrypted_hash":
-        second_part["encrypted_part_hash"] = _digest(b"wrong")
+        second_part["encrypted_part_hash"] = sha256_b64(b"wrong")
     else:
         second_part["encrypted_part_size"] = len(ciphertext) + 1
     target = tmp_path / "export.zip"
@@ -177,27 +174,68 @@ def test_interrupted_download_removes_partial_and_keeps_existing_target(
     assert not target.with_name(target.name + ".partial").exists()
 
 
-@requires_unchecked_types
-@pytest.mark.parametrize("is_async", [False, True], ids=["sync", "async"])
-def test_job_download_rejects_string_paths_before_polling(is_async: bool) -> None:
-    get_status = Mock()
-    download_to = Mock()
+class _CustomPath:
+    def __init__(self, value: Path) -> None:
+        self._value = value
+
+    def __fspath__(self) -> str:
+        return str(self._value)
+
+
+def _job(is_async: bool, download_to: Mock) -> ExportJob | AsyncExportJob:
+    ready = InvoiceExportStatusResponse.model_construct(
+        status=ExportStatusInfo.model_construct(code=200, description="ready"),
+        package=None,
+    )
     state = ExportResumeState.model_construct(
         reference_number="export-ref", aes_key=KEY, iv=IV
     )
-    job_class = AsyncExportJob if is_async else ExportJob
-    job = job_class(
+    if is_async:
+        return AsyncExportJob(
+            state,
+            get_status=AsyncMock(return_value=ready),
+            download_parts=AsyncMock(),
+            download_to=AsyncMock(side_effect=download_to),
+        )
+    return ExportJob(
         state,
-        get_status=get_status,
+        get_status=Mock(return_value=ready),
         download_parts=Mock(),
         download_to=download_to,
     )
 
-    with pytest.raises(KSeFArgumentError):
-        if is_async:
-            asyncio.run(job.download("export.zip"))  # pyright: ignore[reportArgumentType]
-        else:
-            _ = job.download("export.zip")  # pyright: ignore[reportArgumentType]
 
-    get_status.assert_not_called()
+def _run_download(job: ExportJob | AsyncExportJob, path: object) -> object:
+    if isinstance(job, AsyncExportJob):
+        return asyncio.run(job.download(path, poll_interval=0.0))  # pyright: ignore[reportArgumentType]
+    return job.download(path, poll_interval=0.0)  # pyright: ignore[reportArgumentType]
+
+
+@pytest.mark.parametrize("is_async", [False, True], ids=["sync", "async"])
+@pytest.mark.parametrize("wrap", [Path, _CustomPath], ids=["path", "pathlike"])
+def test_job_download_accepts_pathlike_and_passes_a_path(
+    is_async: bool, wrap: type, tmp_path: Path
+) -> None:
+    exported = ExportedInvoices([])
+    download_to = Mock(return_value=exported)
+    job = _job(is_async, download_to)
+
+    assert _run_download(job, wrap(tmp_path / "export.zip")) is exported
+
+    download_to.assert_called_once_with(None, tmp_path / "export.zip")
+    assert type(download_to.call_args.args[1]) is type(tmp_path)
+
+
+@requires_unchecked_types
+@pytest.mark.parametrize("is_async", [False, True], ids=["sync", "async"])
+@pytest.mark.parametrize("value", ["export.zip", b"export.zip", None])
+def test_job_download_rejects_non_paths_before_polling(
+    is_async: bool, value: object
+) -> None:
+    download_to = Mock()
+    job = _job(is_async, download_to)
+
+    with pytest.raises(KSeFArgumentError, match=r"pass Path\(\.\.\.\)"):
+        _ = _run_download(job, value)
+
     download_to.assert_not_called()

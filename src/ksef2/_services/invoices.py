@@ -3,6 +3,7 @@
 
 """High-level invoice workflow service."""
 
+import os
 from collections.abc import (
     Callable,
     Iterator,
@@ -30,6 +31,7 @@ from ksef2._clients.invoices import InvoicesClient
 from ksef2._core import exceptions
 from ksef2._core.crypto import decrypt_aes_cbc
 from ksef2._core.external_transfer import ExternalTransferClient
+from ksef2._core.paths import require_path
 from ksef2._core.polling import poll_until
 from ksef2._core.protocols import Middleware
 from ksef2._core.stores import CertificateStoreProtocol
@@ -53,7 +55,6 @@ from ksef2._domain.models.pagination import InvoiceMetadataParams, Page
 from ksef2._logging import get_logger
 from ksef2._services.export_parts import (
     decrypt_verified_part,
-    require_path,
     safe_part_filename,
 )
 
@@ -170,7 +171,11 @@ class ExportJob(OperationHandle[InvoiceExportStatusResponse, ExportedInvoices]):
         return self._wait(timeout, poll_interval)
 
     def download(
-        self, path: Path, *, timeout: float = 120.0, poll_interval: float = 2.0
+        self,
+        path: os.PathLike[str],
+        *,
+        timeout: float = 120.0,
+        poll_interval: float = 2.0,
     ) -> ExportedInvoices:
         """Wait for the export and decrypt its parts to an archive file.
 
@@ -178,18 +183,18 @@ class ExportJob(OperationHandle[InvoiceExportStatusResponse, ExportedInvoices]):
         transport; decryption and output are processed in bounded chunks.
 
         Args:
-            path: Destination archive path.
+            path: Destination archive path, as any ``os.PathLike``.
             timeout: Maximum seconds to wait for the export to become ready.
             poll_interval: Delay between export status checks.
 
         Raises:
-            KSeFArgumentError: If ``path`` is not a ``pathlib.Path``.
+            KSeFArgumentError: If ``path`` is a ``str``, ``bytes`` or not ``os.PathLike``.
             KSeFExportTimeoutError: If polling exceeds ``timeout``.
 
         Returns:
             An ``ExportedInvoices`` object backed by the written file.
         """
-        path = require_path(path)
+        target = require_path(path)
         status = poll_until(
             operation=self._poll,
             retry_predicate=self._is_pending,
@@ -197,7 +202,7 @@ class ExportJob(OperationHandle[InvoiceExportStatusResponse, ExportedInvoices]):
             timeout_seconds=timeout,
             timeout_error_factory=lambda: self._timeout_error(timeout),
         )
-        return self._download_to(status.package, path)
+        return self._download_to(status.package, target)
 
 
 @final

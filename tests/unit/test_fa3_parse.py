@@ -163,8 +163,8 @@ def test_builder_emits_zero_bucket_for_correction_rows_that_net_to_zero() -> Non
     assert document.xpath("//*[local-name()='P_14_1']/text()") == ["0.00"]
 
 
-def test_builder_requires_vat_exchange_rate_for_foreign_currency() -> None:
-    builder = (
+def _foreign_currency_invoice_builder() -> InvoiceBuilder:
+    return (
         InvoiceBuilder()
         .header(system_info="foreign currency")
         .seller(
@@ -179,6 +179,14 @@ def test_builder_requires_vat_exchange_rate_for_foreign_currency() -> None:
             country_code="PL",
             address_line_1="a",
         )
+    )
+
+
+def test_builder_requires_exchange_rate_for_foreign_currency_without_alternatives() -> (
+    None
+):
+    builder = (
+        _foreign_currency_invoice_builder()
         .standard()
         .currency("EUR")
         .rows()
@@ -193,9 +201,55 @@ def test_builder_requires_vat_exchange_rate_for_foreign_currency() -> None:
     )
     with pytest.raises(
         ValueError,
-        match="vat_currency_exchange_rate is required for non-PLN invoices",
+        match="Foreign-currency invoices require a body or row exchange rate",
     ):
         _ = builder.build()
+
+
+def test_builder_accepts_foreign_currency_with_per_row_exchange_rate() -> None:
+    builder = (
+        _foreign_currency_invoice_builder()
+        .standard()
+        .currency("EUR")
+        .rows()
+        .add_line(
+            name="Line",
+            quantity=Decimal("1"),
+            unit_price_net=Decimal("1.00"),
+            vat_rate=VatRate.VAT_23,
+            currency_exchange_rate=Decimal("4.5000"),
+        )
+        .done()
+        .done()
+    )
+
+    xml = builder.to_xml()
+    document = etree.fromstring(xml.encode("utf-8"))
+    assert document.xpath("//*[local-name()='P_14_1W']/text()") == ["1.04"]
+
+
+def test_builder_accepts_foreign_currency_with_pln_vat_summary_override() -> None:
+    builder = (
+        _foreign_currency_invoice_builder()
+        .standard()
+        .currency("EUR")
+        .summary_overrides(
+            InvoiceSummaryOverrides(base_rate_vat_total_pln=Decimal("1.04"))
+        )
+        .rows()
+        .add_line(
+            name="Line",
+            quantity=Decimal("1"),
+            unit_price_net=Decimal("1.00"),
+            vat_rate=VatRate.VAT_23,
+        )
+        .done()
+        .done()
+    )
+
+    xml = builder.to_xml()
+    document = etree.fromstring(xml.encode("utf-8"))
+    assert document.xpath("//*[local-name()='P_14_1W']/text()") == ["1.04"]
 
 
 @pytest.mark.parametrize("kind", ["correction_advance", "correction_settlement"])

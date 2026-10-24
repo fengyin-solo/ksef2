@@ -1,5 +1,9 @@
 ## v1.0.0 (unreleased)
 
+### Fixed
+
+- Restore deprecated `ksef2.clients.*` submodule imports throughout 1.x.
+
 ksef2 1.0.0 is being prepared as the first stable release. It targets KSeF
 OpenAPI 2.8.1 and starts the 1.x compatibility contract. Collective-identifier
 invoice queries change because KSeF replaced the endpoint. Old SDK import paths
@@ -7,6 +11,11 @@ and method names remain functional throughout 1.x (#171). Read
 [Breaking changes](#breaking-changes) and [Deprecated](#deprecated) before upgrading.
 
 ### Highlights
+
+- Public input handling follows one rule: `bytes` and `str` are content, while
+  `Path` is a file. Batch preparation catches strings that name existing files,
+  FA(3) parsing accepts XML text with declarations, and PEM helpers warn when
+  legacy string paths are used (#297, #304).
 
 - The documented import paths (`ksef2`, `ksef2.clients`, `ksef2.models`,
   `ksef2.fa3`, `ksef2.xades`, `ksef2.logging`, `ksef2.profiles`,
@@ -29,6 +38,11 @@ and method names remain functional throughout 1.x (#171). Read
   `trace_id` and `details`, and say what to do next in `hint` (#167).
 - Deprecations are visible to type checkers and IDEs (PEP 702 `@deprecated`) and
   remain functional through the 1.x line. Removal is a 2.0 decision (#171).
+- Polling helpers continue through retryable server, rate-limit and transport
+  errors until their timeout. Invoice sends and refresh-token requests retry
+  only after an explicit `429`; ambiguous transport failures are not retried.
+  Connect failures are reported as non-ambiguous and lost invoice responses
+  include a recovery hint (#300).
 
 ### Breaking changes
 

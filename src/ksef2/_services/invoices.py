@@ -51,7 +51,11 @@ from ksef2._domain.models.invoices import (
 )
 from ksef2._domain.models.pagination import InvoiceMetadataParams, Page
 from ksef2._logging import get_logger
-from ksef2._services.export_parts import safe_part_filename
+from ksef2._services.export_parts import (
+    decrypt_verified_part,
+    require_path,
+    safe_part_filename,
+)
 
 logger = get_logger(__name__)
 
@@ -77,6 +81,7 @@ class ExportJob(OperationHandle[InvoiceExportStatusResponse, ExportedInvoices]):
         *,
         get_status: Callable[[], InvoiceExportStatusResponse],
         download_parts: Callable[[InvoicePackage], list[bytes]],
+        download_to: Callable[[InvoicePackage | None, Path], ExportedInvoices],
     ) -> None:
         """Create the handle.
 
@@ -84,11 +89,13 @@ class ExportJob(OperationHandle[InvoiceExportStatusResponse, ExportedInvoices]):
             state: Reference number and key material of the export.
             get_status: Coroutine function returning the current export status.
             download_parts: Coroutine function that downloads and decrypts every part of a package, in order.
+            download_to: Coroutine function that downloads verified parts to an archive path.
         """
         super().__init__(state.reference_number)
         self._state = state
         self._get_status = get_status
         self._download_parts = download_parts
+        self._download_to = download_to
 
     def resume_state(self) -> ExportResumeState:
         """Return the sensitive state needed to resume the export later.
@@ -161,6 +168,36 @@ class ExportJob(OperationHandle[InvoiceExportStatusResponse, ExportedInvoices]):
                 its outcome cannot be determined.
         """
         return self._wait(timeout, poll_interval)
+
+    def download(
+        self, path: Path, *, timeout: float = 120.0, poll_interval: float = 2.0
+    ) -> ExportedInvoices:
+        """Wait for the export and decrypt its parts to an archive file.
+
+        External HTTP responses are currently buffered by the configured
+        transport; decryption and output are processed in bounded chunks.
+
+        Args:
+            path: Destination archive path.
+            timeout: Maximum seconds to wait for the export to become ready.
+            poll_interval: Delay between export status checks.
+
+        Raises:
+            KSeFArgumentError: If ``path`` is not a ``pathlib.Path``.
+            KSeFExportTimeoutError: If polling exceeds ``timeout``.
+
+        Returns:
+            An ``ExportedInvoices`` object backed by the written file.
+        """
+        path = require_path(path)
+        status = poll_until(
+            operation=self._poll,
+            retry_predicate=self._is_pending,
+            poll_interval=poll_interval,
+            timeout_seconds=timeout,
+            timeout_error_factory=lambda: self._timeout_error(timeout),
+        )
+        return self._download_to(status.package, path)
 
 
 @final
@@ -518,6 +555,9 @@ class InvoicesService:
                 reference_number=handle.reference_number
             ),
             download_parts=_download_parts,
+            download_to=lambda package, path: self._download_package_to(
+                package=package, export=handle, path=path
+            ),
         )
 
     @deprecated(
@@ -880,6 +920,38 @@ class InvoicesService:
             encrypted_part,
             key=export.aes_key,
             iv=export.iv,
+        )
+
+    def _download_package_to(
+        self, *, package: InvoicePackage | None, export: ExportHandle, path: Path
+    ) -> ExportedInvoices:
+        temporary_path = path.with_name(path.name + ".partial")
+        try:
+            _ = path.parent.mkdir(parents=True, exist_ok=True)
+            with temporary_path.open("wb") as output:
+                if package is not None:
+                    for part in sorted(
+                        package.parts, key=lambda item: item.ordinal_number
+                    ):
+                        encrypted = self._external_transfers.download_part(
+                            url=str(part.url),
+                            reference_number=export.reference_number,
+                            part_ordinal=part.ordinal_number,
+                        )
+                        decrypt_verified_part(
+                            encrypted,
+                            part=part,
+                            key=export.aes_key,
+                            iv=export.iv,
+                            output=output,
+                        )
+            _ = temporary_path.replace(path)
+        except BaseException:
+            temporary_path.unlink(missing_ok=True)
+            raise
+        compression = package.compression_type if package is not None else "zip"
+        return ExportedInvoices.from_path(
+            path, compression=compression, package=package
         )
 
     @deprecated(

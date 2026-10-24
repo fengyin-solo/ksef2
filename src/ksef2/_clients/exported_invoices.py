@@ -19,6 +19,13 @@ from ksef2._domain.models.invoices import (
 from ksef2._infra.mappers.invoices import from_spec
 from ksef2._infra.schema.api import spec
 
+
+def _require_path(value: object) -> Path:
+    if not isinstance(value, Path):
+        raise exceptions.KSeFArgumentError("path must be a pathlib.Path.")
+    return value
+
+
 METADATA_FILE_NAME = "_metadata.json"
 _DRIVE_RE = re.compile(r"^[A-Za-z]:")
 
@@ -188,16 +195,32 @@ class ExportedInvoices:
 
     @classmethod
     def from_path(
-        cls, path: Path | str, *, compression: CompressionType = "zip"
+        cls,
+        path: Path,
+        *,
+        compression: CompressionType = "zip",
+        package: InvoicePackage | None = None,
     ) -> Self:
         """Open a decrypted ZIP or TarGz package from disk without loading it.
 
         Invoice entries are read only as the iterator reaches them. The returned
         object keeps the path, so the file must remain available while it is used.
+
+        Args:
+            path: Path to the decrypted archive file.
+            compression: Archive format, inferred as TarGz for ``.tar.gz`` or
+                ``.tgz`` paths and ZIP otherwise.
+            package: Optional export status metadata associated with the archive.
+
+        Returns:
+            An export result backed by the archive file.
         """
         result = cls([])
-        result._archive_path = Path(path)
+        result._archive_path = _require_path(path)
+        if compression == "zip" and str(path).lower().endswith((".tar.gz", ".tgz")):
+            compression = "tar_gz"
         result._compression = normalize_compression_type(compression)
+        result._package = package
         return result
 
     def _open(self) -> zipfile.ZipFile | tarfile.TarFile:

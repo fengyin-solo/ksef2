@@ -12,8 +12,9 @@ and method names remain functional throughout 1.x (#171). Read
 
 ### Highlights
 
-- `ExportedInvoices.from_path()` reads ZIP and TarGz export archives directly
-  from disk, without loading the full archive into memory (#305).
+- `ExportJob.download(Path)` decrypts export parts to disk with per-part size and
+  hash verification, and `ExportedInvoices.from_path()` reads ZIP and TarGz
+  archives without loading the whole archive into memory (#305).
 
 - Offline validation rejects invoice metadata ranges longer than 100 days, documents
   metadata page-size bounds, checks invoice sizes before sending or batch

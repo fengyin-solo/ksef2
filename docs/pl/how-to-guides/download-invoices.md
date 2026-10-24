@@ -61,6 +61,15 @@ w granicy, którą KSeF raportuje jako kompletną. Zapisz
 aż paczka będzie gotowa, pobiera i odszyfrowuje części, łączy je i zwraca obiekt
 `ExportedInvoices`.
 
+Dla dużych paczek użyj `job.download(Path(...))`, aby zapisać połączone,
+odszyfrowane archiwum na dysku. Metoda zwraca `ExportedInvoices` korzystający z
+tego pliku. Każda część AES jest odszyfrowywana fragmentami i sprawdzana według
+rozmiaru oraz sumy SHA-256 otrzymanych z KSeF; plik docelowy jest podmieniany
+dopiero po poprawnym sprawdzeniu wszystkich części. W razie błędu plik
+`.partial` jest usuwany. Obecny transport HTTP buforuje każdą zaszyfrowaną
+odpowiedź, więc pamięć zależy od rozmiaru pobranej części, a nie całego
+odszyfrowanego archiwum.
+
 Opcjonalny `compression_type` przyjmuje `"zip"` albo `"tar_gz"`. Gdy go
 pominięto, format paczki wybiera serwer.
 

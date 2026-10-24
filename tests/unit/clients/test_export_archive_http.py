@@ -1,6 +1,7 @@
 """Public export result contracts over local HTTP mocks."""
 
 import base64
+import hashlib
 import io
 import json
 import tarfile
@@ -107,9 +108,13 @@ async def test_export_reads_and_saves_response_format(
                                 "method": "GET",
                                 "url": f"https://storage.mock/parts/{i}",
                                 "partSize": len(parts[i]),
-                                "partHash": "A" * 43 + "=",
+                                "partHash": base64.b64encode(
+                                    hashlib.sha256(parts[i]).digest()
+                                ).decode(),
                                 "encryptedPartSize": len(content),
-                                "encryptedPartHash": "A" * 43 + "=",
+                                "encryptedPartHash": base64.b64encode(
+                                    hashlib.sha256(content).digest()
+                                ).decode(),
                                 "expirationDate": "2030-01-01T00:00:00Z",
                             }
                             for i, content in enumerate(encrypted)
@@ -154,7 +159,12 @@ async def test_export_reads_and_saves_response_format(
                 job = await auth.invoices.export(
                     filters, compression_type=sdk_compression
                 )
-            exported = await job.wait(poll_interval=0.0)
+            exported = await job.download(
+                tmp_path / "downloaded.tar"
+                if compression == "TarGz"
+                else tmp_path / "downloaded.zip",
+                poll_interval=0.0,
+            )
     else:
         with Client(
             Environment.TEST,
@@ -167,7 +177,12 @@ async def test_export_reads_and_saves_response_format(
                 job = auth.invoices.export(state=state)
             else:
                 job = auth.invoices.export(filters, compression_type=sdk_compression)
-            exported = job.wait(poll_interval=0.0)
+            exported = job.download(
+                tmp_path / "downloaded.tar"
+                if compression == "TarGz"
+                else tmp_path / "downloaded.zip",
+                poll_interval=0.0,
+            )
     assert exported.archive == payload
     assert list(exported.invoices()) == [("invoice", b"<invoice />")]
     assert exported.metadata == []

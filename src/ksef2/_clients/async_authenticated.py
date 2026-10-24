@@ -28,6 +28,7 @@ from ksef2._core.crypto import encrypt_symmetric_key, generate_session_key
 from ksef2._core.middlewares.async_auth import AsyncBearerTokenMiddleware
 from ksef2._core.stores import CertificateStoreProtocol
 from ksef2._domain.models.auth import AuthenticationResumeState, AuthTokens
+from ksef2._domain.models._enum import coerce_enum
 from ksef2._domain.models import (
     BatchFileInfo,
     BatchSessionResumeState,
@@ -36,6 +37,7 @@ from ksef2._domain.models import (
 )
 from ksef2._domain.models.session import (
     FormSchema,
+    FormSchemaInput,
     OnlineSessionResumeState,
     OpenOnlineSessionRequest,
     SessionEncryptionMaterial,
@@ -209,7 +211,7 @@ class AsyncAuthenticatedClient:
     def online_session(
         self,
         *,
-        form_code: FormSchema,
+        form_code: FormSchemaInput,
     ) -> _AwaitableSession[AsyncOnlineSessionClient]: ...
 
     @overload
@@ -222,7 +224,7 @@ class AsyncAuthenticatedClient:
     def online_session(
         self,
         *,
-        form_code: FormSchema | None = None,
+        form_code: FormSchemaInput | None = None,
         state: OnlineSessionResumeState | str | None = None,
     ) -> _AwaitableSession[AsyncOnlineSessionClient]:
         """Open a new online invoice session, or resume one from saved state.
@@ -240,7 +242,7 @@ class AsyncAuthenticatedClient:
             A session client that can be used as a context manager and closes the session on exit.
 
         Raises:
-            KSeFArgumentError: If neither or both of ``form_code`` and ``state`` are given.
+            KSeFArgumentError: If ``form_code`` is invalid or neither or both of ``form_code`` and ``state`` are given.
             NoCertificateAvailableError: If no valid symmetric-key certificate is
                 available.
             KSeFEncryptionError: If symmetric-key encryption fails.
@@ -266,7 +268,9 @@ class AsyncAuthenticatedClient:
         if state is not None:
             return _AwaitableSession(self._resume_online_session_async(state))
         assert form_code is not None
-        return _AwaitableSession(self._open_online_session(form_code=form_code))
+        return _AwaitableSession(
+            self._open_online_session(form_code=coerce_enum(FormSchema, form_code))
+        )
 
     async def _resume_online_session_async(
         self, state: OnlineSessionResumeState | str
@@ -325,7 +329,7 @@ class AsyncAuthenticatedClient:
         self,
         *,
         batch_file: BatchFileInfo,
-        form_code: FormSchema = FormSchema.FA3,
+        form_code: FormSchemaInput = FormSchema.FA3,
         offline_mode: bool = False,
     ) -> _AwaitableSession[AsyncBatchSessionClient]: ...
 
@@ -342,7 +346,7 @@ class AsyncAuthenticatedClient:
         *,
         prepared_batch: PreparedBatch | None = None,
         batch_file: BatchFileInfo | None = None,
-        form_code: FormSchema | None = None,
+        form_code: FormSchemaInput | None = None,
         offline_mode: bool | None = None,
         state: BatchSessionResumeState | str | None = None,
     ) -> _AwaitableSession[AsyncBatchSessionClient]:
@@ -416,7 +420,11 @@ class AsyncAuthenticatedClient:
             self._open_batch_session_from_input(
                 prepared_batch=prepared_batch,
                 batch_file=batch_file,
-                form_code=form_code or FormSchema.FA3,
+                form_code=(
+                    coerce_enum(FormSchema, form_code)
+                    if form_code is not None
+                    else FormSchema.FA3
+                ),
                 offline_mode=bool(offline_mode),
             )
         )
@@ -547,7 +555,7 @@ class AsyncAuthenticatedClient:
         iv: bytes,
         encrypted_key: bytes,
         public_key_id: str | None = None,
-        form_code: FormSchema = FormSchema.FA3,
+        form_code: FormSchemaInput = FormSchema.FA3,
         offline_mode: bool = False,
         prepared_batch: PreparedBatch | None = None,
     ) -> _AwaitableSession[AsyncBatchSessionClient]:
@@ -560,7 +568,7 @@ class AsyncAuthenticatedClient:
                     encrypted_key=encrypted_key,
                     public_key_id=public_key_id,
                 ),
-                form_code=form_code,
+                form_code=coerce_enum(FormSchema, form_code),
                 offline_mode=offline_mode,
                 prepared_batch=prepared_batch,
             )
@@ -578,7 +586,7 @@ class AsyncAuthenticatedClient:
         iv: bytes,
         encrypted_key: bytes,
         public_key_id: str | None = None,
-        form_code: FormSchema = FormSchema.FA3,
+        form_code: FormSchemaInput = FormSchema.FA3,
         offline_mode: bool = False,
         prepared_batch: PreparedBatch | None = None,
     ) -> _AwaitableSession[AsyncBatchSessionClient]:
@@ -610,7 +618,7 @@ class AsyncAuthenticatedClient:
             iv=iv,
             encrypted_key=encrypted_key,
             public_key_id=public_key_id,
-            form_code=form_code,
+            form_code=coerce_enum(FormSchema, form_code),
             offline_mode=offline_mode,
             prepared_batch=prepared_batch,
         )

@@ -13,11 +13,12 @@ stabilne w linii 1.x.
 | `ksef2` | Klienci root, konfiguracja środowiska i transportu, `FormSchema`, `__version__` oraz publiczne wyjątki. |
 | `ksef2.clients` | Konkretne klasy klientów sync/async, stabilne typy workflow `InvoicesService` / `BatchService` oraz typy uchwytów, stronicowania i wyniku eksportu (`InvoiceSubmission`, `ExportJob`, `GeneratedToken`, `PermissionOperation`, `CertificateEnrollment`, `ExportedInvoices`, `Pager`, `OperationHandle`) wraz z odpowiednikami async, do adnotacji typów. |
 | `ksef2.models` | Modele żądań, odpowiedzi, filtrów, paginacji (w tym `Page`), tokenów, uprawnień, sesji, batchy, eksportu i stanów wznowienia (`ExportResumeState`, `GeneratedTokenResumeState`, `CertificateEnrollmentResumeState`, `PermissionOperationResumeState`, `InvoiceSubmissionResumeState`) oraz obiekt poświadczeń XAdES (`XAdESCredentials`). |
-| `ksef2.fa3` | Publiczny builder faktur FA(3), drafty buildera oraz typy modelu faktury używane przez aplikacje. |
+| `ksef2.fa3` | `InvoiceBuilder` jest kanonicznym builderem FA(3). `FA3InvoiceBuilder` pozostaje wycofywanym aliasem przez 1.x; moduł eksportuje też drafty i typy modeli FA(3). |
+| `ksef2.logging` | `configure_logging()` do jawnego włączenia logowania strukturalnego SDK. |
 | `ksef2.xades` | Ładowanie certyfikatów, generowanie certyfikatów TEST, lokalne podpisy XAdES, `LocalSigner` oraz obiekt poświadczeń `XAdESCredentials` przyjmowany przez `with_xades()`. |
 | `ksef2.testdata` | Pomocniki tylko dla TEST, które generują poprawne numery NIP i PESEL (`generate_nip`, `generate_pesel`). |
 | `ksef2.profiles` | Helpery konfiguracji profili zgodnych z `ksef2-cli`. |
-| `ksef2.renderers` | Opcjonalne lokalne helpery renderowania faktur XSLT/PDF. |
+| `ksef2.renderers` | Lokalne renderowanie XSLT; renderowanie PDF wymaga również dodatku `[pdf]`. Przy pierwszym użyciu bez niego `InvoicePDFExporter` zwraca czytelny błąd instalacji. |
 | `ksef2.raw` | Klienty endpointów niskiego poziomu, modele `spec` i `supp` oraz narzędzia kryptograficzne. |
 | `ksef2.raw.mappers` | Publiczne mappery między modelami raw i modelami SDK. |
 
@@ -30,6 +31,26 @@ from ksef2.models import InvoicesFilter, InvoiceMetadataParams
 from ksef2.renderers import InvoicePDFExporter, InvoiceXSLTRenderer
 from ksef2.xades import XAdESCredentials, load_certificate_from_pem
 ```
+
+Tylko renderowanie PDF wymaga dodatku: zainstaluj `ksef2[pdf]`. Kontrole typów
+podczas działania wymagają `ksef2[runtime-checks]`. Pozostałe wymienione wyżej
+moduły działają z podstawową instalacją. `ksef2.pdf` nie jest osobnym modułem;
+używaj `ksef2.renderers` dla obu rendererów.
+
+SDK domyślnie nie emituje logów i przekazuje rekordy przez standardowy logger
+`ksef2`. Aplikacja może skonfigurować własne handlery i poziomy standardowego
+logowania albo jawnie włączyć renderer konsolowy/JSON SDK:
+
+```python
+from ksef2.logging import configure_logging
+
+configure_logging(level="INFO", renderer="console")
+```
+
+`configure_logging()` służy do konfiguracji aplikacji i SDK nigdy nie wywołuje
+go samodzielnie. Zdarzenia SDK używają poziomów standardowego logowania i pól
+strukturalnych. Tokeny, klucze kryptograficzne i presigned URL-e nie trafiają do
+zdarzeń logowania SDK.
 
 ## Eksporty pakietu root
 

@@ -16,7 +16,11 @@ from ksef2._domain.models.fa3.body import (
     VatClassification,
     VatRate,
 )
-from ksef2._domain.models.fa3.body.tax import coerce_vat_classification
+from ksef2._domain.models.fa3.body.tax import (
+    VatRateInput,
+    coerce_vat_classification,
+)
+from ksef2._domain.models._enum import coerce_enum
 from ksef2._services.builders.fa3.metadata import builder_param
 
 
@@ -63,7 +67,7 @@ RowUnitPriceGrossParam = Annotated[
     ),
 ]
 RowVatRateParam = Annotated[
-    VatRate | str | None,
+    VatRateInput | None,
     builder_param(
         "VAT rate used for the line when a standard VAT indicator is enough.",
         examples=["23", "8", "0", "zw"],
@@ -218,15 +222,11 @@ def _coerce_sale_category(
 ) -> SaleCategory | None:
     if sale_category is None:
         return None
-    if isinstance(sale_category, SaleCategory):
-        return sale_category
-    return SaleCategory(sale_category)
+    return coerce_enum(SaleCategory, sale_category)
 
 
 def _coerce_tax_regime(tax_regime: TaxRegime | str) -> TaxRegime:
-    if isinstance(tax_regime, TaxRegime):
-        return tax_regime
-    return TaxRegime(tax_regime)
+    return coerce_enum(TaxRegime, tax_regime)
 
 
 def _coerce_vat_classification(

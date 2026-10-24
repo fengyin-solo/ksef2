@@ -14,6 +14,7 @@ from lxml import etree
 
 from ksef2._config import Environment
 from ksef2._core import exceptions
+from ksef2._domain.models._enum import coerce_enum
 from ksef2._services.fa3 import parse_invoice_xml
 
 from ksef2._services.renderers.xslt import InvoiceXSLTRenderer
@@ -44,6 +45,9 @@ class PDFPageSize(StrEnum):
     LETTER_LANDSCAPE = "letter landscape"
 
 
+type PDFPageSizeInput = PDFPageSize | str
+
+
 @final
 class InvoicePDFExporter:
     """Export FA3 invoice XML to PDF through XSLT and WeasyPrint."""
@@ -54,7 +58,7 @@ class InvoicePDFExporter:
         enable_code_lookups: bool = False,
         html_overrides: str | None = None,
         *,
-        page_size: PDFPageSize | None = None,
+        page_size: PDFPageSizeInput | None = None,
         verification_environment: Environment = Environment.PRODUCTION,
     ):
         """Create a PDF exporter.
@@ -68,8 +72,11 @@ class InvoicePDFExporter:
 
         Raises:
             ImportError: If optional PDF dependencies are not installed.
+            KSeFArgumentError: If ``page_size`` is not a supported page size.
         """
-        self._page_size = PDFPageSize(page_size) if page_size is not None else None
+        self._page_size = (
+            coerce_enum(PDFPageSize, page_size) if page_size is not None else None
+        )
         self._verification_environment = Environment(verification_environment)
         self._weasyprint = _load_weasyprint()
         self._xslt_renderer = InvoiceXSLTRenderer(

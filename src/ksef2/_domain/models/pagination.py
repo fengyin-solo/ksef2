@@ -115,6 +115,8 @@ class InvoiceMetadataParams(
     ``page_size`` must be between 10 and 250 inclusive.
     """
 
+    wrap_validation_errors = True
+
     page_size: int = Field(default=10, ge=10, le=250)
     """Number of results per page (10–250)."""
 

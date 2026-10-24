@@ -178,10 +178,21 @@ using `ROUND_HALF_UP`, then sums those rounded rows for invoice totals. This
 per-line rounding is the default; the builder has no total-based calculation
 mode.
 
+Amounts, quantities, prices, and exchange rates accept `Decimal`, `int`, `float`,
+and numeric strings. Pydantic converts floats to `Decimal` through their string
+representation, equivalent to `Decimal(str(value))`, before row calculations.
+Use `Decimal` or numeric strings when you need to preserve an exact decimal input.
+
 ## Add payments and annotations
 
 The payment builder supports a single payment form, due dates, partial payments,
 bank accounts, factor accounts, discounts, payment links, and IP KSeF data.
+
+When you add partial payments, call `partial_payment_status("partial")` for an
+invoice paid in part, or `partial_payment_status("final")` for an invoice fully
+paid in installments. These map to XSD flag values `1` and `2`. The builder
+requires an explicit choice at `done()` or `build()` because payment entries
+alone do not determine the status.
 
 ```python
 _ = (
@@ -189,6 +200,7 @@ _ = (
     .payment()
         .via("bank_transfer")
         .due_on(date(2026, 7, 8))
+        .partial_payment_status("partial")
         .add_partial_payment(
             amount=Decimal("50.00"),
             payment_date=date(2026, 6, 24),

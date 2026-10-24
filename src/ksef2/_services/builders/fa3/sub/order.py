@@ -7,6 +7,7 @@ from collections.abc import Callable
 
 from pydantic import TypeAdapter
 
+from ksef2._domain.models._enum import coerce_enum
 from ksef2._domain.models.fa3.body import (
     SaleCategory,
     TaxRegime,
@@ -21,14 +22,14 @@ from ksef2._services.builders.fa3.metadata import builder_param
 class OrderState(TypedDict):
     """Typed state for Order fields."""
 
-    total_value: Decimal | None
+    total_value: Decimal | int | float | str | None
     order_lines: list[InvoiceOrderLine]
 
 
 adapter = TypeAdapter(OrderState)
 
 OrderAmountParam = Annotated[
-    Decimal | None,
+    Decimal | int | float | str | None,
     builder_param(
         "Monetary value used in the order section.",
         examples=["1000.00"],
@@ -46,7 +47,7 @@ def _coerce_vat_rate(value: VatRate | str | None) -> VatRate | None:
         return None
     if isinstance(value, VatRate):
         return value
-    return VatRate(value)
+    return coerce_enum(VatRate, value)
 
 
 def _coerce_sale_category(value: SaleCategory | str | None) -> SaleCategory | None:
@@ -54,13 +55,13 @@ def _coerce_sale_category(value: SaleCategory | str | None) -> SaleCategory | No
         return None
     if isinstance(value, SaleCategory):
         return value
-    return SaleCategory(value)
+    return coerce_enum(SaleCategory, value)
 
 
 def _coerce_tax_regime(value: TaxRegime | str) -> TaxRegime:
     if isinstance(value, TaxRegime):
         return value
-    return TaxRegime(value)
+    return coerce_enum(TaxRegime, value)
 
 
 def _coerce_vat_classification(
@@ -77,7 +78,7 @@ class OrderBuilder[TParent]:
         parent: TParent,
         on_done: Callable[[InvoiceOrder], None],
         existing_state: InvoiceOrder | None = None,
-        declared_total: Decimal | None = None,
+        declared_total: Decimal | int | float | str | None = None,
     ) -> None:
         """Create the builder.
 
@@ -124,7 +125,7 @@ class OrderBuilder[TParent]:
         self,
         *,
         gross_amount: Annotated[
-            Decimal,
+            Decimal | int | float | str,
             builder_param(
                 "Gross amount for the order line.",
                 examples=["123.00"],
@@ -157,7 +158,7 @@ class OrderBuilder[TParent]:
             ),
         ] = None,
         quantity: Annotated[
-            Decimal | None,
+            Decimal | int | float | str | None,
             builder_param(
                 "Quantity recorded on the order line.",
                 examples=["1", "2.5"],
@@ -172,7 +173,7 @@ class OrderBuilder[TParent]:
             ),
         ] = None,
         unit_price_net: Annotated[
-            Decimal | None,
+            Decimal | int | float | str | None,
             builder_param(
                 "Net unit price recorded on the order line.",
                 examples=["100.00"],
@@ -198,7 +199,7 @@ class OrderBuilder[TParent]:
             ),
         ] = TaxRegime.STANDARD,
         vat_rate_xii: Annotated[
-            Decimal | None,
+            Decimal | int | float | str | None,
             builder_param(
                 "VAT rate for Title XII order lines.",
                 examples=["8.50"],
@@ -279,7 +280,7 @@ class OrderBuilder[TParent]:
             ),
         ] = None,
         excise_amount: Annotated[
-            Decimal | None,
+            Decimal | int | float | str | None,
             builder_param(
                 "Excise amount stored on the order line when required.",
                 examples=["12.30"],
@@ -325,28 +326,32 @@ class OrderBuilder[TParent]:
             The builder, for chaining.
         """
         self._state["order_lines"].append(
-            InvoiceOrderLine(
-                gross_amount=gross_amount,
-                vat_rate=_coerce_vat_rate(vat_rate),
-                vat_classification=_coerce_vat_classification(vat_classification),
-                name=name,
-                quantity=quantity,
-                unit_of_measure=unit_of_measure,
-                unit_price_net=unit_price_net,
-                sale_category=_coerce_sale_category(sale_category),
-                tax_regime=_coerce_tax_regime(tax_regime),
-                vat_rate_xii=vat_rate_xii,
-                annex_15_marker=annex_15_marker,
-                unique_id=unique_id,
-                sku=sku,
-                gtin=gtin,
-                pkwiu=pkwiu,
-                cn=cn,
-                pkob=pkob,
-                gtu_code=gtu_code,
-                procedure=procedure,
-                excise_amount=excise_amount,
-                before_correction=before_correction,
+            InvoiceOrderLine.model_validate(
+                {
+                    "gross_amount": gross_amount,
+                    "vat_rate": _coerce_vat_rate(vat_rate),
+                    "vat_classification": _coerce_vat_classification(
+                        vat_classification
+                    ),
+                    "name": name,
+                    "quantity": quantity,
+                    "unit_of_measure": unit_of_measure,
+                    "unit_price_net": unit_price_net,
+                    "sale_category": _coerce_sale_category(sale_category),
+                    "tax_regime": _coerce_tax_regime(tax_regime),
+                    "vat_rate_xii": vat_rate_xii,
+                    "annex_15_marker": annex_15_marker,
+                    "unique_id": unique_id,
+                    "sku": sku,
+                    "gtin": gtin,
+                    "pkwiu": pkwiu,
+                    "cn": cn,
+                    "pkob": pkob,
+                    "gtu_code": gtu_code,
+                    "procedure": procedure,
+                    "excise_amount": excise_amount,
+                    "before_correction": before_correction,
+                }
             )
         )
         return self
@@ -390,7 +395,7 @@ class OrderBuilder[TParent]:
         Returns:
             The built ``InvoiceOrder``.
         """
-        return InvoiceOrder(**self._state)
+        return InvoiceOrder.model_validate({**self._state})
 
     def _is_empty(self) -> bool:
         return self._state == _default_state()
@@ -417,7 +422,9 @@ class OrderBuilderMixin:
 
     _order: InvoiceOrder | None = None
 
-    def order(self, *, declared_total: Decimal | None = None) -> OrderBuilder[Self]:
+    def order(
+        self, *, declared_total: Decimal | int | float | str | None = None
+    ) -> OrderBuilder[Self]:
         """Start an order sub-builder.
 
         Args:

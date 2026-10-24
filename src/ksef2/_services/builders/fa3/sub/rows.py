@@ -43,7 +43,7 @@ RowNameParam = Annotated[
     ),
 ]
 RowQuantityParam = Annotated[
-    Decimal,
+    Decimal | int | float | str,
     builder_param(
         "Quantity billed on this line.",
         examples=["1", "2.5"],
@@ -51,7 +51,7 @@ RowQuantityParam = Annotated[
     ),
 ]
 RowUnitPriceNetParam = Annotated[
-    Decimal | None,
+    Decimal | int | float | str | None,
     builder_param(
         "Net unit price for one item or one service unit. Provide either this or unit_price_gross.",
         examples=["100.00", "2499.99"],
@@ -59,7 +59,7 @@ RowUnitPriceNetParam = Annotated[
     ),
 ]
 RowUnitPriceGrossParam = Annotated[
-    Decimal | None,
+    Decimal | int | float | str | None,
     builder_param(
         "Gross unit price for one item or one service unit. Provide either this or unit_price_net.",
         examples=["123.00", "3074.99"],
@@ -101,7 +101,7 @@ RowSupplyDateParam = Annotated[
     ),
 ]
 RowDiscountAmountParam = Annotated[
-    Decimal | None,
+    Decimal | int | float | str | None,
     builder_param(
         "Discount amount applied to the line.",
         examples=["0.00", "15.50"],
@@ -128,7 +128,7 @@ RowTaxRegimeParam = Annotated[
     ),
 ]
 RowOverrideAmountParam = Annotated[
-    Decimal | None,
+    Decimal | int | float | str | None,
     builder_param(
         "Explicit line amount. Usually computed automatically; set it only when you intentionally need to override the builder's calculation.",
         examples=["100.00", "123.00"],
@@ -137,7 +137,7 @@ RowOverrideAmountParam = Annotated[
     ),
 ]
 RowVatRateXiiParam = Annotated[
-    Decimal | None,
+    Decimal | int | float | str | None,
     builder_param(
         "VAT rate used for special Title XII scenarios.",
         examples=["8.50"],
@@ -154,7 +154,7 @@ RowAnnex15Param = Annotated[
     ),
 ]
 RowExciseAmountParam = Annotated[
-    Decimal | None,
+    Decimal | int | float | str | None,
     builder_param(
         "Excise amount linked to the line when required by the invoice scenario.",
         examples=["12.30"],
@@ -189,7 +189,7 @@ RowProcedureParam = Annotated[
     ),
 ]
 RowCurrencyExchangeRateParam = Annotated[
-    Decimal | None,
+    Decimal | int | float | str | None,
     builder_param(
         "Currency exchange rate used for this line when the line requires its own rate.",
         examples=["4.2512"],
@@ -214,7 +214,7 @@ def _default_state() -> RowsState:
 def _coerce_vat_rate(vat_rate: VatRate | str | None) -> VatRate | None:
     if vat_rate is None or isinstance(vat_rate, VatRate):
         return vat_rate
-    return VatRate(vat_rate)
+    return coerce_enum(VatRate, vat_rate)
 
 
 def _coerce_sale_category(
@@ -236,8 +236,8 @@ def _coerce_vat_classification(
 
 
 def _validate_unit_price_choice(
-    unit_price_net: Decimal | None,
-    unit_price_gross: Decimal | None,
+    unit_price_net: Decimal | int | float | str | None,
+    unit_price_gross: Decimal | int | float | str | None,
 ) -> None:
     if unit_price_net is not None and unit_price_gross is not None:
         raise _validation_error(
@@ -352,34 +352,38 @@ class RowsBuilder[TParent]:
         """
         _validate_unit_price_choice(unit_price_net, unit_price_gross)
         self._state["rows"].append(
-            InvoiceRow(
-                name=name,
-                quantity=quantity,
-                unit_price_net=unit_price_net,
-                vat_rate=_coerce_vat_rate(vat_rate),
-                vat_classification=_coerce_vat_classification(vat_classification),
-                unit_of_measure=unit_of_measure,
-                supply_date=supply_date,
-                discount_amount=discount_amount,
-                sale_category=_coerce_sale_category(sale_category),
-                tax_regime=_coerce_tax_regime(tax_regime),
-                net_amount=net_amount,
-                vat_amount=vat_amount,
-                gross_amount=gross_amount,
-                unit_price_gross=unit_price_gross,
-                vat_rate_xii=vat_rate_xii,
-                annex_15_marker=annex_15_marker,
-                excise_amount=excise_amount,
-                unique_id=unique_id,
-                sku=sku,
-                gtin=gtin,
-                pkwiu=pkwiu,
-                cn=cn,
-                pkob=pkob,
-                gtu_code=gtu_code,
-                procedure=procedure,
-                currency_exchange_rate=currency_exchange_rate,
-                before_correction=before_correction,
+            InvoiceRow.model_validate(
+                {
+                    "name": name,
+                    "quantity": quantity,
+                    "unit_price_net": unit_price_net,
+                    "vat_rate": _coerce_vat_rate(vat_rate),
+                    "vat_classification": _coerce_vat_classification(
+                        vat_classification
+                    ),
+                    "unit_of_measure": unit_of_measure,
+                    "supply_date": supply_date,
+                    "discount_amount": discount_amount,
+                    "sale_category": _coerce_sale_category(sale_category),
+                    "tax_regime": _coerce_tax_regime(tax_regime),
+                    "net_amount": net_amount,
+                    "vat_amount": vat_amount,
+                    "gross_amount": gross_amount,
+                    "unit_price_gross": unit_price_gross,
+                    "vat_rate_xii": vat_rate_xii,
+                    "annex_15_marker": annex_15_marker,
+                    "excise_amount": excise_amount,
+                    "unique_id": unique_id,
+                    "sku": sku,
+                    "gtin": gtin,
+                    "pkwiu": pkwiu,
+                    "cn": cn,
+                    "pkob": pkob,
+                    "gtu_code": gtu_code,
+                    "procedure": procedure,
+                    "currency_exchange_rate": currency_exchange_rate,
+                    "before_correction": before_correction,
+                }
             )
         )
         return self

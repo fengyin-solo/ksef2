@@ -11,6 +11,11 @@
   token credentials before HTTP requests. Person and entity grants accept
   snake_case strings or permission enums; PascalCase permissions suggest the
   corresponding snake_case value.
+- Require an explicit FA(3) partial-payment status before building payment entries,
+  correct both builder guides, and report invalid builder fields as
+  `KSeFValidationError` with the original validation error as the cause. Builder
+  amount, quantity, price, and exchange-rate hints now accept floats and numeric
+  strings, matching runtime decimal conversion.
 
 - Restore deprecated `ksef2.clients.*` submodule imports throughout 1.x.
 

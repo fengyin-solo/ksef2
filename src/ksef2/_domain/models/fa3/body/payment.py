@@ -6,7 +6,8 @@ from typing import Self, Literal
 
 from pydantic import Field, model_validator
 
-from ksef2._domain.models import KSeFBaseModel
+from ksef2._domain.models.base import KSeFBaseModel as KSeFBaseModel
+from ksef2._domain.models.fa3.base import Fa3Model
 
 
 PaymentForm = Literal[
@@ -20,7 +21,7 @@ BankOwnAccountType = Literal[
 ]
 
 
-class PaymentTermDescription(KSeFBaseModel):
+class PaymentTermDescription(Fa3Model):
     """FA(3) descriptive payment term.
 
     References:
@@ -40,7 +41,7 @@ class PaymentTermDescription(KSeFBaseModel):
     """Event the term counts from, for example the date of delivery."""
 
 
-class PaymentTerm(KSeFBaseModel):
+class PaymentTerm(Fa3Model):
     """FA(3) payment term entry.
 
     References:
@@ -73,7 +74,7 @@ class PaymentTerm(KSeFBaseModel):
         return self
 
 
-class BankAccount(KSeFBaseModel):
+class BankAccount(Fa3Model):
     """FA(3) bank account information used in payment data.
 
     References:
@@ -99,7 +100,7 @@ class BankAccount(KSeFBaseModel):
     """Free-text description of the account (``OpisRachunku``)."""
 
 
-class PartialPayment(KSeFBaseModel):
+class PartialPayment(Fa3Model):
     """FA(3) partial payment entry.
 
     References:
@@ -125,7 +126,7 @@ class PartialPayment(KSeFBaseModel):
     """Description of the other payment form."""
 
 
-class InvoicePayment(KSeFBaseModel):
+class InvoicePayment(Fa3Model):
     """FA(3) invoice payment details.
 
     References:

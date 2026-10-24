@@ -4,10 +4,11 @@ from datetime import date
 
 from pydantic import Field
 
-from ksef2._domain.models import KSeFBaseModel
+from ksef2._domain.models.base import KSeFBaseModel as KSeFBaseModel
+from ksef2._domain.models.fa3.base import Fa3Model
 
 
-class NewTransportMeansItem(KSeFBaseModel):
+class NewTransportMeansItem(Fa3Model):
     """FA(3) new means of transport annotation line.
 
     References:
@@ -76,7 +77,7 @@ class NewTransportMeansItem(KSeFBaseModel):
     )
 
 
-class NewTransportSupply(KSeFBaseModel):
+class NewTransportSupply(Fa3Model):
     """FA(3) annotation for intra-Community supply of new means of transport.
 
     References:

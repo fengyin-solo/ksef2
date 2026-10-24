@@ -1,10 +1,11 @@
 """FA(3) invoice footer domain models."""
 
 from pydantic import Field, field_validator
-from ksef2._domain.models import KSeFBaseModel
+from ksef2._domain.models.base import KSeFBaseModel as KSeFBaseModel
+from ksef2._domain.models.fa3.base import Fa3Model
 
 
-class FooterRegistry(KSeFBaseModel):
+class FooterRegistry(Fa3Model):
     """FA(3) invoice footer registry.
 
     References:
@@ -46,7 +47,7 @@ class FooterRegistry(KSeFBaseModel):
     """BDO (waste database) number."""
 
 
-class InvoiceFooter(KSeFBaseModel):
+class InvoiceFooter(Fa3Model):
     """FA(3) invoice footer.
 
     References:

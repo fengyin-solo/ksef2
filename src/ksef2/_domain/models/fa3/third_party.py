@@ -6,7 +6,8 @@ from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
 
-from ksef2._domain.models.base import KSeFBaseModel
+from ksef2._domain.models.base import KSeFBaseModel as KSeFBaseModel
+from ksef2._domain.models.fa3.base import Fa3Model
 from ksef2._domain.models.fa3.party import ContactInfo, InvoiceAddress
 
 ThirdPartyRole = Literal[
@@ -24,7 +25,7 @@ ThirdPartyRole = Literal[
 ]
 
 
-class InvoiceThirdParty(KSeFBaseModel):
+class InvoiceThirdParty(Fa3Model):
     """Additional FA(3) subject stored in the repeated ``Faktura/Podmiot3`` block."""
 
     tax_id: str | None = None

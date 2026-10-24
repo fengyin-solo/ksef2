@@ -5,7 +5,8 @@ from importlib.metadata import PackageNotFoundError, version
 
 from pydantic import Field
 
-from ksef2._domain.models import KSeFBaseModel
+from ksef2._domain.models.base import KSeFBaseModel as KSeFBaseModel
+from ksef2._domain.models.fa3.base import Fa3Model
 
 
 def _default_system_info() -> str:
@@ -16,7 +17,7 @@ def _default_system_info() -> str:
     return f"ksef2 sdk version: {package_version}"
 
 
-class InvoiceHeader(KSeFBaseModel):
+class InvoiceHeader(Fa3Model):
     """FA(3) invoice header.
 
     References:

@@ -5,7 +5,8 @@ from typing import Self
 
 from pydantic import Field, field_validator, model_validator
 
-from ksef2._domain.models import KSeFBaseModel
+from ksef2._domain.models.base import KSeFBaseModel as KSeFBaseModel
+from ksef2._domain.models.fa3.base import Fa3Model
 from ksef2._domain.models.fa3.body.tax import (
     SaleCategory,
     TaxRegime,
@@ -22,7 +23,7 @@ def round_pln(value: Decimal) -> Decimal:
     return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
-class InvoiceOrderLine(KSeFBaseModel):
+class InvoiceOrderLine(Fa3Model):
     """FA(3) order line used inside the invoice order block."""
 
     name: str | None = Field(default=None, description="p_7_z")
@@ -252,7 +253,7 @@ class InvoiceOrderLine(KSeFBaseModel):
             )
 
 
-class InvoiceOrder(KSeFBaseModel):
+class InvoiceOrder(Fa3Model):
     """FA(3) order block with one or more order lines."""
 
     total_value: Decimal | None = None

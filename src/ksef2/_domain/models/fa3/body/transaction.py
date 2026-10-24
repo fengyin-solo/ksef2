@@ -7,7 +7,8 @@ from typing import Literal, Self
 
 from pydantic import Field, field_validator, model_validator
 
-from ksef2._domain.models import KSeFBaseModel
+from ksef2._domain.models.base import KSeFBaseModel as KSeFBaseModel
+from ksef2._domain.models.fa3.base import Fa3Model
 
 
 TransportType = Literal[
@@ -44,7 +45,7 @@ CargoType = Literal[
 ]
 
 
-class TransactionAddress(KSeFBaseModel):
+class TransactionAddress(Fa3Model):
     """FA(3) transaction address structure.
 
     References:
@@ -86,7 +87,7 @@ class TransactionAddress(KSeFBaseModel):
         return normalized
 
 
-class TransactionIdentity(KSeFBaseModel):
+class TransactionIdentity(Fa3Model):
     """FA(3) transaction party identification data.
 
     References:
@@ -169,7 +170,7 @@ class TransactionIdentity(KSeFBaseModel):
         return self
 
 
-class TransactionContract(KSeFBaseModel):
+class TransactionContract(Fa3Model):
     """FA(3) contract reference used in transaction conditions.
 
     References:
@@ -202,7 +203,7 @@ class TransactionContract(KSeFBaseModel):
         return self
 
 
-class TransactionOrder(KSeFBaseModel):
+class TransactionOrder(Fa3Model):
     """FA(3) order reference used in transaction conditions.
 
     References:
@@ -235,7 +236,7 @@ class TransactionOrder(KSeFBaseModel):
         return self
 
 
-class TransactionTransport(KSeFBaseModel):
+class TransactionTransport(Fa3Model):
     """FA(3) transport data nested under transaction conditions.
 
     References:
@@ -352,7 +353,7 @@ class TransactionTransport(KSeFBaseModel):
         return self
 
 
-class TransactionConditions(KSeFBaseModel):
+class TransactionConditions(Fa3Model):
     """FA(3) transaction conditions attached to an invoice.
 
     References:

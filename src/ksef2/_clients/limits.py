@@ -37,7 +37,11 @@ class LimitsClient:
 
     @property
     def cached_context_limits(self) -> ContextLimits | None:
-        """Return context limits fetched by this client, if available."""
+        """Return context limits fetched by this client, if available.
+
+        Returns:
+            The cached context limits, or ``None`` if they have not been fetched.
+        """
         return self._cached_context_limits
 
     def get_context_limits(self) -> ContextLimits:

@@ -74,14 +74,14 @@ with auth.online_session(form_code=FormSchema.FA3) as session:
     submission = session.send_invoice(invoice_xml)
 
     # InvoiceSubmission handle
-    # submission.reference_number == "20260625-ABCD-EF1234567890"
+    # submission.reference_number == "20260625-SO-0123456789-ABCDEF0123-45"
 
     status = submission.wait(timeout=120.0, poll_interval=2.0)
 
     # SessionInvoiceStatusResponse
     # {
-    #   "reference_number": "20260625-ABCD-EF1234567890",
-    #   "ksef_number": "1234567890-20260625-...",
+    #   "reference_number": "20260625-SO-0123456789-ABCDEF0123-45",
+    #   "ksef_number": "5261040828-20260625-ABCDEF012345-67",
     #   "invoice_number": "FV/42/2026",
     #   "status": {
     #     "code": 200,

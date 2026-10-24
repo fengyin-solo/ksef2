@@ -110,9 +110,21 @@ If only a stored reference is available, use
 For async code, await each operation separately:
 
 ```python
-submission = await session.send_invoice(invoice_xml)
-status = await submission.wait(timeout=120.0)
-upo = await submission.download_upo()
+import asyncio
+from pathlib import Path
+
+from ksef2 import AsyncClient, Environment, FormSchema
+
+async def main() -> None:
+    invoice_xml = Path("invoice.xml").read_bytes()
+    async with AsyncClient(Environment.TEST) as client:
+        auth = await client.authentication.with_test_certificate(nip="5261040828")
+        async with auth.online_session(form_code=FormSchema.FA3) as session:
+            submission = await session.send_invoice(invoice_xml)
+            status = await submission.wait(timeout=120.0)
+            upo = await submission.download_upo()
+
+asyncio.run(main())
 ```
 
 ## Search, download and export

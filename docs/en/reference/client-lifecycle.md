@@ -8,7 +8,7 @@ Use the how-to guide when you need a runnable setup sequence.
 
 ## Root client constructors
 
-```python
+```text
 Client(
     environment=Environment.TEST,
     *,
@@ -119,6 +119,31 @@ They do not own an independent HTTP client.
 When `http_client` is supplied, HTTP-client settings such as timeout, pool,
 TLS, proxy, `trust_env`, HTTP/2, custom transports, and event hooks come from
 that supplied object. SDK retry middleware still uses `transport_config.retry`.
+
+## Threads, tasks, and serialization
+
+Use one `Client` and its authenticated branches per worker thread. The underlying
+`httpx.Client` supports concurrent requests, and the SDK's `threading.Lock`
+serializes token refreshes within one authenticated client. However, certificate
+and limit caches and client lifecycle state are not protected by that lock, so
+the complete SDK client is not guaranteed to be thread-safe.
+
+An `AsyncClient` and its authenticated branches can serve independent requests
+from multiple tasks on the same event loop. Token refresh uses `asyncio.Lock`.
+Do not share them across threads or event loops. Wait for all tasks before
+closing the client, and coordinate changes to cached limits or certificate stores.
+
+Give each online or batch session one owner, or serialize its operations with an
+application lock. Session close flags and upload state have no concurrency lock;
+sending or uploading must not race with closing or another upload of the same batch.
+
+KSeF rate limits apply per context regardless of how many clients, threads, or
+tasks use it. Bound concurrency across those workers.
+
+Clients are not picklable or deep-copyable by design; resume states and invoice
+models are serializable, so transfer those and construct a client in the receiving
+process. Persist resume states with `to_json()` and restore them through the
+corresponding authenticated branch.
 
 ## Lifecycle errors
 

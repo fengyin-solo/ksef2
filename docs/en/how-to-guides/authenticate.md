@@ -263,14 +263,18 @@ store.save(
 )
 ```
 
-Async clients use the same profile file and selection order. This excerpt runs
-inside an `async def main()` function:
+Async clients use the same profile file and selection order:
 
 ```python
+import asyncio
+
 from ksef2 import AsyncClient, Environment
 
-async with AsyncClient(Environment.PRODUCTION) as client:
-    auth = await client.authentication.with_profile("prod-token")
+async def main() -> None:
+    async with AsyncClient(Environment.PRODUCTION) as client:
+        auth = await client.authentication.with_profile("prod-token")
+
+asyncio.run(main())
 ```
 
 **See also:**

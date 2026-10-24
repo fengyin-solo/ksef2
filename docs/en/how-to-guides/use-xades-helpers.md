@@ -94,10 +94,18 @@ Or pass the credential holder. The async branch awaits the same call inside an
 `async def main()` function.
 
 ```python
-auth = await client.authentication.with_xades(
-    nip="5261040828",
-    credentials=credentials,
-)
+import asyncio
+
+from ksef2 import AsyncClient, Environment
+
+async def main() -> None:
+    async with AsyncClient(Environment.DEMO) as client:
+        auth = await client.authentication.with_xades(
+            nip="5261040828",
+            credentials=credentials,
+        )
+
+asyncio.run(main())
 ```
 
 ## Generate TEST certificate material

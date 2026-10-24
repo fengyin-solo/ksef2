@@ -70,10 +70,15 @@ def get_client() -> Iterator[Client]:
 Async applications use the same boundary with `async with` inside an async function:
 
 ```python
+import asyncio
+
 from ksef2 import AsyncClient, Environment
 
-async with AsyncClient(Environment.TEST) as client:
-    auth = await client.authentication.with_test_certificate(nip="5261040828")
+async def main() -> None:
+    async with AsyncClient(Environment.TEST) as client:
+        auth = await client.authentication.with_test_certificate(nip="5261040828")
+
+asyncio.run(main())
 ```
 
 Online and batch sessions are lifecycle boundaries too. Use a session context

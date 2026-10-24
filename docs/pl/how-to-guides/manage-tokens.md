@@ -48,8 +48,6 @@ Po zapisaniu credentiala poczekaj jawnie, gdy następna operacja wymaga już
 aktywnego tokena:
 
 ```python
-status = auth.tokens.generate(...).wait(timeout=60.0, poll_interval=1.0)
-# albo na uchwycie, który już masz:
 status = token.wait(timeout=60.0, poll_interval=1.0)
 ```
 
@@ -91,7 +89,7 @@ for item in auth.tokens.list():
 
 # TokenInfo
 # {
-#   "reference_number": "20260625-TOKEN-...",
+#   "reference_number": "20260625-EC-0123456789-ABCDEF0123-45",
 #   "description": "nightly invoice export",
 #   "requested_permissions": ["invoice_read"],
 #   "status": "active"
@@ -138,17 +136,17 @@ async to samo odczytanie to `second = await auth.tokens.list().page(cursor)`.
 Do późniejszych operacji cyklu życia użyj numeru referencyjnego tokena.
 
 ```python
-status = auth.tokens.get_status(reference_number="20260625-TOKEN-...")
+status = auth.tokens.get_status(reference_number="20260625-EC-0123456789-ABCDEF0123-45")
 
 # TokenStatusResponse
 # {
-#   "reference_number": "20260625-TOKEN-...",
+#   "reference_number": "20260625-EC-0123456789-ABCDEF0123-45",
 #   "status": "active"
 # }
 ```
 
 ```python
-auth.tokens.revoke(reference_number="20260625-TOKEN-...")
+auth.tokens.revoke(reference_number="20260625-EC-0123456789-ABCDEF0123-45")
 ```
 
 :::tip[Oddziel referencję od sekretu]

@@ -13,7 +13,7 @@ If you already have a KSeF number, direct download is the shortest path.
 ```python
 from pathlib import Path
 
-ksef_number = "1234567890-20260625-..."
+ksef_number = "5261040828-20260625-ABCDEF012345-67"
 
 xml_bytes = auth.invoices.download(ksef_number)
 Path("invoice.xml").write_bytes(xml_bytes)

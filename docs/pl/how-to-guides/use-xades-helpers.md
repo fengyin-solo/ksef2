@@ -94,10 +94,18 @@ Można też przekazać obiekt poświadczeń. W warstwie async użyj `await` wewn
 funkcji `async def main()`:
 
 ```python
-auth = await client.authentication.with_xades(
-    nip="5261040828",
-    credentials=credentials,
-)
+import asyncio
+
+from ksef2 import AsyncClient, Environment
+
+async def main() -> None:
+    async with AsyncClient(Environment.DEMO) as client:
+        auth = await client.authentication.with_xades(
+            nip="5261040828",
+            credentials=credentials,
+        )
+
+asyncio.run(main())
 ```
 
 ## Wygeneruj materiał certyfikatu TEST

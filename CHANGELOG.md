@@ -2,6 +2,9 @@
 
 ### Fixed
 
+- Fix English and Polish documentation examples for limits, authentication,
+  token activation, imports, async entry points, certificate file paths, and
+  sample identifiers. Document client and session concurrency boundaries.
 - Add safe filename/path hints for PEM, PKCS#12, and XML content inputs. Existing
   PEM string paths retain their 1.x deprecation behavior.
 - Report synchronous `close()` misuse on async clients and sessions with

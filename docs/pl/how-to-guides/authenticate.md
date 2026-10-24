@@ -263,13 +263,18 @@ store.save(
 ```
 
 Klient asynchroniczny używa tego samego pliku profili i tej samej kolejności
-wyboru. Ten fragment należy umieścić wewnątrz funkcji `async def main()`:
+wyboru:
 
 ```python
+import asyncio
+
 from ksef2 import AsyncClient, Environment
 
-async with AsyncClient(Environment.PRODUCTION) as client:
-    auth = await client.authentication.with_profile("prod-token")
+async def main() -> None:
+    async with AsyncClient(Environment.PRODUCTION) as client:
+        auth = await client.authentication.with_profile("prod-token")
+
+asyncio.run(main())
 ```
 
 **Zobacz też:**

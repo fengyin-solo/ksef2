@@ -49,17 +49,26 @@ Async clients expose the same method names and await network calls.
 
 ## Binding raw tokens
 
+Pass the `init` response returned by `token_auth()` or `xades_auth()` to
+`bind_tokens()` after polling that operation to a successful status. The function
+returns the authenticated client:
+
 ```python
+from ksef2 import Client
+from ksef2.clients import AuthenticatedClient
 from ksef2.models import AuthenticationResumeState
+from ksef2.raw import spec
 from ksef2.raw.mappers import auth as auth_mapper
 
-raw_tokens = client.raw.auth.redeem_token(init.authenticationToken.token)
-auth_tokens = auth_mapper.from_spec(raw_tokens)
-auth = client.authentication.resume(AuthenticationResumeState.from_tokens(auth_tokens))
+def bind_tokens(client: Client, init: spec.AuthenticationInitResponse) -> AuthenticatedClient:
+    raw_tokens = client.raw.auth.redeem_token(init.authenticationToken.token)
+    auth_tokens = auth_mapper.from_spec(raw_tokens)
+    return client.authentication.resume(AuthenticationResumeState.from_tokens(auth_tokens))
 ```
 
-After binding, you can use workflow branches such as `auth.invoices` or
-authenticated raw branches such as `auth.raw.invoices`.
+Assign the result with `auth = bind_tokens(client, init)`. You can then use
+workflow branches such as `auth.invoices` or authenticated raw branches such as
+`auth.raw.invoices`.
 
 ## Polling status contract
 

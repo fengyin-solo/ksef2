@@ -27,6 +27,14 @@ spowoduje `KSeFArgumentError` podczas tworzenia klienta. Na przykład
 skonfigurowany dla innego środowiska zostanie odrzucony.
 
 ```python
+from ksef2 import (
+    ConnectionPoolConfig,
+    RetryConfig,
+    TimeoutConfig,
+    TlsConfig,
+    TransportConfig,
+)
+
 TransportConfig(
     timeouts=TimeoutConfig(),
     pool=ConnectionPoolConfig(),
@@ -210,6 +218,8 @@ ujawnią się wtedy jako `KSeFAuthError`, a `client.authentication.refresh()`
 pozostaje dostępne.
 
 ```python
+from ksef2 import Client, Environment, TransportConfig
+
 client = Client(Environment.PRODUCTION, transport_config=TransportConfig(auto_refresh_tokens=False))
 ```
 

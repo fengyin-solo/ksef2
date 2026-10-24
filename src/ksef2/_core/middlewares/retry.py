@@ -40,7 +40,8 @@ class RetryMiddleware(BaseMiddleware):
 
     def _is_non_idempotent_post(self, method: str, path: str) -> bool:
         return method == "POST" and (
-            self._is_send_invoice_path(path) or path == routes.AuthRoutes.REFRESH_TOKEN
+            self._is_send_invoice_path(path)
+            or path == routes.AuthRoutes.REFRESH_TOKEN.path
         )
 
     def _is_retryable_status(self, method: str, path: str, status_code: int) -> bool:

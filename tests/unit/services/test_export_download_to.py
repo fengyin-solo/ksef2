@@ -350,3 +350,54 @@ def test_job_download_rejects_non_paths_before_polling(
         _ = _run_download(job, value)
 
     download_to.assert_not_called()
+
+
+def test_cancellation_at_any_await_point_never_leaves_a_mixed_destination(
+    tmp_path: Path,
+) -> None:
+    # Large enough that each threaded decrypt spans several event-loop turns.
+    plaintext = bytes(range(256)) * 1024
+    package, ciphertext = _two_part_package(plaintext)
+    outcomes: set[str] = set()
+
+    async def download_part(**_: object) -> bytes:
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        return ciphertext
+
+    async def attempt(turns: int, directory: Path) -> None:
+        target = directory / "export.zip"
+        target.write_bytes(b"previous archive")
+        service = object.__new__(AsyncInvoicesService)
+        service._external_transfers = Mock()
+        service._external_transfers.download_part = download_part
+        task = asyncio.create_task(
+            service._download_package_to(package=package, export=_export(), path=target)
+        )
+        for _ in range(turns):
+            await asyncio.sleep(0)
+        _ = task.cancel()
+        try:
+            _ = await task
+        except asyncio.CancelledError:
+            assert target.read_bytes() == b"previous archive"
+            outcomes.add("cancelled")
+        else:
+            assert target.read_bytes() == plaintext * 2
+            outcomes.add("completed")
+        assert _partials(directory) == []
+
+    async def main() -> None:
+        turns = 0
+        # Step the cancellation one loop turn later each time, until a download
+        # finishes before it is cancelled.
+        while "completed" not in outcomes:
+            directory = tmp_path / str(turns)
+            directory.mkdir()
+            await attempt(turns, directory)
+            turns += 1
+            assert turns < 10_000
+
+    asyncio.run(main())
+
+    assert outcomes == {"cancelled", "completed"}

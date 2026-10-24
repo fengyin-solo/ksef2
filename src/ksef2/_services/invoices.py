@@ -950,9 +950,13 @@ class InvoicesService:
                             iv=export.iv,
                             output=output,
                         )
-            # Only now, with every part verified, does the destination change.
+            # Only now, with every part verified, does the destination change. The
+            # rename is called directly: awaiting it in a thread would let a
+            # cancellation land after the destination was already replaced.
             os.replace(temporary_path, path)
         except BaseException:
+            # Reached only before the replace, so this removes the temporary file
+            # and never the destination.
             temporary_path.unlink(missing_ok=True)
             raise
         compression = package.compression_type if package is not None else "zip"

@@ -2,10 +2,11 @@
 
 from pydantic import Field
 
-from ksef2._domain.models import KSeFBaseModel
+from ksef2._domain.models.base import KSeFBaseModel as KSeFBaseModel
+from ksef2._domain.models.fa3.base import Fa3Model
 
 
-class AdditionalDescriptionEntry(KSeFBaseModel):
+class AdditionalDescriptionEntry(Fa3Model):
     """FA(3) additional invoice description entry.
 
     References:

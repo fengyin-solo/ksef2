@@ -18,8 +18,8 @@ from ksef2._services.builders.fa3.metadata import builder_param
 class AdvanceState(TypedDict):
     """Typed state for Advance fields."""
 
-    amount_before_correction: Decimal | None
-    currency_exchange_rate_before_correction: Decimal | None
+    amount_before_correction: Decimal | int | float | str | None
+    currency_exchange_rate_before_correction: Decimal | int | float | str | None
     advance_partial_payments: list[PartialAdvancePayment]
     advance_invoice_references: list[AdvanceInvoiceReference]
 
@@ -73,7 +73,7 @@ class AdvanceBuilder[TParent]:
     def amount_before_correction(
         self,
         amount: Annotated[
-            Decimal | None,
+            Decimal | int | float | str | None,
             builder_param(
                 "Advance amount before the correction was applied.",
                 examples=["1500.45"],
@@ -96,7 +96,7 @@ class AdvanceBuilder[TParent]:
     def currency_exchange_rate_before_correction(
         self,
         exchange_rate: Annotated[
-            Decimal | None,
+            Decimal | int | float | str | None,
             builder_param(
                 "Currency exchange rate used before the correction was applied.",
                 examples=["4.4512"],
@@ -128,7 +128,7 @@ class AdvanceBuilder[TParent]:
             ),
         ],
         amount: Annotated[
-            Decimal,
+            Decimal | int | float | str,
             builder_param(
                 "Amount of the partial advance payment.",
                 examples=["500.00"],
@@ -136,7 +136,7 @@ class AdvanceBuilder[TParent]:
             ),
         ],
         currency_exchange_rate: Annotated[
-            Decimal | None,
+            Decimal | int | float | str | None,
             builder_param(
                 "Currency exchange rate used for the partial advance payment.",
                 examples=["4.4512"],
@@ -156,10 +156,12 @@ class AdvanceBuilder[TParent]:
             The builder, for chaining.
         """
         self._state["advance_partial_payments"].append(
-            PartialAdvancePayment(
-                payment_date=payment_date,
-                amount=amount,
-                currency_exchange_rate=currency_exchange_rate,
+            PartialAdvancePayment.model_validate(
+                {
+                    "payment_date": payment_date,
+                    "amount": amount,
+                    "currency_exchange_rate": currency_exchange_rate,
+                }
             )
         )
         return self
@@ -212,7 +214,7 @@ class AdvanceBuilder[TParent]:
             ),
         ] = False,
         deduction_amount: Annotated[
-            Decimal | None,
+            Decimal | int | float | str | None,
             builder_param(
                 "Amount deducted from the final settlement based on this advance invoice.",
                 examples=["500.00"],
@@ -242,12 +244,14 @@ class AdvanceBuilder[TParent]:
             The builder, for chaining.
         """
         self._state["advance_invoice_references"].append(
-            AdvanceInvoiceReference(
-                ksef_id=ksef_id,
-                invoice_number=invoice_number,
-                outside_ksef=outside_ksef,
-                deduction_amount=deduction_amount,
-                deduction_reason=deduction_reason,
+            AdvanceInvoiceReference.model_validate(
+                {
+                    "ksef_id": ksef_id,
+                    "invoice_number": invoice_number,
+                    "outside_ksef": outside_ksef,
+                    "deduction_amount": deduction_amount,
+                    "deduction_reason": deduction_reason,
+                }
             )
         )
         return self
@@ -281,7 +285,7 @@ class AdvanceBuilder[TParent]:
         Returns:
             The built ``AdvancePaymentInvoiceContext``.
         """
-        return AdvancePaymentInvoiceContext(**self._state)
+        return AdvancePaymentInvoiceContext.model_validate({**self._state})
 
     def _is_empty(self) -> bool:
         return self._state == _default_state()

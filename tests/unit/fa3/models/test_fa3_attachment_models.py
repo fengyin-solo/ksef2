@@ -1,4 +1,4 @@
-from pydantic import ValidationError
+from ksef2 import KSeFValidationError
 import pytest
 
 from ksef2._domain.models.fa3.attachment import AttachmentTable
@@ -16,7 +16,8 @@ def test_attachment_table_accepts_column_names_matching_column_format() -> None:
 
 def test_attachment_table_rejects_column_names_count_mismatch() -> None:
     with pytest.raises(
-        ValidationError, match="Column names count does not match column format count"
+        KSeFValidationError,
+        match="Column names count does not match column format count",
     ):
         AttachmentTable(
             columns_names=["Service", "Amount"],

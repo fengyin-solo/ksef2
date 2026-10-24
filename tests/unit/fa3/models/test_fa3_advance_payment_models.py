@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
-from pydantic import ValidationError
+from ksef2 import KSeFValidationError
 
 from ksef2._domain.models.fa3 import AdvancePayment, PartialAdvancePayment
 from ksef2._domain.models.fa3.body import AdvancePaymentInvoiceContext
@@ -43,7 +43,7 @@ def test_advance_payment_accepts_ksef_reference() -> None:
 
 def test_advance_payment_rejects_mixed_reference_modes() -> None:
     with pytest.raises(
-        ValidationError,
+        KSeFValidationError,
         match="ksef_id cannot be combined with outside_ksef advance invoice references",
     ):
         AdvancePayment(
@@ -53,7 +53,7 @@ def test_advance_payment_rejects_mixed_reference_modes() -> None:
         )
 
     with pytest.raises(
-        ValidationError,
+        KSeFValidationError,
         match="invoice_number cannot be combined with in-KSeF advance invoice references",
     ):
         AdvancePayment(

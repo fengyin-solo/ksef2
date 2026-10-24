@@ -6,7 +6,8 @@ from enum import StrEnum
 
 from pydantic import model_validator
 
-from ksef2._domain.models import KSeFBaseModel
+from ksef2._domain.models.base import KSeFBaseModel as KSeFBaseModel
+from ksef2._domain.models.fa3.base import Fa3Model
 
 
 class DraftIntent(StrEnum):
@@ -19,7 +20,7 @@ class DraftIntent(StrEnum):
     MARGIN = "MARZA"
 
 
-class CorrectedInvoiceReference(KSeFBaseModel):
+class CorrectedInvoiceReference(Fa3Model):
     """Reference to an invoice corrected by a correction invoice."""
 
     issue_date: date
@@ -48,7 +49,7 @@ class CorrectedInvoiceReference(KSeFBaseModel):
         return self
 
 
-class AdvanceInvoiceReference(KSeFBaseModel):
+class AdvanceInvoiceReference(Fa3Model):
     """Reference to an advance invoice settled by another invoice."""
 
     ksef_id: str | None = None

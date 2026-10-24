@@ -7,7 +7,8 @@ from typing import Any, Self
 from pydantic import Field, field_validator, model_validator
 
 from ksef2._core.exceptions import KSeFArgumentError
-from ksef2._domain.models import KSeFBaseModel
+from ksef2._domain.models.base import KSeFBaseModel as KSeFBaseModel
+from ksef2._domain.models.fa3.base import Fa3Model
 from ksef2._domain.models._enum import coerce_enum
 
 
@@ -269,7 +270,7 @@ def parse_sale_category(
         raise
 
 
-class VatClassification(KSeFBaseModel):
+class VatClassification(Fa3Model):
     """Structured VAT treatment and numeric rate pair."""
 
     treatment: VatTreatment = Field(

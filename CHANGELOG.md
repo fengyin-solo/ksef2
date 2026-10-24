@@ -2,6 +2,12 @@
 
 ### Fixed
 
+- Require an explicit FA(3) partial-payment status before building payment entries,
+  correct both builder guides, and report invalid builder fields as
+  `KSeFValidationError` with the original validation error as the cause. Builder
+  amount, quantity, price, and exchange-rate hints now accept floats and numeric
+  strings, matching runtime decimal conversion.
+
 - Restore deprecated `ksef2.clients.*` submodule imports throughout 1.x.
 
 ksef2 1.0.0 is being prepared as the first stable release. It targets KSeF

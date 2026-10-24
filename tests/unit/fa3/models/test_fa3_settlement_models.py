@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
-from pydantic import ValidationError
+from ksef2 import KSeFValidationError
 
 from ksef2._domain.models.fa3 import AdvanceInvoiceReference
 from ksef2._domain.models.fa3.body import (
@@ -42,7 +42,7 @@ def test_invoice_settlement_populates_totals_from_entries() -> None:
 
 def test_invoice_settlement_rejects_conflicting_balance_fields() -> None:
     with pytest.raises(
-        ValidationError,
+        KSeFValidationError,
         match="amount_due and amount_to_settle cannot be provided together",
     ):
         InvoiceSettlement(

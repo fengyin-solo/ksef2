@@ -2,6 +2,11 @@
 
 ### Fixed
 
+- Completed exports with zero invoices return immediately from deprecated polling
+  helpers. Both `export().wait()` and `export().download(path)` return empty
+  metadata and invoice lists for these packages without opening an archive.
+- In-memory export downloads verify encrypted and plaintext sizes and SHA-256
+  hashes using the same checks as downloads to disk.
 - Require an explicit FA(3) partial-payment status before building payment entries,
   correct both builder guides, and report invalid builder fields as
   `KSeFValidationError` with the original validation error as the cause. Builder

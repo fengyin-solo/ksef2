@@ -133,6 +133,38 @@ assert 'weasyprint' not in sys.modules
     assert result.returncode == 0, result.stderr
 
 
+def test_legacy_client_submodules_preserve_identity_and_warn_once() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            """
+import importlib
+import warnings
+import ksef2
+
+paths = ['authenticated', 'base', 'online', 'batch', 'auth', 'invoices', 'tokens']
+with warnings.catch_warnings(record=True) as caught:
+    warnings.simplefilter('always', DeprecationWarning)
+    for path in paths:
+        old = importlib.import_module('ksef2.clients.' + path)
+        new = importlib.import_module('ksef2._clients.' + path)
+        assert old is new, path
+
+messages = [str(w.message) for w in caught if w.category is DeprecationWarning]
+assert len(messages) == 1, messages
+assert 'ksef2.clients' in messages[0], messages
+assert 'use the public `ksef2.clients` facade' in messages[0], messages
+assert 'no earlier than ksef2 2.0.0' in messages[0], messages
+assert importlib.import_module('ksef2.clients') is ksef2.clients
+""",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_modern_imports_do_not_activate_legacy_packages() -> None:
     result = subprocess.run(
         [
@@ -149,6 +181,7 @@ with warnings.catch_warnings(record=True) as caught:
 assert not [w for w in caught if w.category is DeprecationWarning], caught
 for family in ('core', 'domain', 'infra', 'services'):
     assert 'ksef2.' + family not in sys.modules, family
+assert not any(name.startswith('ksef2.clients.') for name in sys.modules)
 assert 'ksef2._legacy_imports' not in sys.modules
 assert 'ksef2._services.renderers.pdf' not in sys.modules
 assert 'weasyprint' not in sys.modules

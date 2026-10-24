@@ -33,7 +33,10 @@ from ksef2._core.async_external_transfer import AsyncExternalTransferClient
 from ksef2._core.crypto import decrypt_aes_cbc
 from ksef2._core.polling import async_poll_until
 from ksef2._core.stores import CertificateStoreProtocol
-from ksef2._domain.models.compression import CompressionType
+from ksef2._domain.models.compression import (
+    CompressionType as CompressionType,
+    CompressionTypeInput,
+)
 from ksef2._domain.models.invoices import (
     ExportHandle,
     ExportResumeState,
@@ -437,7 +440,7 @@ class AsyncInvoicesService:
         filters: InvoicesFilter,
         *,
         only_metadata: bool = False,
-        compression_type: CompressionType | str | None = None,
+        compression_type: CompressionTypeInput | None = None,
     ) -> AsyncExportJob: ...
 
     @overload
@@ -449,7 +452,7 @@ class AsyncInvoicesService:
         *,
         state: ExportResumeState | str | None = None,
         only_metadata: bool = False,
-        compression_type: CompressionType | str | None = None,
+        compression_type: CompressionTypeInput | None = None,
     ) -> AsyncExportJob:
         """Schedule an encrypted invoice export, or resume one scheduled earlier.
 
@@ -696,7 +699,7 @@ class AsyncInvoicesService:
         *,
         filters: InvoicesFilter,
         only_metadata: bool = False,
-        compression_type: CompressionType | str | None = None,
+        compression_type: CompressionTypeInput | None = None,
     ) -> Coroutine[None, None, ExportHandle]:
         """Deprecated: schedule an encrypted invoice export.
 
@@ -727,7 +730,7 @@ class AsyncInvoicesService:
         *,
         filters: InvoicesFilter,
         only_metadata: bool,
-        compression_type: CompressionType | str | None,
+        compression_type: CompressionTypeInput | None,
     ) -> ExportHandle:
         await self._ensure_encryption_certificates_loaded()
         cert = self._certificate_store.get_valid("symmetric_key_encryption")
@@ -986,7 +989,7 @@ class AsyncInvoicesService:
         *,
         filters: InvoicesFilter,
         only_metadata: bool = False,
-        compression_type: CompressionType | str | None = None,
+        compression_type: CompressionTypeInput | None = None,
         timeout: float = 120.0,
         poll_interval: float = 2.0,
     ) -> Coroutine[None, None, list[bytes]]:
@@ -1026,7 +1029,7 @@ class AsyncInvoicesService:
         *,
         filters: InvoicesFilter,
         only_metadata: bool = False,
-        compression_type: CompressionType | str | None = None,
+        compression_type: CompressionTypeInput | None = None,
         timeout: float = 120.0,
         poll_interval: float = 2.0,
     ) -> list[bytes]:

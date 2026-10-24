@@ -33,7 +33,12 @@ from ksef2._core.external_transfer import ExternalTransferClient
 from ksef2._core.polling import poll_until
 from ksef2._core.protocols import Middleware
 from ksef2._core.stores import CertificateStoreProtocol
-from ksef2._domain.models.compression import CompressionType
+from ksef2._domain.models.compression import (
+    CompressionType as CompressionType,
+)
+from ksef2._domain.models.compression import (
+    CompressionTypeInput,
+)
 from ksef2._domain.models.invoices import (
     ExportHandle,
     ExportResumeState,
@@ -432,7 +437,7 @@ class InvoicesService:
         filters: InvoicesFilter,
         *,
         only_metadata: bool = False,
-        compression_type: CompressionType | str | None = None,
+        compression_type: CompressionTypeInput | None = None,
     ) -> ExportJob: ...
 
     @overload
@@ -444,7 +449,7 @@ class InvoicesService:
         *,
         state: ExportResumeState | str | None = None,
         only_metadata: bool = False,
-        compression_type: CompressionType | str | None = None,
+        compression_type: CompressionTypeInput | None = None,
     ) -> ExportJob:
         """Schedule an encrypted invoice export, or resume one scheduled earlier.
 
@@ -691,7 +696,7 @@ class InvoicesService:
         *,
         filters: InvoicesFilter,
         only_metadata: bool = False,
-        compression_type: CompressionType | str | None = None,
+        compression_type: CompressionTypeInput | None = None,
     ) -> ExportHandle:
         """Deprecated: schedule an encrypted invoice export.
 
@@ -722,7 +727,7 @@ class InvoicesService:
         *,
         filters: InvoicesFilter,
         only_metadata: bool,
-        compression_type: CompressionType | str | None,
+        compression_type: CompressionTypeInput | None,
     ) -> ExportHandle:
         self._ensure_encryption_certificates_loaded()
         cert = self._certificate_store.get_valid("symmetric_key_encryption")
@@ -980,7 +985,7 @@ class InvoicesService:
         *,
         filters: InvoicesFilter,
         only_metadata: bool = False,
-        compression_type: CompressionType | str | None = None,
+        compression_type: CompressionTypeInput | None = None,
         timeout: float = 120.0,
         poll_interval: float = 2.0,
     ) -> list[bytes]:
@@ -1020,7 +1025,7 @@ class InvoicesService:
         *,
         filters: InvoicesFilter,
         only_metadata: bool = False,
-        compression_type: CompressionType | str | None = None,
+        compression_type: CompressionTypeInput | None = None,
         timeout: float = 120.0,
         poll_interval: float = 2.0,
     ) -> list[bytes]:

@@ -193,6 +193,12 @@ def test_legacy_client_submodules_preserve_identity_and_warn_once() -> None:
     assert "use the public `ksef2.clients` facade" in messages[0], messages
     assert "no earlier than ksef2 2.0.0" in messages[0], messages
     assert importlib.import_module("ksef2.clients") is clients
+    compression_type = importlib.import_module(
+        "ksef2._domain.models.compression"
+    ).CompressionType
+    for path in ("async_invoices", "invoices"):
+        module = importlib.import_module(f"ksef2.clients.{path}")
+        assert module.CompressionType is compression_type
 
 
 def test_legacy_client_imports_bind_attributes_on_the_facade() -> None:

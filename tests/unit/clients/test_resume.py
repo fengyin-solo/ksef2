@@ -352,9 +352,17 @@ class TestExportResume:
         # A fresh service, as after a process restart.
         restarted = flavor.invoices_service()
         resumed = flavor.run(restarted.export(state=saved))
-        flavor.transport.enqueue(package_status(inv_export_status_resp, 200, 2))
-        flavor.transport.enqueue(content=encrypt_invoice(first, key=KEY, iv=IV))
-        flavor.transport.enqueue(content=encrypt_invoice(second, key=KEY, iv=IV))
+        encrypted_first = encrypt_invoice(first, key=KEY, iv=IV)
+        encrypted_second = encrypt_invoice(second, key=KEY, iv=IV)
+        flavor.transport.enqueue(
+            package_status(
+                inv_export_status_resp,
+                200,
+                part_data=[(first, encrypted_first), (second, encrypted_second)],
+            )
+        )
+        flavor.transport.enqueue(content=encrypted_first)
+        flavor.transport.enqueue(content=encrypted_second)
 
         exported = flavor.run(resumed.wait(timeout=1.0, poll_interval=0.0))
 

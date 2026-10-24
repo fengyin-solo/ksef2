@@ -3,6 +3,7 @@
 
 """High-level invoice workflow service."""
 
+import io
 import os
 from collections.abc import (
     Callable,
@@ -29,7 +30,9 @@ from ksef2._clients._pagination_cursor import (
 from ksef2._clients.exported_invoices import ExportedInvoices
 from ksef2._clients.invoices import InvoicesClient
 from ksef2._core import exceptions
-from ksef2._core.crypto import decrypt_aes_cbc
+
+# Preserve the legacy service-module re-export throughout 1.x.
+from ksef2._core.crypto import decrypt_aes_cbc as decrypt_aes_cbc
 from ksef2._core.external_transfer import ExternalTransferClient
 from ksef2._core.paths import require_path
 from ksef2._core.polling import poll_until
@@ -60,6 +63,10 @@ from ksef2._services.export_parts import (
 )
 
 logger = get_logger(__name__)
+
+
+def _export_is_pending(status: InvoiceExportStatusResponse) -> bool:
+    return status.status.code < 200
 
 
 @final
@@ -122,7 +129,7 @@ class ExportJob(OperationHandle[InvoiceExportStatusResponse, ExportedInvoices]):
 
     @override
     def _is_pending(self, status: InvoiceExportStatusResponse) -> bool:
-        return status.status.code < 200
+        return _export_is_pending(status)
 
     @override
     def _check_status(self, status: InvoiceExportStatusResponse) -> None:
@@ -922,11 +929,15 @@ class InvoicesService:
             reference_number=export.reference_number,
             part_ordinal=part.ordinal_number,
         )
-        return decrypt_aes_cbc(
+        output = io.BytesIO()
+        decrypt_verified_part(
             encrypted_part,
+            part=part,
             key=export.aes_key,
             iv=export.iv,
+            output=output,
         )
+        return output.getvalue()
 
     def _download_package_to(
         self, *, package: InvoicePackage | None, export: ExportHandle, path: Path
@@ -1045,9 +1056,7 @@ class InvoicesService:
             operation=lambda: self._client.get_export_status(
                 reference_number=reference_number
             ),
-            retry_predicate=lambda status: (
-                not (status.package and status.package.parts)
-            ),
+            retry_predicate=_export_is_pending,
             poll_interval=poll_interval,
             timeout_seconds=timeout,
             timeout_error_factory=lambda: exceptions.KSeFExportTimeoutError(
@@ -1116,19 +1125,9 @@ class InvoicesService:
             only_metadata=only_metadata,
             compression_type=compression_type,
         )
-        status = poll_until(
-            operation=lambda: self._client.get_export_status(
-                reference_number=handle.reference_number
-            ),
-            retry_predicate=lambda status: (
-                not (status.package and status.package.parts)
-            ),
+        package = self._wait_for_export_package(
+            reference_number=handle.reference_number,
+            timeout=timeout,
             poll_interval=poll_interval,
-            timeout_seconds=timeout,
-            timeout_error_factory=lambda: exceptions.KSeFExportTimeoutError(
-                reference_number=handle.reference_number,
-                timeout=timeout,
-            ),
         )
-        assert status.package is not None
-        return self._download_package_parts(package=status.package, export=handle)
+        return self._download_package_parts(package=package, export=handle)

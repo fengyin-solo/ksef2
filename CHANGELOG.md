@@ -2,6 +2,11 @@
 
 ### Fixed
 
+- Completed exports with zero invoices return immediately from deprecated polling
+  helpers, and `export().wait()` returns an empty metadata list for these packages.
+- In-memory export downloads verify encrypted and plaintext sizes and SHA-256
+  hashes using the same checks as downloads to disk.
+
 - Restore deprecated `ksef2.clients.*` submodule imports throughout 1.x.
 
 ksef2 1.0.0 is being prepared as the first stable release. It targets KSeF

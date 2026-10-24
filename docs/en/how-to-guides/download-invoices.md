@@ -63,8 +63,10 @@ returns an `ExportedInvoices` object.
 For large packages, `job.download(Path(...))` writes the joined decrypted archive
 to disk and returns an `ExportedInvoices` backed by that path. Each AES part is
 decrypted in chunks and checked against the size and SHA-256 values from KSeF;
-the destination is replaced only after all parts pass. A `.partial` file is
-removed on failure. The current HTTP transport buffers each encrypted response,
+output goes to a new, uniquely named temporary file beside the destination,
+which atomically replaces the destination only after all parts pass. On
+failure the temporary file is removed and an existing destination is left as
+it was. The current HTTP transport buffers each encrypted response,
 so memory use is bounded by the downloaded encrypted part, not by the full
 decrypted archive.
 

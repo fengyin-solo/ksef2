@@ -24,8 +24,7 @@ from ksef2._domain.models.invoices import (
     InvoicePackage,
     PackagePart,
 )
-from ksef2._services.async_invoices import AsyncInvoicesService
-from ksef2._services.async_invoices import AsyncExportJob
+from ksef2._services.async_invoices import AsyncExportJob, AsyncInvoicesService
 from ksef2._services.invoices import ExportJob, InvoicesService
 
 requires_unchecked_types = pytest.mark.skipif(
@@ -85,9 +84,16 @@ def _download(
     _ = service._download_package_to(package=package, export=_export(), path=target)
 
 
-def _assert_no_output(target: Path) -> None:
-    assert not target.exists()
-    assert not target.with_name(target.name + ".partial").exists()
+def _partials(directory: Path) -> list[str]:
+    return sorted(item.name for item in directory.iterdir() if ".partial" in item.name)
+
+
+def _two_part_package(plaintext: bytes) -> tuple[InvoicePackage, bytes]:
+    ciphertext = encrypt_invoice(plaintext, key=KEY, iv=IV)
+    package = _package(
+        [_part(1, plaintext, ciphertext), _part(2, plaintext, ciphertext)]
+    )
+    return package, ciphertext
 
 
 @pytest.mark.parametrize("is_async", [False, True], ids=["sync", "async"])
@@ -104,7 +110,7 @@ def test_disk_download_joins_parts_in_ordinal_order(
     _download(is_async, package, list(encrypted), target)
 
     assert target.read_bytes() == b"".join(chunks)
-    assert not target.with_name(target.name + ".partial").exists()
+    assert _partials(target.parent) == []
 
 
 @pytest.mark.parametrize("is_async", [False, True], ids=["sync", "async"])
@@ -127,6 +133,7 @@ def test_disk_download_rejects_part_integrity_mismatch_and_removes_partial(
     else:
         second_part["encrypted_part_size"] = len(ciphertext) + 1
     target = tmp_path / "export.zip"
+    target.write_bytes(b"previous archive")
 
     with pytest.raises(KSeFValidationError):
         _download(
@@ -136,7 +143,8 @@ def test_disk_download_rejects_part_integrity_mismatch_and_removes_partial(
             target,
         )
 
-    _assert_no_output(target)
+    assert target.read_bytes() == b"previous archive"
+    assert _partials(tmp_path) == []
 
 
 @pytest.mark.parametrize("is_async", [False, True], ids=["sync", "async"])
@@ -152,7 +160,8 @@ def test_disk_download_rejects_invalid_padding_and_removes_partial(
     with pytest.raises(KSeFEncryptionError):
         _download(is_async, _package([part]), [ciphertext], target)
 
-    _assert_no_output(target)
+    assert not target.exists()
+    assert _partials(tmp_path) == []
 
 
 @pytest.mark.parametrize("is_async", [False, True], ids=["sync", "async"])
@@ -171,7 +180,109 @@ def test_interrupted_download_removes_partial_and_keeps_existing_target(
         _download(is_async, package, [ciphertext, ConnectionError("reset")], target)
 
     assert target.read_bytes() == b"previous archive"
-    assert not target.with_name(target.name + ".partial").exists()
+    assert _partials(tmp_path) == []
+
+
+@pytest.mark.parametrize("is_async", [False, True], ids=["sync", "async"])
+@pytest.mark.parametrize("fails", [False, True], ids=["success", "failure"])
+def test_existing_partial_symlink_is_neither_followed_nor_clobbered(
+    is_async: bool, fails: bool, tmp_path: Path
+) -> None:
+    package, ciphertext = _two_part_package(b"archive part bytes")
+    victim = tmp_path / "victim.txt"
+    victim.write_bytes(b"do not touch")
+    target = tmp_path / "export.zip"
+    planted = tmp_path / "export.zip.partial"
+    planted.symlink_to(victim)
+    second: object = ConnectionError("reset") if fails else ciphertext
+
+    if fails:
+        with pytest.raises(ConnectionError):
+            _download(is_async, package, [ciphertext, second], target)
+        assert not target.exists()
+    else:
+        _download(is_async, package, [ciphertext, second], target)
+        assert target.read_bytes() == b"archive part bytes" * 2
+
+    assert victim.read_bytes() == b"do not touch"
+    assert planted.is_symlink() and planted.readlink() == victim
+    assert _partials(tmp_path) == ["export.zip.partial"]
+
+
+@pytest.mark.parametrize("is_async", [False, True], ids=["sync", "async"])
+def test_failed_download_leaves_destination_symlink_and_its_file_alone(
+    is_async: bool, tmp_path: Path
+) -> None:
+    package, ciphertext = _two_part_package(b"archive part bytes")
+    archive = tmp_path / "kept.zip"
+    archive.write_bytes(b"previous archive")
+    target = tmp_path / "export.zip"
+    target.symlink_to(archive)
+
+    with pytest.raises(KSeFValidationError):
+        _download(is_async, package, [ciphertext, b"x" * len(ciphertext)], target)
+
+    assert target.is_symlink() and target.readlink() == archive
+    assert archive.read_bytes() == b"previous archive"
+    assert _partials(tmp_path) == []
+
+
+@pytest.mark.parametrize("is_async", [False, True], ids=["sync", "async"])
+def test_successful_download_replaces_destination_symlink_not_its_file(
+    is_async: bool, tmp_path: Path
+) -> None:
+    package, ciphertext = _two_part_package(b"archive part bytes")
+    archive = tmp_path / "kept.zip"
+    archive.write_bytes(b"previous archive")
+    target = tmp_path / "export.zip"
+    target.symlink_to(archive)
+
+    _download(is_async, package, [ciphertext, ciphertext], target)
+
+    assert not target.is_symlink()
+    assert target.read_bytes() == b"archive part bytes" * 2
+    assert archive.read_bytes() == b"previous archive"
+
+
+def test_concurrent_downloads_in_one_directory_do_not_collide(
+    tmp_path: Path,
+) -> None:
+    contents = {
+        "a.zip": b"first archive",
+        "b.zip": b"second archive",
+        "same.zip": b"third archive",
+    }
+    seen_partials: list[list[str]] = []
+
+    async def download(target: Path, plaintext: bytes) -> None:
+        package, ciphertext = _two_part_package(plaintext)
+
+        async def download_part(**_: object) -> bytes:
+            # Yield so the downloads interleave between parts.
+            await asyncio.sleep(0)
+            seen_partials.append(_partials(tmp_path))
+            return ciphertext
+
+        service = object.__new__(AsyncInvoicesService)
+        service._external_transfers = Mock()
+        service._external_transfers.download_part = download_part
+        _ = await service._download_package_to(
+            package=package, export=_export(), path=target
+        )
+
+    async def main() -> None:
+        _ = await asyncio.gather(
+            *(download(tmp_path / name, data) for name, data in contents.items()),
+            # A second download to the same target gets its own temporary file.
+            download(tmp_path / "same.zip", b"third archive"),
+        )
+
+    asyncio.run(main())
+
+    assert max(len(names) for names in seen_partials) == 4
+    for name, data in contents.items():
+        assert (tmp_path / name).read_bytes() == data * 2
+    assert _partials(tmp_path) == []
 
 
 class _CustomPath:

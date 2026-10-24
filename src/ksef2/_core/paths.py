@@ -6,6 +6,8 @@ from typing import cast
 
 from ksef2._core.exceptions import KSeFArgumentError
 
+_HINT = "Wrap the file name in pathlib.Path; str and bytes are treated as content."
+
 
 def require_path(value: object, *, name: str = "path") -> Path:
     """Return ``value`` as a ``Path`` when it names a file location.
@@ -26,17 +28,20 @@ def require_path(value: object, *, name: str = "path") -> Path:
     """
     if isinstance(value, (str, bytes)):
         raise KSeFArgumentError(
-            f"{name} must be a path, not {type(value).__name__}; pass Path(...)."
+            f"{name} must be a path, not {type(value).__name__}; pass Path(...).",
+            hint=_HINT,
         )
     if not isinstance(value, os.PathLike):
         raise KSeFArgumentError(
             f"{name} must be an os.PathLike object, got {type(value).__name__}; "
-            + "pass Path(...)."
+            + "pass Path(...).",
+            hint=_HINT,
         )
     try:
         # os.PathLike is not generic at runtime; a bytes path raises TypeError here.
         return Path(cast("os.PathLike[str]", value))
     except TypeError as exc:
         raise KSeFArgumentError(
-            f"{name} must resolve to a text path; pass Path(...)."
+            f"{name} must resolve to a text path; pass Path(...).",
+            hint=_HINT,
         ) from exc

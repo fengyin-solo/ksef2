@@ -64,9 +64,10 @@ aż paczka będzie gotowa, pobiera i odszyfrowuje części, łączy je i zwraca 
 Dla dużych paczek użyj `job.download(Path(...))`, aby zapisać połączone,
 odszyfrowane archiwum na dysku. Metoda zwraca `ExportedInvoices` korzystający z
 tego pliku. Każda część AES jest odszyfrowywana fragmentami i sprawdzana według
-rozmiaru oraz sumy SHA-256 otrzymanych z KSeF; plik docelowy jest podmieniany
-dopiero po poprawnym sprawdzeniu wszystkich części. W razie błędu plik
-`.partial` jest usuwany. Obecny transport HTTP buforuje każdą zaszyfrowaną
+rozmiaru oraz sumy SHA-256 otrzymanych z KSeF; dane trafiają do nowego pliku
+tymczasowego o unikalnej nazwie obok pliku docelowego, który atomowo zastępuje
+plik docelowy dopiero po poprawnym sprawdzeniu wszystkich części. W razie błędu
+plik tymczasowy jest usuwany, a istniejący plik docelowy pozostaje bez zmian. Obecny transport HTTP buforuje każdą zaszyfrowaną
 odpowiedź, więc pamięć zależy od rozmiaru pobranej części, a nie całego
 odszyfrowanego archiwum.
 

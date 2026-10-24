@@ -52,6 +52,7 @@ from ksef2._domain.models.invoices import (
 from ksef2._domain.models.pagination import InvoiceMetadataParams, Page
 from ksef2._logging import get_logger
 from ksef2._services.export_parts import (
+    create_partial_file,
     decrypt_verified_part,
     safe_part_filename,
 )
@@ -936,10 +937,9 @@ class AsyncInvoicesService:
     async def _download_package_to(
         self, *, package: InvoicePackage | None, export: ExportHandle, path: Path
     ) -> ExportedInvoices:
-        temporary_path = path.with_name(path.name + ".partial")
+        temporary_path, output = create_partial_file(path)
         try:
-            _ = await asyncio.to_thread(path.parent.mkdir, parents=True, exist_ok=True)
-            with temporary_path.open("wb") as output:
+            with output:
                 if package is not None:
                     for part in sorted(
                         package.parts, key=lambda item: item.ordinal_number
@@ -957,9 +957,10 @@ class AsyncInvoicesService:
                             iv=export.iv,
                             output=output,
                         )
-            _ = await asyncio.to_thread(temporary_path.replace, path)
+            # Only now, with every part verified, does the destination change.
+            await asyncio.to_thread(os.replace, temporary_path, path)
         except BaseException:
-            await asyncio.to_thread(temporary_path.unlink, missing_ok=True)
+            temporary_path.unlink(missing_ok=True)
             raise
         compression = package.compression_type if package is not None else "zip"
         return ExportedInvoices.from_path(

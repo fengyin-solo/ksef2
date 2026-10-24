@@ -12,6 +12,11 @@ and method names remain functional throughout 1.x (#171). Read
 
 ### Highlights
 
+- Public input handling follows one rule: `bytes` and `str` are content, while
+  `Path` is a file. Batch preparation catches strings that name existing files,
+  FA(3) parsing accepts XML text with declarations, and PEM helpers warn when
+  legacy string paths are used (#297, #304).
+
 - The documented import paths (`ksef2`, `ksef2.clients`, `ksef2.models`,
   `ksef2.fa3`, `ksef2.xades`, `ksef2.logging`, `ksef2.profiles`,
   `ksef2.renderers`, `ksef2.raw`,

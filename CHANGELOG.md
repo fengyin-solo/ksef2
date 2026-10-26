@@ -1,4 +1,4 @@
-## v1.1.0 (unreleased)
+## v1.1.0 (2026-10-26)
 
 ### Added
 
@@ -6,12 +6,13 @@
   protocols, `SigningCertificate` records and in-memory adapters, plus
   `KSeFCertificateStore*` errors. Additive and optional; existing XAdES, profile and
   encryption-certificate store APIs are unchanged.
-- Add `authentication.with_stored_certificate()` on sync and async clients to authenticate with a certificate loaded from a signing-certificate store, rejecting wrong-environment, Offline and mismatched records before contacting KSeF. Document storing issued certificates and writing custom store adapters.
+- Add `authentication.with_stored_certificate()` on sync and async clients to
+  authenticate with a certificate loaded from a signing-certificate store.
+  Reject wrong-environment, Offline and mismatched records before contacting
+  KSeF. Document storing issued certificates and writing custom store adapters.
 - Add `FilesystemSigningCertificateStore` and `AsyncFilesystemSigningCertificateStore`:
   one password-encrypted record per certificate, atomic publication, owner-only
   files on POSIX, and metadata listing without unlocking keys.
-
-## v1.0.1 (unreleased)
 
 ### Fixed
 

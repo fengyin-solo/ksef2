@@ -100,3 +100,24 @@ Urzędowe Poświadczenie Odbioru. Jest dostępne, gdy sesja albo faktura osiągn
 ## XAdES
 
 Format podpisu cyfrowego XML używany przy uwierzytelnianiu certyfikatem.
+
+## Tryby offline
+
+KSeF rozróżnia wystawianie faktur online, czyli bezpośrednio w systemie, i offline, czyli elektronicznie zgodnie ze wzorem FA(3), z przesłaniem do KSeF w ustawowym terminie. Opis Ministerstwa Finansów z 10.07.2025 jest w [trybach offline](https://github.com/CIRFMF/ksef-docs/blob/main/tryby-offline.md). Terminy prawne mogą się zmienić.
+
+- **offline24**. Wybór podatnika, bez ograniczenia po stronie systemu. Fakturę przesyła się do następnego dnia roboczego po dacie wystawienia.
+- **offline**. Ogłoszona niedostępność KSeF. Fakturę przesyła się do następnego dnia roboczego po zakończeniu niedostępności.
+- **awaryjny**. Ogłoszona awaria KSeF. Fakturę przesyła się w ciągu 7 dni roboczych od zakończenia awarii. Kolejny komunikat o awarii liczy ten termin od nowa.
+- **awaria całkowita**. Fakturę można wystawić papierowo albo elektronicznie poza wzorem FA(3). Po ustaniu awarii nie wysyła się jej do KSeF i nie opatruje kodami QR. Ogłoszenie awarii całkowitej znosi też obowiązek dosłania faktur z pozostałych trybów.
+
+Przy wysyłce offline ustawia się `offlineMode` na `true` zarówno w sesji interaktywnej, jak i wsadowej. W SDK `offline_mode` (`bool`) jest parametrem `auth.batch.prepare()`, `auth.batch.submit()` i `auth.batch_session()`, a nie polem sesji. Odpowiada polu API `offlineMode` i nie rozróżnia tych czterech trybów. Metoda `send_invoice()` sesji interaktywnej nie przyjmuje tego pola i go nie ustawia.
+
+Wizualizacja faktury offline używa dwóch kodów QR. Kod I służy do weryfikacji faktury w KSeF. Kod II potwierdza tożsamość wystawcy.
+
+## Certyfikaty KSeF (typy)
+
+Certyfikat KSeF ma dokładnie jeden typ: `Authentication` albo `Offline`. Nie ma certyfikatu, który łączy obie funkcje. W SDK są to `CertificateTypeEnum.AUTHENTICATION` (wartość `"authentication"`) i `CertificateTypeEnum.OFFLINE` (wartość `"offline"`).
+
+Typ `Authentication` służy do uwierzytelniania w KSeF. Typ `Offline` służy tylko do wystawiania faktur w trybie offline. Potwierdza autentyczność wystawcy i integralność faktury przez kod QR II. Nie uwierzytelnia.
+
+Certyfikat nie niesie uprawnień i nie jest przypisany do kontekstu logowania. Wniosek o certyfikat wymaga uwierzytelnienia podpisem XAdES. Token KSeF nie wystarczy, bo dane do CSR są czytane z certyfikatu użytego przy uwierzytelnieniu.

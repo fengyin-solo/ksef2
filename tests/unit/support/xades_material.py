@@ -33,18 +33,44 @@ TestKey = (
 )
 
 
-def self_signed(key: TestKey, common_name: str = "ksef2 test") -> Certificate:
+def self_signed(
+    key: TestKey, common_name: str = "ksef2 test", serial_number: int | None = None
+) -> Certificate:
     """Return a self-signed certificate issued for the public half of *key*."""
-    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, common_name)])
     now = datetime.datetime.now(datetime.UTC)
+    return self_signed_with_validity(
+        key,
+        not_valid_before=now - datetime.timedelta(hours=1),
+        not_valid_after=now + datetime.timedelta(days=1),
+        serial_number=serial_number,
+        common_name=common_name,
+    )
+
+
+def self_signed_with_validity(
+    key: TestKey,
+    *,
+    not_valid_before: datetime.datetime,
+    not_valid_after: datetime.datetime,
+    serial_number: int | None = None,
+    common_name: str = "ksef2 test",
+) -> Certificate:
+    """Return a self-signed certificate with an explicit validity period and serial.
+
+    Use this for material a test needs at a date or a serial number of its own, such
+    as an expired certificate or one carrying a 20-byte X.509 serial.
+    """
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, common_name)])
     builder = (
         x509.CertificateBuilder()
         .subject_name(name)
         .issuer_name(name)
         .public_key(key.public_key())
-        .serial_number(x509.random_serial_number())
-        .not_valid_before(now - datetime.timedelta(hours=1))
-        .not_valid_after(now + datetime.timedelta(days=1))
+        .serial_number(
+            x509.random_serial_number() if serial_number is None else serial_number
+        )
+        .not_valid_before(not_valid_before)
+        .not_valid_after(not_valid_after)
     )
     if isinstance(key, ed25519.Ed25519PrivateKey):
         return builder.sign(key, None)

@@ -19,7 +19,9 @@ import ksef2
 import ksef2.certificate_stores as public_certificate_stores
 import ksef2.clients as public_clients
 from ksef2._core import exceptions, response_errors
+from ksef2._config import Environment
 from ksef2._core.exceptions import ExceptionCode
+from ksef2._domain.models.signing_certificates import SigningCertificateRef
 from ksef2._domain.models.session import (
     SessionInvoiceStatusResponse,
     SessionStatusResponse,
@@ -619,3 +621,111 @@ class TestPickling:
         assert restored.hint == error.hint
         assert restored.context.get("hint") == error.context.get("hint")
         assert ("Hint:" in str(restored)) is (error.hint is not None)
+
+
+class TestCertificateStoreErrors:
+    """The signing-certificate store errors carry their own code and the store context."""
+
+    SUBCLASSES = [
+        exceptions.KSeFCertificateStoreNotFoundError,
+        exceptions.KSeFCertificateStoreConflictError,
+        exceptions.KSeFCertificateStoreAccessError,
+        exceptions.KSeFCertificateStoreUnavailableError,
+        exceptions.KSeFCertificateStoreMaterialError,
+    ]
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "KSeFCertificateStoreError",
+            "KSeFCertificateStoreNotFoundError",
+            "KSeFCertificateStoreConflictError",
+            "KSeFCertificateStoreAccessError",
+            "KSeFCertificateStoreUnavailableError",
+            "KSeFCertificateStoreMaterialError",
+        ],
+    )
+    def test_each_error_is_public_and_under_the_store_base(self, name: str) -> None:
+        exported = getattr(ksef2, name)
+
+        assert exported is getattr(exceptions, name)
+        assert issubclass(exported, exceptions.KSeFCertificateStoreError)
+        assert issubclass(
+            exceptions.KSeFCertificateStoreError, exceptions.KSeFException
+        )
+
+    @pytest.mark.parametrize(
+        ("cls", "code"),
+        [
+            (exceptions.KSeFCertificateStoreError, "CERTIFICATE_STORE_ERROR"),
+            (
+                exceptions.KSeFCertificateStoreNotFoundError,
+                "CERTIFICATE_STORE_NOT_FOUND",
+            ),
+            (
+                exceptions.KSeFCertificateStoreConflictError,
+                "CERTIFICATE_STORE_CONFLICT",
+            ),
+            (exceptions.KSeFCertificateStoreAccessError, "CERTIFICATE_STORE_ACCESS"),
+            (
+                exceptions.KSeFCertificateStoreUnavailableError,
+                "CERTIFICATE_STORE_UNAVAILABLE",
+            ),
+            (
+                exceptions.KSeFCertificateStoreMaterialError,
+                "CERTIFICATE_STORE_MATERIAL",
+            ),
+        ],
+        ids=lambda value: getattr(value, "__name__", str(value)),
+    )
+    def test_the_code_names_the_failure_without_renaming_the_class(
+        self, cls: type[exceptions.KSeFException], code: str
+    ) -> None:
+        assert cls.code == code
+        assert _build(cls) is not None
+
+    def test_only_the_base_and_its_subclasses_that_know_a_cause_hint_a_next_step(
+        self,
+    ) -> None:
+        assert exceptions.KSeFCertificateStoreError.hint is None
+        assert all(cls.hint for cls in self.SUBCLASSES)
+
+    def test_an_unambiguous_store_failure_says_so_and_names_the_record(self) -> None:
+        reference = SigningCertificateRef(
+            environment=Environment.TEST, fingerprint_sha256="a" * 64
+        )
+
+        error = exceptions.KSeFCertificateStoreNotFoundError(
+            "nothing here", operation="load", reference=reference
+        )
+
+        assert error.context["operation"] == "load"
+        assert error.context["reference"] == f"test:{'a' * 64}"
+        assert error.context["outcome_ambiguous"] is False
+        assert error.reference is reference
+
+    def test_an_ambiguous_store_failure_tells_the_caller_to_look_first(self) -> None:
+        reference = SigningCertificateRef(
+            environment=Environment.DEMO, fingerprint_sha256="b" * 64
+        )
+
+        error = exceptions.KSeFCertificateStoreUnavailableError(
+            "x", operation="save", reference=reference, outcome_ambiguous=True
+        )
+
+        assert error.context["operation"] == "save"
+        assert error.context["reference"] == f"demo:{'b' * 64}"
+        assert error.context["outcome_ambiguous"] is True
+        assert error.context["code"] == "CERTIFICATE_STORE_UNAVAILABLE"
+        assert error.context["hint"] == error.hint
+        assert f"\nHint: {error.hint}" in str(error)
+
+    def test_a_store_error_without_a_record_omits_the_fields_it_cannot_fill(
+        self,
+    ) -> None:
+        error = exceptions.KSeFCertificateStoreAccessError("denied")
+
+        assert "operation" not in error.context
+        assert "reference" not in error.context
+        assert error.context["outcome_ambiguous"] is False
+        assert error.operation is None and error.reference is None

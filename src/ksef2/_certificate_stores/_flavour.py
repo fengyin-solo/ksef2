@@ -26,7 +26,10 @@ def require_async_store(store: object) -> None:
         KSeFArgumentError: If ``store`` is not an async signing-certificate store.
     """
     if not isinstance(store, AsyncSigningCertificateStoreProtocol) or not all(
-        inspect.iscoroutinefunction(getattr(store, name)) for name in _STORE_METHODS
+        inspect.iscoroutinefunction(
+            getattr(store, name)  # pyright: ignore[reportAny]
+        )
+        for name in _STORE_METHODS
     ):
         raise exceptions.KSeFArgumentError(
             "An async client needs an async signing certificate store.",
@@ -50,7 +53,10 @@ def require_sync_store(store: object) -> None:
         KSeFArgumentError: If ``store`` is not a sync signing-certificate store.
     """
     if not isinstance(store, SigningCertificateStoreProtocol) or any(
-        inspect.iscoroutinefunction(getattr(store, name)) for name in _STORE_METHODS
+        inspect.iscoroutinefunction(
+            getattr(store, name)  # pyright: ignore[reportAny]
+        )
+        for name in _STORE_METHODS
     ):
         raise exceptions.KSeFArgumentError(
             "A sync client needs a sync signing certificate store.",

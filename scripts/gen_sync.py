@@ -245,6 +245,7 @@ NAME_MAP = {
 }
 
 DOCSTRING_REPLACEMENTS = (
+    ("AsyncInMemorySigningCertificateStore", "InMemorySigningCertificateStore"),
     ("AsyncClient", "Client"),
     ("Async context manager", "Context manager"),
     ("Async high-level", "High-level"),

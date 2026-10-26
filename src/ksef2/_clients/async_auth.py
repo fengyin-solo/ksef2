@@ -14,6 +14,10 @@ from ksef2._domain.identifiers import (
 )
 from ksef2._domain.models.base import validation_errors
 
+from ksef2._certificate_stores._flavour import require_async_store
+from ksef2._certificate_stores.async_protocols import (
+    AsyncSigningCertificateStoreProtocol,
+)
 from ksef2._clients.async_authenticated import AsyncAuthenticatedClient
 from ksef2._clients.async_encryption import AsyncEncryptionClient
 from ksef2._clients.profiles import (
@@ -38,6 +42,10 @@ from ksef2._domain.models.auth import (
     ContextIdentifierType,
     InitTokenAuthenticationRequest,
     RefreshedToken,
+)
+from ksef2._domain.models.signing_certificates import (
+    SigningCertificate,
+    SigningCertificateRef,
 )
 from ksef2._domain.models.xades import XAdESCredentials
 from ksef2._endpoints.async_auth import AsyncAuthEndpoints
@@ -306,6 +314,125 @@ class AsyncAuthClient:
 
         return self._build_authenticated_client(
             auth_tokens=await self._redeem(init_resp.authentication_token.token)
+        )
+
+    async def with_stored_certificate(
+        self,
+        *,
+        nip: str | None,
+        store: AsyncSigningCertificateStoreProtocol,
+        reference: SigningCertificateRef,
+        verify_chain: bool = False,
+        timeout: float = 60.0,
+        poll_interval: float = 1.0,
+    ) -> AsyncAuthenticatedClient:
+        """Authenticate with a certificate and key loaded from a signing-certificate store.
+
+        The store loads exactly the record named by ``reference``; a store never picks
+        a "latest" certificate. The reference must be one saved for this client's
+        environment, a certificate of KSeF type ``offline`` is rejected, and an
+        external certificate whose purpose is unknown (``certificate_type=None``) is
+        accepted. A store of the other flavour is refused instead of being called, and
+        every check here, including the certificate's validity period, runs before any
+        request to KSeF. The client does not close the store; the application owns it.
+
+        Args:
+            nip: Taxpayer identifier embedded in the authentication request.
+            store: Signing-certificate store holding the record, of this client's own
+                flavour.
+            reference: Environment and fingerprint of the record to load, as returned
+                by the store's ``save()`` or ``list()``.
+            verify_chain: Whether KSeF should verify the certificate chain.
+            timeout: Maximum number of seconds to wait for authentication.
+            poll_interval: Delay in seconds between authentication status checks.
+
+        Returns:
+            An authenticated client with redeemed access and refresh tokens.
+
+        Raises:
+            KSeFArgumentError: If the store belongs to the other flavour, the reference
+                names another environment, the stored certificate is a KSeF Offline
+                certificate, the certificate is outside its validity period, or ``nip``
+                is invalid.
+            KSeFCertificateStoreNotFoundError: If nothing is stored under ``reference``.
+            KSeFCertificateStoreMaterialError: If the record the store returned is not
+                the one asked for.
+            KSeFCertificateStoreError: If the store reports another failure, such as an
+                unreachable backend or material that cannot be unlocked.
+            KSeFAuthError: If authentication fails.
+            KSeFAuthPollingTimeoutError: If polling exceeds ``timeout``.
+
+        Example:
+            ```python
+            from ksef2.certificate_stores import AsyncInMemorySigningCertificateStore, SigningCertificate
+            from ksef2.xades import XAdESCredentials
+
+            store = AsyncInMemorySigningCertificateStore()
+            info = await store.save(
+                SigningCertificate(
+                    XAdESCredentials.from_pem(cert_pem, key_pem),
+                    environment=Environment.DEMO,
+                    certificate_type="authentication",
+                )
+            )
+            client = AsyncClient(Environment.DEMO)
+            auth = await client.authentication.with_stored_certificate(
+                nip="5261040828", store=store, reference=info.reference
+            )
+            ```
+        """
+        nip = _validated_nip(nip)
+        require_async_store(store)
+        # The two guards are for callers that run without runtime type checking; the
+        # annotations above are what type checkers see.
+        if not isinstance(  # pyright: ignore[reportUnnecessaryIsInstance]
+            reference, SigningCertificateRef
+        ):
+            raise exceptions.KSeFArgumentError(  # pyright: ignore[reportUnreachable]
+                "with_stored_certificate() needs a SigningCertificateRef.",
+                hint="Use the reference returned by the store's list() or save(), or "
+                "SigningCertificateRef.for_certificate().",
+            )
+        if reference.environment is not self._environment:
+            raise exceptions.KSeFArgumentError(
+                f"The stored certificate reference is for {reference.environment.name}, "
+                f"but this client uses {self._environment.name}.",
+                hint="Use a reference saved for this client's environment, or create "
+                "the client for the reference's environment.",
+            )
+
+        record = await store.load(reference)
+
+        if not isinstance(  # pyright: ignore[reportUnnecessaryIsInstance]
+            record, SigningCertificate
+        ):
+            # The guard is for callers that run without runtime type checking; the
+            # protocol's return annotation is what type checkers see here.
+            raise exceptions.KSeFArgumentError(
+                f"The store's load() returned {type(record).__name__}, not a "
+                "SigningCertificate.",
+                hint="Fix the store adapter: load() must return a SigningCertificate.",
+            )
+        if record.reference != reference:
+            raise exceptions.KSeFCertificateStoreMaterialError(
+                "The store returned a different certificate than the one requested.",
+                operation="load",
+                reference=reference,
+            )
+        if record.info.certificate_type == "offline":
+            raise exceptions.KSeFArgumentError(
+                "The stored certificate is a KSeF Offline certificate, which cannot be "
+                "used to authenticate.",
+                hint="Use a stored certificate of type authentication, or an external "
+                "certificate.",
+            )
+
+        return await self.with_xades(
+            nip=nip,
+            credentials=record.credentials,
+            verify_chain=verify_chain,
+            timeout=timeout,
+            poll_interval=poll_interval,
         )
 
     async def with_test_certificate(

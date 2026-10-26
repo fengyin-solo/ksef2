@@ -348,6 +348,13 @@
                   "pl": "Podpisy XAdES"
                 },
                 "path": "how-to-guides/use-xades-helpers.md"
+              },
+              {
+                "label": "Write a signing-certificate store",
+                "translations": {
+                  "pl": "Własny magazyn certyfikatów podpisu"
+                },
+                "path": "how-to-guides/write-signing-certificate-store.md"
               }
             ]
           }

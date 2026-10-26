@@ -184,6 +184,72 @@ auth = client.authentication.with_xades(
 )
 ```
 
+### Uwierzytelnianie certyfikatem z magazynu
+
+Użyj magazynu certyfikatów podpisu, gdy Twój certyfikat i klucz prywatny żyją w
+magazynie aplikacji — w keychainie, bazie danych albo managerze sekretów — a nie
+w pliku czytanym przy starcie. `ksef2.certificate_stores` trzyma certyfikaty
+podpisu razem z kluczami; to nie cache certyfikatów szyfrowania, który posiada
+klient główny.
+
+Zapisz parę raz i uwierzytelniaj się zwróconą referencją:
+
+```python
+import os
+from pathlib import Path
+
+from ksef2 import Client, Environment
+from ksef2.certificate_stores import (
+    InMemorySigningCertificateStore,
+    SigningCertificate,
+)
+from ksef2.xades import XAdESCredentials
+
+credentials = XAdESCredentials.from_pem(
+    Path("company.pem").read_bytes(),
+    Path("company.key").read_bytes(),
+)
+
+store = InMemorySigningCertificateStore()
+info = store.save(
+    SigningCertificate(
+        credentials,
+        environment=Environment.PRODUCTION,
+        certificate_type="authentication",
+    )
+)
+
+with Client(Environment.PRODUCTION) as client:
+    auth = client.authentication.with_stored_certificate(
+        nip=os.environ["KSEF2_NIP"],
+        store=store,
+        reference=info.reference,
+    )
+```
+
+Magazyn oddaje dokładnie rekord wskazany przez `reference`. Nigdy nie wybiera
+najnowszego certyfikatu i klient nie zamyka magazynu: to aplikacja otwiera i
+zamyka to, na czym magazyn stoi.
+
+Przed pierwszym żądaniem do KSeF klient sprawdza, że:
+
+1. magazyn pasuje rodzaju do klienta, bo klient synchroniczny nie może oczekiwać
+   na magazyn, a klient asynchroniczny nie odczyta magazynu synchronicznego;
+2. referencję zapisano dla środowiska tego klienta;
+3. rekord zwrócony przez magazyn jest tym, o który go zapytano;
+4. certyfikat nie jest certyfikatem KSeF typu `offline`. Certyfikat o nieznanej
+   funkcji w KSeF, na przykład zewnętrzny albo wygenerowany w TEST, jest
+   akceptowany;
+5. certyfikat mieści się w swoim okresie ważności.
+
+Klient asynchroniczny czeka na to samo wywołanie:
+
+```python
+auth = await client.authentication.with_stored_certificate(
+    nip="5261040828", store=store, reference=info.reference
+)
+```
+
 ## Profile kompatybilne z CLI
 
 `ksef2-cli` i SDK używają tego samego lokalnego pliku profili. Profil
@@ -280,6 +346,7 @@ asyncio.run(main())
 **Zobacz też:**
 
 - [Użyj profili](profiles.md): Twórz profile przez ksef2-cli, uwierzytelniaj się przez with_profile() i zarządzaj profilami przez ProfileStore.
+- [Własny magazyn certyfikatów podpisu](write-signing-certificate-store.md): Zaimplementuj protokół magazynu na własnym backendzie.
 - [Uwierzytelnianie w CLI](../../cli/guides/authentication.md): Użyj tych samych przepływów tokenu, certyfikatu TEST, PEM XAdES, PKCS#12 i profili z poziomu ksef2-cli.
 
 ## Zalecany przepływ

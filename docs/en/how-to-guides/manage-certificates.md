@@ -136,6 +136,90 @@ auth.certificates.revoke(
 )
 ```
 
+## Store an issued certificate
+
+KSeF keeps the certificate. Your application keeps the pair it can actually sign
+with, in a signing-certificate store from `ksef2.certificate_stores`.
+
+1. Generate the private key and the CSR with your certificate tooling.
+2. Protect the pending private key durably *before* calling `enroll()`, and record
+   which CSR it belongs to. From that moment this key is the only one that can use
+   the certificate KSeF is about to issue.
+3. Submit the CSR as Base64-encoded DER and persist `enrollment.resume_state()`
+   next to that key.
+4. Wait for issuance, then retrieve the certificate by the serial number KSeF
+   returned.
+5. Decode the DER, build `XAdESCredentials` from the certificate and the pending
+   key (this checks the two belong together), wrap them in a `SigningCertificate`
+   for this environment and this KSeF certificate type, and `save()` the record.
+6. Retire the pending key according to your own key policy only after `save()`
+   returned.
+
+The snippet assumes `store` is one of the signing-certificate stores from
+`ksef2.certificate_stores` and `csr_base64_der` is the Base64-encoded DER of the
+CSR your tooling produced.
+
+```python
+import base64
+
+from cryptography.x509 import load_der_x509_certificate
+
+from ksef2 import Environment
+from ksef2.certificate_stores import SigningCertificate
+from ksef2.xades import XAdESCredentials
+
+# `pending_key` is the key your tooling generated for this CSR and already
+# protects. Everything below assumes the application has just persisted the
+# resume state next to that key.
+enrollment = auth.certificates.enroll(
+    certificate_name="billing-service",
+    certificate_type="authentication",
+    csr=csr_base64_der,
+)
+saved_state = enrollment.resume_state().to_json()
+
+status = enrollment.wait(timeout=120.0, poll_interval=2.0)
+issued = auth.certificates.retrieve(
+    certificate_serial_numbers=[status.certificate_serial_number],
+)
+certificate = issued.certificates[0]
+
+credentials = XAdESCredentials(
+    load_der_x509_certificate(
+        base64.b64decode(certificate.base64_encoded_certificate)
+    ),
+    pending_key,
+)
+info = store.save(
+    SigningCertificate(
+        credentials,
+        environment=Environment.PRODUCTION,
+        certificate_type="authentication",
+        ksef_serial_number=certificate.serial_number,
+    )
+)
+
+# The pair is now reachable through `info.reference`. Retire `pending_key`
+# only here.
+```
+
+### If a step fails
+
+If retrieving or saving the certificate fails, resume the same enrollment from
+its saved state with `auth.certificates.enrollment(state)`, retry the retrieval,
+and save the certificate against the *original* key. Do not generate a new key
+and do not enroll again: KSeF already accepted that request. A failed `save()`
+is a local problem and must not trigger `revoke()`.
+
+If the process dies after KSeF accepted `enroll()` but before the resume state
+was persisted, the SDK cannot recover that enrollment, because KSeF enrollment is
+not idempotent and the request cannot be replayed.
+
+Authenticate with the stored pair through
+[`with_stored_certificate()`](authenticate.md), and see
+[Write a signing-certificate store](write-signing-certificate-store.md) to put
+the record behind your own backend.
+
 ## Recommended flow
 
 1. Check certificate and enrollment quotas.

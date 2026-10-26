@@ -147,6 +147,29 @@ xml = build_auth_token_request_xml(
 signed_xml = sign_xades(xml, cert, private_key)
 ```
 
+## Podpisz certyfikatem z magazynu
+
+Magazyn certyfikatów podpisu oddaje załadowany rekord, więc jego certyfikat i
+klucz trafiają wprost do `LocalSigner`. Klucz prywatny to obiekt zwrócony przez
+magazyn: jest używany do podpisu bez eksportu, ponownego odszyfrowania ani
+parsowania. Przykłady poniżej zakładają, że `store` to magazyn trzymający rekord,
+a `reference` to referencja tego rekordu.
+
+```python
+from ksef2.xades import LocalSigner
+
+record = store.load(reference)
+signer = LocalSigner(
+    cert=record.credentials.certificate,
+    private_key=record.credentials.private_key,
+)
+
+signed_xml = signer.sign(xml)
+```
+
+Traktuj `record` jak sekret, dopóki żyje: trzyma klucz prywatny. Gdy podpis
+służy uwierzytelnieniu, użyj zamiast tego `with_stored_certificate()`.
+
 :::caution[Chroń klucze prywatne]
 Pliki kluczy prywatnych i hasła trzymaj poza kontrolą wersji. Ładuj hasła ze
 zmiennych środowiskowych albo managera sekretów. `XAdESCredentials` przechowuje w

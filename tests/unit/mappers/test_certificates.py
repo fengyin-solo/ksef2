@@ -1,5 +1,12 @@
+import base64
+
+import httpx
+import pytest
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.serialization import Encoding
 from polyfactory import BaseFactory
 
+from ksef2._endpoints.shared import parse_response
 from ksef2._domain.models import certificates
 from ksef2._infra.mappers.certificates.requests import to_spec
 from ksef2._infra.mappers.certificates.responses import from_spec
@@ -13,9 +20,37 @@ from tests.unit.factories.certificates import (
     DomainRevokeCertificateRequestFactory,
     RetrieveCertificatesListItemFactory,
 )
+from tests.unit.support.xades_material import self_signed
 
 
 class TestCertificatesMapper:
+    @pytest.mark.parametrize("binary", [False, True], ids=["ascii", "der"])
+    def test_retrieve_preserves_base64_certificate(self, binary: bool):
+        if binary:
+            key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+            content = self_signed(key, "QA").public_bytes(Encoding.DER)
+        else:
+            content = b"DER-BYTES"
+        encoded = base64.b64encode(content).decode("ascii")
+        response = httpx.Response(
+            200,
+            json={
+                "certificates": [
+                    {
+                        "certificate": encoded,
+                        "certificateName": "qa-admin",
+                        "certificateSerialNumber": "014AA06A66BE5720",
+                        "certificateType": "Authentication",
+                    }
+                ]
+            },
+            request=httpx.Request("POST", "https://example.test/certificates/retrieve"),
+        )
+
+        result = from_spec(parse_response(response, spec.RetrieveCertificatesResponse))
+
+        assert result.certificates[0].base64_encoded_certificate == encoded
+
     def test_map_limits_response(
         self, cert_limits_resp: BaseFactory[spec.CertificateLimitsResponse]
     ):

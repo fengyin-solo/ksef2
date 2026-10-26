@@ -6,6 +6,12 @@
   tax-office ex-WUS, tax-office-head, and currency lists when
   `enable_code_lookups=True`. Keep network access and writes blocked, and include
   unresolved URIs in `KSeFInvoiceRenderingError` messages and details (#324).
+- Preserve the Base64 certificate text returned by `auth.certificates.retrieve()`
+  instead of decoding DER bytes as UTF-8 (#323). Generate all OpenAPI byte fields
+  as strings so certificates, hashes, and encrypted data retain their wire values.
+- Include offending field paths and validation messages in
+  `KSeFResponseValidationError.details` for individual and list responses, and
+  preserve the original Pydantic validation error.
 
 ## v1.0.0 (2026-10-26)
 

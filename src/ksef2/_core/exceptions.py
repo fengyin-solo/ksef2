@@ -1,7 +1,7 @@
 """Public exception hierarchy raised by the KSeF SDK."""
 
 from typing import Any, Callable, Literal, cast, override
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from urllib.parse import urlsplit
 from enum import IntEnum
 
@@ -349,9 +349,37 @@ class KSeFValidationError(KSeFException, ValueError):  # pyright: ignore[reportU
 
 
 class KSeFResponseValidationError(KSeFValidationError):
-    """Raised when a response or exported metadata fails SDK model validation."""
+    """Raised when a response or exported metadata fails SDK model validation.
+
+    Args:
+        message: Human-readable error message.
+        validation_error: Original Pydantic validation error, if one was wrapped.
+        **context: Additional structured details, stored in ``context``.
+
+    Attributes:
+        details: Field paths and validation messages, also stored in ``context``.
+    """
 
     code: str = "RESPONSE_VALIDATION_ERROR"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        validation_error: object | None = None,
+        **context: Any,  # pyright: ignore[reportAny, reportExplicitAny]
+    ) -> None:
+        super().__init__(message, validation_error=validation_error, **context)
+        errors = (
+            validation_error.errors(include_input=False, include_url=False)
+            if isinstance(validation_error, ValidationError)
+            else []
+        )
+        self.details: list[str] = [
+            f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}"
+            for error in errors
+        ]
+        self.context["details"] = self.details
 
 
 class KSeFProfileConfigError(KSeFValidationError):

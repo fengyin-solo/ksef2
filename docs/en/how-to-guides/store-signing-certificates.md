@@ -80,8 +80,8 @@ its private key as PKCS#8 encrypted with a password you supply. There is no
 plaintext mode.
 
 The password provider is a plain callable from a reference to password bytes. It
-is called on every `save()` and `load()`, and the store keeps neither the
-password nor the record.
+is called on every `load()` and on every `save()` that writes a new record, and
+the store keeps neither the password nor the record.
 
 ```python
 import os
@@ -196,14 +196,15 @@ shows it without a password.
   `root` keeps the permissions you gave it. On Windows a file inherits the access
   control list of its directory, so restrict `root` yourself before you store
   anything in it.
-- The password is asked for on every `save()` and `load()` and is never kept: not
-  on the store, not in the repr, not between calls. `list()` needs no password at
+- The password is asked for on every `load()` and every `save()` that writes a
+  new record, and is never kept: not on the store, not in the repr, not between
+  calls. `list()` needs no password at
   all.
 - A loaded private key is an ordinary in-memory object. The store caches nothing,
   but it also promises no zeroization of the memory the key occupied. Treat the
   returned `SigningCertificate` as a secret and drop it when you are done.
-- The store refuses a symbolic link left where a record or an environment
-  directory belongs, and it never rewrites a record it cannot read, so an
+- The store refuses to follow a symbolic link left where a record belongs, and
+  it never rewrites a record it cannot read, so an
   unsupported record version stays on disk untouched.
 - Deleting a record does not revoke anything in KSeF. The certificate stays valid
   there until you revoke it, and a pair already loaded in memory keeps signing.
@@ -221,7 +222,7 @@ failed and which record it was about. See
 | `KSeFCertificateStoreConflictError` | `save()` was given a record whose metadata differs from the one already stored under that reference. |
 | `KSeFCertificateStoreAccessError` | The files are not readable by this process, a symbolic link is in the way, or the password provider returned an empty password. |
 | `KSeFCertificateStoreMaterialError` | The record is corrupt, in an unsupported format, undecryptable, or does not match the reference it is stored under. |
-| `KSeFCertificateStoreUnavailableError` | The storage could not take the write or the read, for example a full disk. `outcome_ambiguous` is `True` when the store cannot say whether the record landed. |
+| `KSeFCertificateStoreUnavailableError` | The storage could not take the write or the read, for example a full disk. |
 
 Anything your own password provider raises comes back unchanged: a provider that
 cannot reach its secret store is a deployment fault, not a damaged record.

@@ -81,8 +81,8 @@ loaded = store.load(held[0].reference)
 klucz prywatny jako PKCS#8 zaszyfrowany podanym hasłem. Tryb jawny nie istnieje.
 
 Dostarczyciel hasła to zwykła funkcja od referencji do bajtów hasła. Jest
-wywoływany przy każdym `save()` i `load()`, a magazyn nie trzyma ani hasła, ani
-rekordu.
+wywoływany przy każdym `load()` i przy każdym `save()`, które zapisuje nowy
+rekord, a magazyn nie trzyma ani hasła, ani rekordu.
 
 ```python
 import os
@@ -197,15 +197,15 @@ pokazuje go bez hasła.
   `root` zachowuje uprawnienia, które mu nadałeś. Na Windows plik dziedziczy
   listę ACL katalogu, więc ogranicz `root` sam, zanim cokolwiek do niego
   zapiszesz.
-- Hasło jest pytane przy każdym `save()` i `load()` i nigdy nie jest
-  przetrzymywane: ani na magazynie, ani w repr, ani między wywołaniami. `list()`
+- Hasło jest pytane przy każdym `load()` i przy każdym `save()`, które zapisuje
+  nowy rekord, i nigdy nie jest przetrzymywane: ani na magazynie, ani w repr, ani między wywołaniami. `list()`
   nie potrzebuje hasła w ogóle.
 - Wczytany klucz prywatny to zwykły obiekt w pamięci. Magazyn nic nie
   buforuje, ale też nie obiecuje wyzerowania pamięci, którą klucz zajmował.
   Traktuj zwrócony `SigningCertificate` jak sekret i pozbywaj się go po
   wykorzystaniu.
 - Magazyn odmawia przejścia za dowiązanie symboliczne stojące w miejscu rekordu
-  albo katalogu środowiska i nie przepisuje rekordu, którego nie może odczytać,
+  i nie przepisuje rekordu, którego nie może odczytać,
   więc rekord w nieobsługiwanej wersji zostaje na dysku nietknięty.
 - Usunięcie rekordu nie unieważnia niczego w KSeF. Certyfikat pozostaje tam
   ważny, dopóki go nie odwołasz, a para już wczytana do pamięci podpisuje dalej.
@@ -223,7 +223,7 @@ udała oraz którego rekordu dotyczyła. Całą hierarchię opisuje
 | `KSeFCertificateStoreConflictError` | `save()` dostał rekord o metadanych innych niż już zapisane pod tą referencją. |
 | `KSeFCertificateStoreAccessError` | Pliki nie są do odczytu dla tego procesu, w drodze stoi dowiązanie symboliczne albo dostarczyciel hasła zwrócił puste hasło. |
 | `KSeFCertificateStoreMaterialError` | Rekord jest uszkodzony, ma nieobsługiwaną postać, nie da się go odszyfrować albo nie zgadza się z referencją, pod którą leży. |
-| `KSeFCertificateStoreUnavailableError` | Magazyn nie mógł przyjąć zapisu ani odczytu, na przykład przez pełny dysk. `outcome_ambiguous` ma wartość `True`, gdy magazyn nie potrafi powiedzieć, czy rekord trafił na dysk. |
+| `KSeFCertificateStoreUnavailableError` | Magazyn nie mógł przyjąć zapisu ani odczytu, na przykład przez pełny dysk. |
 
 Cokolwiek zgłosi Twoja własna funkcja hasła, wraca bez zmian: dostarczyciel,
 który nie sięga po sekret, to usterka wdrożenia, a nie uszkodzony rekord.

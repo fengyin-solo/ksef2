@@ -383,8 +383,6 @@ class TestFilesystemRecordFormat:
         assert set(envelope) == {
             "format",
             "version",
-            "environment",
-            "fingerprint_sha256",
             "certificate_type",
             "ksef_serial_number",
             "certificate_der",
@@ -392,8 +390,6 @@ class TestFilesystemRecordFormat:
         }
         assert envelope["format"] == _filesystem_ops.FORMAT
         assert envelope["version"] == _filesystem_ops.VERSION
-        assert envelope["environment"] == "test"
-        assert envelope["fingerprint_sha256"] == stored.reference.fingerprint_sha256
         assert envelope["certificate_type"] is None
         assert envelope["ksef_serial_number"] is None
 
@@ -441,7 +437,6 @@ class TestFilesystemRecordFormat:
         store.save(record)
 
         envelope = read_envelope(record_file(store, record))
-        assert envelope["environment"] == "demo"
         assert envelope["certificate_type"] == "authentication"
         assert envelope["ksef_serial_number"] == "0123456789ABCDEF"
         assert env_dir(store, Environment.DEMO).is_dir()
@@ -479,7 +474,9 @@ class TestFilesystemRecordMaterial:
     ) -> None:
         tamper(path, format="some-other-tool")
 
-        with pytest.raises(KSeFCertificateStoreMaterialError, match="unknown format"):
+        with pytest.raises(
+            KSeFCertificateStoreMaterialError, match="ksef2 signing-certificate format"
+        ):
             store.load(stored.reference)
 
     def test_an_unsupported_version_is_refused_and_left_untouched(
@@ -493,7 +490,7 @@ class TestFilesystemRecordMaterial:
 
         with pytest.raises(
             KSeFCertificateStoreMaterialError,
-            match="Unsupported signing certificate record version 2.",
+            match="unsupported version 2",
         ) as caught:
             store.load(stored.reference)
 
@@ -501,17 +498,6 @@ class TestFilesystemRecordMaterial:
         assert path.read_bytes() == before, (
             "a record in a version this SDK cannot write must not be rewritten"
         )
-
-    def test_a_record_claiming_another_fingerprint_is_refused(
-        self,
-        store: FilesystemSigningCertificateStore,
-        stored: SigningCertificate,
-        path: Path,
-    ) -> None:
-        tamper(path, fingerprint_sha256="a" * 64)
-
-        with pytest.raises(KSeFCertificateStoreMaterialError, match="fingerprint"):
-            store.load(stored.reference)
 
     def test_a_record_named_for_another_certificate_is_refused(
         self,
@@ -528,6 +514,41 @@ class TestFilesystemRecordMaterial:
 
         with pytest.raises(KSeFCertificateStoreMaterialError, match="fingerprint"):
             store.load(other)
+
+    @pytest.mark.parametrize(
+        ("changes", "message"),
+        [
+            ({"certificate_type": "signing"}, "unknown certificate type"),
+            ({"ksef_serial_number": 42}, "cannot be read"),
+            ({"ksef_serial_number": "not a serial"}, "cannot be read"),
+            ({"certificate_der": 42}, "cannot be read"),
+            ({"certificate_der": "not base64!"}, "cannot be read"),
+            ({"certificate_der": "AAAA"}, "cannot be read"),
+        ],
+    )
+    def test_a_record_with_a_malformed_field_is_refused(
+        self,
+        store: FilesystemSigningCertificateStore,
+        stored: SigningCertificate,
+        path: Path,
+        changes: dict[str, object],
+        message: str,
+    ) -> None:
+        tamper(path, **changes)
+
+        with pytest.raises(KSeFCertificateStoreMaterialError, match=message):
+            store.load(stored.reference)
+
+    def test_a_record_that_is_not_an_object_is_refused(
+        self,
+        store: FilesystemSigningCertificateStore,
+        stored: SigningCertificate,
+        path: Path,
+    ) -> None:
+        path.write_text("[]", encoding="utf-8")
+
+        with pytest.raises(KSeFCertificateStoreMaterialError, match="JSON object"):
+            store.load(stored.reference)
 
     def test_a_private_key_of_the_wrong_length_is_refused(
         self,
@@ -559,32 +580,8 @@ class TestFilesystemRecordMaterial:
 
         with pytest.raises(
             KSeFCertificateStoreMaterialError,
-            match="does not belong to the stored certificate",
+            match="does not belong to its certificate",
         ):
-            store.load(stored.reference)
-
-    def test_a_record_from_an_unknown_environment_is_refused(
-        self,
-        store: FilesystemSigningCertificateStore,
-        stored: SigningCertificate,
-        path: Path,
-    ) -> None:
-        tamper(path, environment="staging")
-
-        with pytest.raises(
-            KSeFCertificateStoreMaterialError, match="unknown KSeF environment"
-        ):
-            store.load(stored.reference)
-
-    def test_a_record_from_another_environment_is_refused(
-        self,
-        store: FilesystemSigningCertificateStore,
-        stored: SigningCertificate,
-        path: Path,
-    ) -> None:
-        tamper(path, environment="demo")
-
-        with pytest.raises(KSeFCertificateStoreMaterialError, match="environment"):
             store.load(stored.reference)
 
     def test_a_corrupt_record_stops_a_listing_rather_than_vanishing_from_it(
@@ -607,14 +604,14 @@ class TestFilesystemRecordMaterial:
         stored: SigningCertificate,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        listed_names = _filesystem_ops._record_names
+        listdir = os.listdir
         vanished = f"{'0' * 64}.json"
 
         def names_including_the_vanished_record(directory: Path) -> list[str]:
-            return [*listed_names(directory), vanished]
+            return [*listdir(directory), vanished]
 
         monkeypatch.setattr(
-            _filesystem_ops, "_record_names", names_including_the_vanished_record
+            _filesystem_ops.os, "listdir", names_including_the_vanished_record
         )
 
         assert list(store.list(environment=Environment.TEST)) == [stored.info]
@@ -628,7 +625,7 @@ class TestFilesystemRecordMaterial:
         tamper(path, version=2)
 
         with pytest.raises(
-            KSeFCertificateStoreMaterialError, match="Unsupported signing certificate"
+            KSeFCertificateStoreMaterialError, match="unsupported version"
         ):
             store.list(environment=Environment.TEST)
 
@@ -750,52 +747,6 @@ class TestFilesystemFiles:
         assert caught.value.operation == "list"
 
     @posix_only
-    def test_a_link_where_an_environment_directory_belongs_is_not_used(
-        self,
-        tmp_path: Path,
-        record: SigningCertificate,
-        other_store: FilesystemSigningCertificateStore,
-    ) -> None:
-        other_store.save(record)
-        root = tmp_path / "store"
-        root.mkdir()
-        (root / "test").symlink_to(env_dir(other_store, Environment.TEST))
-        store = FilesystemSigningCertificateStore(root, password_provider=provider)
-
-        with pytest.raises(
-            KSeFCertificateStoreAccessError, match="environment directory"
-        ) as caught:
-            store.save(record)
-
-        assert caught.value.operation == "save"
-        assert list(other_store.list(environment=Environment.TEST)) == [record.info]
-
-    @posix_only
-    def test_a_link_where_an_environment_directory_belongs_stops_every_operation(
-        self,
-        tmp_path: Path,
-        record: SigningCertificate,
-        other_store: FilesystemSigningCertificateStore,
-    ) -> None:
-        other_store.save(record)
-        root = tmp_path / "store"
-        root.mkdir()
-        (root / "test").symlink_to(env_dir(other_store, Environment.TEST))
-        store = FilesystemSigningCertificateStore(root, password_provider=provider)
-        operations: list[tuple[str, Callable[[], object]]] = [
-            ("load", lambda: store.load(record.reference)),
-            ("list", lambda: store.list(environment=Environment.TEST)),
-            ("delete", lambda: store.delete(record.reference)),
-        ]
-
-        for operation, call in operations:
-            with pytest.raises(
-                KSeFCertificateStoreAccessError, match="environment directory"
-            ) as caught:
-                call()
-            assert caught.value.operation == operation
-
-    @posix_only
     def test_deleting_a_record_takes_the_link_and_not_what_it_points_at(
         self,
         store: FilesystemSigningCertificateStore,
@@ -868,31 +819,6 @@ class TestFilesystemPublication:
         assert caught.value.outcome_ambiguous is False
         assert not record_file(store, record).exists()
         assert leftovers(env_dir(store, Environment.TEST)) == []
-
-    @posix_only
-    def test_a_failing_directory_flush_leaves_the_caller_uncertain(
-        self,
-        store: FilesystemSigningCertificateStore,
-        record: SigningCertificate,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        # The first flush settles the temporary file and the second settles the
-        # directory holding the link that published the record. Only the second one
-        # can fail on a record that is already visible.
-        _fail_os_call(
-            monkeypatch, "fsync", OSError(errno.EIO, "I/O error"), on_calls=(2,)
-        )
-
-        with pytest.raises(KSeFCertificateStoreUnavailableError) as caught:
-            store.save(record)
-
-        assert caught.value.outcome_ambiguous is True
-        assert record_file(store, record).exists()
-        assert leftovers(env_dir(store, Environment.TEST)) == []
-
-        monkeypatch.undo()
-
-        assert store.save(record) == record.info
 
     def test_a_conflict_leaves_one_record_and_no_temporary_file(
         self, store: FilesystemSigningCertificateStore, stored: SigningCertificate
@@ -991,37 +917,6 @@ class TestFilesystemConcurrency:
         assert list(store.list(environment=Environment.TEST)) == [winner]
         assert store.load(winner.reference).info == winner
         assert leftovers(env_dir(store, Environment.TEST)) == []
-
-    def test_the_losers_leave_the_winners_record_behind(
-        self, store: FilesystemSigningCertificateStore
-    ) -> None:
-        key, certificate = pair("ec")
-        writers = [
-            make_record(key, certificate, Environment.TEST, certificate_type=kind)
-            for kind in ("authentication", None, "offline")
-        ]
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
-            outcomes = list(pool.map(_saved_or_raised(store), writers))
-
-        kept = [
-            outcome
-            for outcome in outcomes
-            if isinstance(outcome, SigningCertificateInfo)
-        ]
-        conflicts = [
-            outcome
-            for outcome in outcomes
-            if isinstance(outcome, KSeFCertificateStoreConflictError)
-        ]
-        assert len(kept) == 1
-        assert len(conflicts) == 2
-        winner = kept[0]
-        assert winner is not None
-        assert store.load(winner.reference).info == winner
-        assert list(env_dir(store, Environment.TEST).iterdir()) == [
-            record_file(store, writers[0])
-        ]
 
 
 def _saved_or_raised(

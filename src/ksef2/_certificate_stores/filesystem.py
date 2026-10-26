@@ -21,35 +21,16 @@ from ksef2._domain.models.signing_certificates import (
 class FilesystemSigningCertificateStore:
     """Keep signing certificates as files, one encrypted record per certificate.
 
-    Every record is one JSON document at ``<root>/<environment>/<fingerprint>.json``
-    holding the certificate and its private key as PKCS#8 encrypted with a password,
-    plus the metadata that identifies the record. There is no plaintext mode: a
-    record always carries an encrypted key, and a record whose format or version this
-    store does not know is refused and left exactly as it is on disk.
+    Each record is a JSON file at ``<root>/<environment>/<fingerprint>.json`` holding
+    the certificate and its private key as PKCS#8 encrypted with a password. There is
+    no plaintext mode. ``password_provider(reference) -> bytes`` is called on each
+    ``save()`` that writes a record and on each ``load()``; its result is never kept.
+    ``list()`` reads only certificates and needs no password.
 
-    ``list()`` reads metadata from the certificate alone and never asks for a
-    password. ``password_provider(reference) -> bytes`` is called on each ``save()``
-    and ``load()`` and its result is never kept: nothing here holds a password, a key
-    or a record between calls, so the repr names only the directory.
-
-    File and crypto work blocks. The ``async`` flavour of this store runs it in a
-    worker thread, and calls the password provider in that thread too, so a slow disk
-    or a key derivation never stalls the event loop.
-
-    A record reaches its final name through a temporary file and a link, so a record
-    is either complete or absent, and two writers of one record never overwrite each
-    other: the loser compares the winner's record and either returns it or reports a
-    conflict. That also means a cancelled ``save()`` may have published the
-    record after all; repeating the same ``save()`` is the way to find out, and is
-    safe.
-
-    Files are created owner-only (0600) and directories owner-only (0700) on POSIX.
-    On Windows a file inherits the access control list of its directory, so restrict
-    ``root`` yourself before storing anything in it. A symbolic link left where a
-    record or an environment directory belongs is refused rather than followed.
-
-    Loaded keys are ordinary in-memory secrets: the store keeps no cache of them and
-    promises no zeroization of the memory they occupy.
+    A record is written to a temporary file and linked into place, so it is complete
+    or absent, and concurrent writers never overwrite each other. Files are 0600 and
+    directories 0700 on POSIX; on Windows, restrict ``root`` yourself. File and crypto
+    work runs in a worker thread, so it never blocks the event loop.
 
     The adapter satisfies the signing-certificate store protocol structurally; it
     does not inherit from it.
@@ -62,8 +43,7 @@ class FilesystemSigningCertificateStore:
     Raises:
         KSeFArgumentError: If ``root`` is not a ``Path``, or ``password_provider`` is
             not callable.
-        KSeFCertificateStoreAccessError: If a file under ``root`` is not readable by
-            this process.
+        KSeFCertificateStoreAccessError: If ``root`` is not accessible.
         KSeFCertificateStoreUnavailableError: If ``root`` could not be created.
     """
 
@@ -94,45 +74,35 @@ class FilesystemSigningCertificateStore:
             self._root = _filesystem_ops.prepare_root(root)
         except OSError as exc:
             raise _filesystem_ops._os_error(  # pyright: ignore[reportPrivateUsage]
-                exc, operation="open", reference=None
+                exc, "open", None
             ) from exc
         self._password_provider = password_provider
 
     def save(self, certificate: SigningCertificate) -> SigningCertificateInfo:
         """Write this certificate's record and return its metadata.
 
-        A record already stored under the same reference with equal metadata is left
-        in place and its metadata returned, so repeating a save costs nothing and the
-        password provider is not called for it. The record is written to a temporary
-        file in the environment directory, flushed, and linked into place.
+        An equal record already stored is left in place and its metadata returned,
+        without calling the password provider.
 
         Args:
             certificate: The validated pair to persist, keyed by ``certificate.reference``.
 
         Returns:
-            The metadata of the stored record, which is the given one for a new record
-                and the stored one for an equal repeat.
+            The metadata of the stored record.
 
         Raises:
             KSeFArgumentError: If ``certificate`` is not a ``SigningCertificate``.
             KSeFCertificateStoreConflictError: If a different record is stored under
                 this reference.
-            KSeFCertificateStoreAccessError: If a file is not accessible to this
-                process, a symbolic link is in the way, or the password provider
-                returned an empty password.
-            KSeFCertificateStoreMaterialError: If the record already stored under this
-                reference cannot be read.
+            KSeFCertificateStoreAccessError: If a file is not accessible, a symbolic
+                link stands where the record belongs, or the password is empty.
+            KSeFCertificateStoreMaterialError: If the stored record cannot be read.
             KSeFCertificateStoreUnavailableError: If the record could not be written.
-                When its ``outcome_ambiguous`` is true the record may be on disk
-                anyway; save it again to find out.
         """
         return _filesystem_ops.save(self._root, self._password_provider, certificate)
 
     def load(self, reference: SigningCertificateRef) -> SigningCertificate:
         """Read and decrypt the record stored under ``reference``.
-
-        The password is asked for only once the stored envelope parsed, so a damaged
-        record is reported without unlocking anything.
 
         Args:
             reference: Environment and certificate fingerprint to read back.
@@ -145,9 +115,8 @@ class FilesystemSigningCertificateStore:
             KSeFCertificateStoreNotFoundError: If no record is stored under it.
             KSeFCertificateStoreMaterialError: If the record is corrupt, cannot be
                 decrypted, or does not match this reference.
-            KSeFCertificateStoreAccessError: If a file is not accessible to this
-                process, a symbolic link is in the way, or the password provider
-                returned an empty password.
+            KSeFCertificateStoreAccessError: If a file is not accessible, a symbolic
+                link stands where the record belongs, or the password is empty.
             KSeFCertificateStoreUnavailableError: If the record could not be read.
         """
         return _filesystem_ops.load(self._root, self._password_provider, reference)
@@ -160,34 +129,28 @@ class FilesystemSigningCertificateStore:
     ) -> tuple[SigningCertificateInfo, ...]:
         """Return the metadata of every record stored for one environment.
 
-        The private key of a record is never decrypted here, so the password provider
-        is not called. Expired records are listed as stored, and a record that cannot
-        be read is an error rather than a gap in the listing. Temporary files of
-        interrupted writes, and any name that is not a fingerprint, are skipped.
+        No private key is decrypted, so the password provider is not called.
 
         Args:
             environment: Environment whose records to return.
-            certificate_type: When given, return only records of this KSeF certificate
-                purpose.
+            certificate_type: When given, return only records of this purpose.
 
         Returns:
-            Metadata for every matching record, ordered by ``valid_from`` and then by
-                ``fingerprint_sha256``. An empty tuple when the environment has no
-                directory yet.
+            Matching metadata, ordered by ``valid_from`` and then by
+                ``fingerprint_sha256``.
 
         Raises:
             KSeFCertificateStoreMaterialError: If a stored record cannot be read.
-            KSeFCertificateStoreAccessError: If a symbolic link stands in place of the
-                environment directory.
+            KSeFCertificateStoreAccessError: If a file is not accessible.
             KSeFCertificateStoreUnavailableError: If the directory could not be read.
         """
         return _filesystem_ops.list_records(self._root, environment, certificate_type)
 
     def delete(self, reference: SigningCertificateRef) -> bool:
-        """Remove the record stored under ``reference`` from the filesystem.
+        """Remove the record stored under ``reference``.
 
-        Only the local file goes away. The certificate stays valid in KSeF, which
-        takes a revocation, and a pair already loaded into memory keeps signing.
+        Only the local file goes away: the certificate stays valid in KSeF until it
+        is revoked.
 
         Args:
             reference: Environment and certificate fingerprint to remove.
@@ -197,8 +160,7 @@ class FilesystemSigningCertificateStore:
 
         Raises:
             KSeFArgumentError: If ``reference`` is not a ``SigningCertificateRef``.
-            KSeFCertificateStoreAccessError: If a symbolic link stands in place of the
-                environment directory.
+            KSeFCertificateStoreAccessError: If the file is not accessible.
             KSeFCertificateStoreUnavailableError: If the record could not be removed.
         """
         return _filesystem_ops.delete(self._root, reference)

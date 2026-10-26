@@ -127,6 +127,52 @@ class SigningCertificateInfo(KSeFBaseModel):
         return self
 
 
+def derive_signing_certificate_info(
+    certificate: Certificate,
+    *,
+    environment: Environment,
+    certificate_type: CertificateTypeValue | None = None,
+    ksef_serial_number: str | None = None,
+) -> SigningCertificateInfo:
+    """Return the metadata a store records for ``certificate``, without its private key.
+
+    Every field comes from the certificate itself or from the two optional
+    annotations a store keeps alongside it, so a record read back from a backend
+    cannot disagree with the certificate it was stored next to. An expired
+    certificate, or one that is not valid yet, is described as it stands.
+
+    This is an internal helper for store adapters inside the SDK. It is not part of
+    ``ksef2.certificate_stores`` or ``ksef2.models``.
+
+    Args:
+        certificate: Loaded X.509 signing certificate to describe.
+        environment: KSeF environment the certificate is used in.
+        certificate_type: KSeF certificate purpose, ``None`` when unknown.
+        ksef_serial_number: Serial number KSeF assigned when issuing the certificate,
+            ``None`` when unknown.
+
+    Returns:
+        The metadata for that certificate and environment.
+
+    Raises:
+        KSeFValidationError: If ``certificate_type`` or ``ksef_serial_number`` is invalid.
+    """
+    with validation_errors("signing_certificate"):
+        return SigningCertificateInfo.model_validate(
+            {
+                "reference": SigningCertificateRef.for_certificate(
+                    certificate, environment=environment
+                ),
+                "x509_serial_number": certificate.serial_number,
+                "public_key_sha256": _public_key_fingerprint(certificate),
+                "certificate_type": certificate_type,
+                "ksef_serial_number": ksef_serial_number,
+                "valid_from": certificate.not_valid_before_utc,
+                "valid_to": certificate.not_valid_after_utc,
+            }
+        )
+
+
 class SigningCertificate:
     """A validated signing certificate and private key together with its store metadata.
 
@@ -170,21 +216,12 @@ class SigningCertificate:
         ):
             raise _needs_credentials_error()  # pyright: ignore[reportUnreachable]
         self._credentials = credentials
-        certificate = credentials.certificate
-        with validation_errors("signing_certificate"):
-            self._info = SigningCertificateInfo.model_validate(
-                {
-                    "reference": SigningCertificateRef.for_certificate(
-                        certificate, environment=environment
-                    ),
-                    "x509_serial_number": certificate.serial_number,
-                    "public_key_sha256": _public_key_fingerprint(certificate),
-                    "certificate_type": certificate_type,
-                    "ksef_serial_number": ksef_serial_number,
-                    "valid_from": certificate.not_valid_before_utc,
-                    "valid_to": certificate.not_valid_after_utc,
-                }
-            )
+        self._info = derive_signing_certificate_info(
+            credentials.certificate,
+            environment=environment,
+            certificate_type=certificate_type,
+            ksef_serial_number=ksef_serial_number,
+        )
 
     @property
     def info(self) -> SigningCertificateInfo:

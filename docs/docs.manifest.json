@@ -350,6 +350,13 @@
                 "path": "how-to-guides/use-xades-helpers.md"
               },
               {
+                "label": "Store signing certificates",
+                "translations": {
+                  "pl": "Przechowywanie certyfikatów podpisu"
+                },
+                "path": "how-to-guides/store-signing-certificates.md"
+              },
+              {
                 "label": "Write a signing-certificate store",
                 "translations": {
                   "pl": "Własny magazyn certyfikatów podpisu"

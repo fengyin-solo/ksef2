@@ -34,6 +34,7 @@ do końca; poniższe poradniki rozbijają typowe decyzje produkcyjne.
 - [Wyszukaj dostawców PEPPOL](query-peppol-providers.md): Wyszukuj publiczne dane dostawców PEPPOL z klienta bazowego.
 - [Użyj danych TEST](use-test-data.md): Twórz sandboxowe podmioty, uprawnienia, flagi załączników i fixture'y z temporal cleanup.
 - [Użyj pomocników XAdES](use-xades-helpers.md): Ładuj materiał certyfikatu, generuj certyfikaty TEST i podpisuj XML.
+- [Przechowywanie certyfikatów podpisu](store-signing-certificates.md): Trzymaj pary podpisujące w pamięci albo w plikach szyfrowanych hasłem i wskazuj je referencją.
 - [Własny magazyn certyfikatów podpisu](write-signing-certificate-store.md): Trzymaj własny certyfikat podpisu i klucz w keychainie, bazie danych albo managerze sekretów.
 - [API niskiego poziomu](../reference/low-level/overview.md): Zejdź do schema-native wrapperów endpointów dla własnego podpisu, custody szyfrowania albo debugowania payloadów.
 

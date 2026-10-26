@@ -7,7 +7,10 @@ from typing import cast, final, override
 import httpx
 from typing_extensions import deprecated
 
+from ksef2._domain.models.base import validation_errors
+
 from ksef2._clients._async_handles import AsyncOperationHandle
+from ksef2._core.paths import reject_path_like_content
 from ksef2._core import exceptions
 from ksef2._core.async_protocols import AsyncMiddleware
 from ksef2._core.crypto import encrypt_invoice
@@ -31,6 +34,7 @@ from ksef2._infra.mappers.sessions import from_spec as session_from_spec
 from ksef2._logging import get_logger
 
 logger = get_logger(__name__)
+DEFAULT_MAX_INVOICE_SIZE_BYTES = 1_000_000
 
 
 @final
@@ -202,6 +206,7 @@ class AsyncOnlineSessionClient:
         state: OnlineSessionResumeState,
         *,
         resumed: bool = False,
+        max_invoice_size_bytes: int = DEFAULT_MAX_INVOICE_SIZE_BYTES,
     ):
         """Create the session client.
 
@@ -209,6 +214,7 @@ class AsyncOnlineSessionClient:
             transport: Middleware chain used for authenticated requests.
             state: Resume state describing the open session and its encryption keys.
             resumed: Whether the client was rebuilt from saved state. A resumed client cannot tell whether the session is still open, so ``wait()`` does not refuse to run on it.
+            max_invoice_size_bytes: Effective invoice size limit for this session.
         """
         self._transport = transport
         self._state = state
@@ -216,6 +222,7 @@ class AsyncOnlineSessionClient:
         self._session_eps = AsyncSessionEndpoints(transport)
         self._closed = False
         self._resumed = resumed
+        self._max_invoice_size_bytes = max_invoice_size_bytes
 
     def _ensure_open(self) -> None:
         """Reject operations after the session client has been closed."""
@@ -253,7 +260,7 @@ class AsyncOnlineSessionClient:
 
         Raises:
             KSeFArgumentError: If both or neither of ``reference_number`` and ``state`` are given, or ``state`` names another session.
-            ValidationError: If ``state`` is JSON that is not a saved submission state.
+            KSeFValidationError: If ``state`` is JSON that is not a saved submission state.
         """
         if state is None:
             if reference_number is None:
@@ -266,11 +273,12 @@ class AsyncOnlineSessionClient:
                 raise exceptions.KSeFArgumentError(
                     "Pass exactly one of reference_number or state."
                 )
-            restored = (
-                state
-                if isinstance(state, InvoiceSubmissionResumeState)
-                else InvoiceSubmissionResumeState.from_json(state)
-            )
+            with validation_errors("state"):
+                restored = (
+                    state
+                    if isinstance(state, InvoiceSubmissionResumeState)
+                    else InvoiceSubmissionResumeState.from_json(state)
+                )
             if restored.session_reference_number != self.reference_number:
                 raise exceptions.KSeFArgumentError(
                     "The saved submission belongs to session "
@@ -293,6 +301,7 @@ class AsyncOnlineSessionClient:
             A handle exposing the submission's ``reference_number``. Call its ``wait()`` for the processing result and ``download_upo()`` for the invoice UPO.
 
         Raises:
+            KSeFArgumentError: If a short string looks like a file path instead of XML content.
             KSeFEncryptionError: If invoice encryption fails.
 
         Example:
@@ -304,20 +313,35 @@ class AsyncOnlineSessionClient:
             ```
         """
         self._ensure_open()
+        if isinstance(invoice_xml, str):
+            reject_path_like_content(invoice_xml, content_type="XML")
         xml_bytes = (
             invoice_xml.encode("utf-8") if isinstance(invoice_xml, str) else invoice_xml
         )
+        if len(xml_bytes) > self._max_invoice_size_bytes:
+            message = (
+                "Invoice exceeds the default 1 MB size limit."
+                if self._max_invoice_size_bytes == DEFAULT_MAX_INVOICE_SIZE_BYTES
+                else "Invoice exceeds the applicable size limit of "
+                f"{self._max_invoice_size_bytes} bytes."
+            )
+            raise exceptions.KSeFValidationError(
+                message,
+                hint="Reduce the invoice XML size or fetch the effective limits before opening the session.",
+                invoice_size_bytes=len(xml_bytes),
+            )
         encrypted = encrypt_invoice(
             xml_bytes=xml_bytes,
             key=self._state.get_aes_key_bytes(),
             iv=self._state.get_iv_bytes(),
         )
-        request_body = invoice_to_spec(
-            SendInvoicePayload(
-                xml_bytes=xml_bytes,
-                encrypted_bytes=encrypted,
+        with validation_errors():
+            request_body = invoice_to_spec(
+                SendInvoicePayload(
+                    xml_bytes=xml_bytes,
+                    encrypted_bytes=encrypted,
+                )
             )
-        )
 
         response_dto = await self._invoice_eps.send(
             reference_number=self._state.reference_number,
@@ -683,6 +707,17 @@ class AsyncOnlineSessionClient:
             )
             for page in pages
         ]
+
+    def close(self) -> None:
+        """Raise a usage error without closing resources.
+
+        Raises:
+            KSeFArgumentError: Always. Use ``await session.aclose() or async with``.
+        """
+        raise exceptions.KSeFArgumentError(
+            "This is an async session; use await session.aclose() or async with.",
+            hint="Use await session.aclose() or async with.",
+        )
 
     async def aclose(self) -> None:
         """Terminate the online session if it is still open.

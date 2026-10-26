@@ -26,10 +26,10 @@ invoice_xml = Path("invoice.xml").read_bytes()
 from datetime import date
 from decimal import Decimal
 
-from ksef2.fa3 import FA3InvoiceBuilder, VatRate
+from ksef2.fa3 import InvoiceBuilder, VatRate
 
 invoice_xml = (
-    FA3InvoiceBuilder()
+    InvoiceBuilder()
     .header(system_info="ksef2 send guide")
     .seller(
         name="Demo Seller Sp. z o.o.",
@@ -45,17 +45,17 @@ invoice_xml = (
         address_line_2="00-002 Warszawa",
     )
     .standard()
-        .issue_date(date.today())
-        .issue_place("Warszawa")
-        .invoice_number("FV/42/2026")
-        .rows()
-            .add_line(
-                name="Consulting service",
-                quantity=Decimal("1"),
-                unit_price_net=Decimal("100.00"),
-                vat_rate=VatRate.VAT_23,
-            )
-        .done()
+    .issue_date(date.today())
+    .issue_place("Warszawa")
+    .invoice_number("FV/42/2026")
+    .rows()
+    .add_line(
+        name="Consulting service",
+        quantity=Decimal("1"),
+        unit_price_net=Decimal("100.00"),
+        vat_rate=VatRate.VAT_23,
+    )
+    .done()
     .done()
     .to_xml()
     .encode("utf-8")
@@ -75,14 +75,14 @@ with auth.online_session(form_code=FormSchema.FA3) as session:
     submission = session.send_invoice(invoice_xml)
 
     # InvoiceSubmission handle
-    # submission.reference_number == "20260625-ABCD-EF1234567890"
+    # submission.reference_number == "20260625-SO-0123456789-ABCDEF0123-45"
 
     status = submission.wait(timeout=120.0, poll_interval=2.0)
 
     # SessionInvoiceStatusResponse
     # {
-    #   "reference_number": "20260625-ABCD-EF1234567890",
-    #   "ksef_number": "1234567890-20260625-...",
+    #   "reference_number": "20260625-SO-0123456789-ABCDEF0123-45",
+    #   "ksef_number": "5261040828-20260625-ABCDEF012345-67",
     #   "invoice_number": "FV/42/2026",
     #   "status": {
     #     "code": 200,
@@ -92,6 +92,10 @@ with auth.online_session(form_code=FormSchema.FA3) as session:
 ```
 
 `send_invoice()` only means KSeF accepted the encrypted payload into the session.
+The SDK checks invoice XML against the documented default size limit of 1 MB
+before encryption when session limits are unknown. Fetch `auth.limits.get_context_limits()`
+before opening the session to use the effective session limit, including the
+attachment limit, for this check.
 `submission.wait()` waits for the per-invoice result and returns the KSeF
 number when processing succeeds. It also works after the session is closed, and
 `session.wait()` returns the terminal status of the closed session.
@@ -143,6 +147,10 @@ with auth.online_session(state=session_state_json) as session:
     status = submission.wait(timeout=120.0)
 ```
 
+`send_invoice()`, `auth.batch.prepare()`, and `submit()` reject short
+filename-like strings with `KSeFArgumentError`. Pass XML content, or read a file
+with `Path(...).read_bytes()`. Batch inputs also accept `Path` directly.
+
 ## Send a batch
 
 Use a batch when you need to submit many XML files as one KSeF batch workflow.
@@ -151,6 +159,9 @@ opens the batch session, uploads the parts, closes the session, and returns the 
 `BatchSessionClient`. Call its `wait()`, `list_failed_invoices()` and
 `download_upo()` next. `auth.batch.prepare()` and `submit()` take `bytes`, `str`,
 `Path` or `BatchInvoice` items.
+Invoice size is checked against the documented 1 MB default unless you first
+fetch `auth.limits.get_context_limits()`, in which case the effective batch
+session limit (including the attachment limit) is used.
 
 ### From paths
 
@@ -234,7 +245,7 @@ business outcome.
 
 1. Authenticate for the seller context.
 
-2. Load invoice XML from your system or build it with `FA3InvoiceBuilder`.
+2. Load invoice XML from your system or build it with `InvoiceBuilder`.
 
 3. Use an online session for small interactive sending or `auth.batch` for
    larger sets.

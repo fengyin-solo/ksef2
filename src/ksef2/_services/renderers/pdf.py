@@ -7,11 +7,15 @@ from html import escape
 from importlib import import_module
 from io import BytesIO
 from pathlib import Path
+import re
 from typing import Any, final
 
 from lxml import etree
 
 from ksef2._config import Environment
+from ksef2._core.paths import reject_path_like_content
+from ksef2._core import exceptions
+from ksef2._domain.models._enum import coerce_enum
 from ksef2._services.fa3 import parse_invoice_xml
 
 from ksef2._services.renderers.xslt import InvoiceXSLTRenderer
@@ -42,6 +46,9 @@ class PDFPageSize(StrEnum):
     LETTER_LANDSCAPE = "letter landscape"
 
 
+type PDFPageSizeInput = PDFPageSize | str
+
+
 @final
 class InvoicePDFExporter:
     """Export FA3 invoice XML to PDF through XSLT and WeasyPrint."""
@@ -52,8 +59,8 @@ class InvoicePDFExporter:
         enable_code_lookups: bool = False,
         html_overrides: str | None = None,
         *,
-        page_size: PDFPageSize | None = None,
-        verification_environment: Environment = Environment.PRODUCTION,
+        page_size: PDFPageSizeInput | None = None,
+        verification_environment: Environment | str,
     ):
         """Create a PDF exporter.
 
@@ -62,13 +69,18 @@ class InvoicePDFExporter:
             enable_code_lookups: Allow the stylesheet to read local files and the network to resolve code descriptions. Use only with trusted stylesheets.
             html_overrides: CSS applied before PDF conversion; ``None`` uses the bundled defaults.
             page_size: Paper size and orientation; ``None`` preserves the stylesheet setting, normally A4 landscape. Overrides page size in ``html_overrides``.
-            verification_environment: KSeF environment used for verification QR links. QR output is enabled per export by supplying ``ksef_number``.
+            verification_environment: Required KSeF environment used for verification QR links. Accepts an ``Environment`` or a case-insensitive environment name. QR output is enabled per export by supplying ``ksef_number``.
 
         Raises:
             ImportError: If optional PDF dependencies are not installed.
+            KSeFArgumentError: If ``page_size`` is not a supported page size.
         """
-        self._page_size = PDFPageSize(page_size) if page_size is not None else None
-        self._verification_environment = Environment(verification_environment)
+        self._page_size = (
+            coerce_enum(PDFPageSize, page_size) if page_size is not None else None
+        )
+        self._verification_environment = coerce_enum(
+            Environment, verification_environment
+        )
         self._weasyprint = _load_weasyprint()
         self._xslt_renderer = InvoiceXSLTRenderer(
             stylesheet_path=stylesheet_path,
@@ -177,12 +189,40 @@ class InvoicePDFExporter:
             The PDF as bytes.
 
         Raises:
+            KSeFArgumentError: If a short string looks like a file path instead of XML content.
             KSeFInvoiceRenderingError: If HTML rendering fails.
             RuntimeError: If WeasyPrint does not return PDF bytes.
             ValueError: If QR output is requested with an empty number or invalid FA(3) XML.
         """
         if isinstance(invoice_xml, str):
+            reject_path_like_content(invoice_xml, content_type="XML")
             invoice_xml = invoice_xml.encode("utf-8")
+        parser = etree.XMLParser(no_network=True, resolve_entities=False)
+        try:
+            root = etree.fromstring(invoice_xml, parser)
+        except etree.XMLSyntaxError as exc:
+            raise exceptions.KSeFValidationError(
+                "Invoice XML must have a Faktura root element.",
+                hint="Pass a well-formed FA(3) invoice document.",
+            ) from exc
+        if etree.QName(root).localname != "Faktura":
+            raise exceptions.KSeFValidationError(
+                "Invoice XML must have a Faktura root element.",
+                hint="Pass a FA(3) invoice whose root element is Faktura.",
+            )
+        if ksef_number is not None:
+            if not ksef_number.strip():
+                raise exceptions.KSeFArgumentError(
+                    "ksef_number must not be empty.",
+                    hint="Pass the KSeF number assigned to this accepted invoice.",
+                )
+            if not re.fullmatch(
+                r"\d{10}-\d{8}-[A-Za-z0-9]{12}-[A-Za-z0-9]{2}", ksef_number
+            ):
+                raise exceptions.KSeFArgumentError(
+                    "ksef_number must match the KSeF number format.",
+                    hint="Pass a number in NIP-date-12-character-id-2-character-checksum format.",
+                )
         html_content = self._xslt_renderer.render_from_string(invoice_xml)
         return self._render_html(html_content, invoice_xml, ksef_number)
 

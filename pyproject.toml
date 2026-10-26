@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ksef2"
-version = "0.22.2"
+version = "1.0.0"
 description = "KSeF 2.0 Python SDK / client for Poland's Krajowy System e-Faktur API (FA(3), sync and async)"
 readme = "README.md"
 keywords = [

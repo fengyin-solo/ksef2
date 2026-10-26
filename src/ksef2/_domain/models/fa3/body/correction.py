@@ -5,7 +5,8 @@ from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
 
-from ksef2._domain.models import KSeFBaseModel
+from ksef2._domain.models.base import KSeFBaseModel as KSeFBaseModel
+from ksef2._domain.models.fa3.base import Fa3Model
 from ksef2._domain.models.fa3.references import CorrectedInvoiceReference
 from ksef2._domain.models.fa3.party import InvoiceAddress
 
@@ -16,7 +17,7 @@ CorrectionEffectType = Literal[
 ]
 
 
-class CorrectedSellerEntity(KSeFBaseModel):
+class CorrectedSellerEntity(Fa3Model):
     """FA(3) corrected seller data stored in ``Fa/Podmiot1K``.
 
     References:
@@ -62,7 +63,7 @@ class CorrectedSellerEntity(KSeFBaseModel):
         return value
 
 
-class CorrectedBuyerEntity(KSeFBaseModel):
+class CorrectedBuyerEntity(Fa3Model):
     """FA(3) corrected buyer data stored in ``Fa/Podmiot2K``.
 
     References:
@@ -136,7 +137,7 @@ class CorrectedBuyerEntity(KSeFBaseModel):
         return self
 
 
-class CorrectionInvoiceContext(KSeFBaseModel):
+class CorrectionInvoiceContext(Fa3Model):
     """FA(3) correction-specific body data.
 
     References:

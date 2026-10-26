@@ -3,11 +3,30 @@ title: Migracja do ksef2 1.0
 description: Zastąp wycofywane importy i operacje faktur, zachowując działanie dotychczasowego kodu przez całe 1.x.
 ---
 
-Dawne importy z `ksef2.core`, `ksef2.domain`, `ksef2.infra` i `ksef2.services`
-oraz wycofywane nazwy metod działają przez całe 1.x.
+Dawne importy z `ksef2.core`, `ksef2.domain`, `ksef2.infra`, `ksef2.services`
+i `ksef2.clients.*` oraz wycofywane nazwy metod działają przez całe 1.x.
 Emitują `DeprecationWarning` wskazujące zamiennik. Usunięcie jest możliwe nie
 wcześniej niż w 2.0.0 i pozostaje decyzją dla tego wydania. Nowy kod powinien
 używać publicznych importów i uchwytów operacji pokazanych poniżej.
+
+## Jawnie wybieraj środowisko KSeF
+
+`Client`, `AsyncClient` i `InvoicePDFExporter` wymagają wskazania środowiska.
+Przekaż element `Environment` albo nazwę bez rozróżniania wielkości liter,
+na przykład `"test"`:
+
+```python
+from ksef2 import AsyncClient, Client, Environment
+from ksef2.renderers import InvoicePDFExporter
+
+client = Client(Environment.TEST)
+async_client = AsyncClient("test")
+pdf_exporter = InvoicePDFExporter(verification_environment=Environment.TEST)
+```
+
+Jeśli klient główny otrzyma własny `http_client`, jego `base_url` musi pasować
+do wybranego środowiska. Pusty base URL zostanie ustawiony na podstawie
+środowiska; konflikt spowoduje `KSeFArgumentError` podczas tworzenia klienta.
 
 ## Importy
 
@@ -30,7 +49,7 @@ Po zmianie, te same typy i funkcje pochodzą ze wspieranych modułów:
 from ksef2 import FormSchema, KSeFApiError
 from ksef2.models import InvoicesFilter, InvoiceMetadataParams
 from ksef2.xades import load_certificate_from_pem
-from ksef2.fa3 import FA3InvoiceBuilder
+from ksef2.fa3 import InvoiceBuilder
 from ksef2.renderers import InvoiceXSLTRenderer
 ```
 
@@ -39,9 +58,10 @@ from ksef2.renderers import InvoiceXSLTRenderer
 | `ksef2.domain.models` i jego podmoduły | `ksef2.models`, lub `ksef2.fa3` dla modeli domenowych FA(3) |
 | `ksef2.infra.mappers` | `ksef2.raw.mappers` |
 | `ksef2.infra.schema.api.spec` / `.supp` | `from ksef2.raw import spec, supp` |
-| `ksef2.infra.schema.fa3` i wygenerowane podmoduły | Zachowaj wycofywany alias, jeśli potrzebujesz wygenerowanych klas XSD lub zasobów schemy. Nie każda wygenerowana klasa FA(3) ma publiczny zamiennik. Do budowania faktur używaj `ksef2.fa3.FA3InvoiceBuilder`. |
+| `ksef2.infra.schema.fa3` i wygenerowane podmoduły | Zachowaj wycofywany alias, jeśli potrzebujesz wygenerowanych klas XSD lub zasobów schemy. Nie każda wygenerowana klasa FA(3) ma publiczny zamiennik. Do budowania faktur używaj `ksef2.fa3.InvoiceBuilder`. |
 | `ksef2.services.builders` | `ksef2.fa3` |
 | `ksef2.services.renderers.xslt` | `ksef2.renderers` |
+| `ksef2.clients.*` | Importuj typy klientów z `ksef2.clients`; w nowym kodzie używaj klientów podrzędnych `AuthenticatedClient` lub `AsyncAuthenticatedClient`. |
 
 Pierwszy import ze starego pakietu ładuje całe jego drzewo implementacji
 i rejestruje aliasy do tych samych modułów i klas. Ostrzeżenie pojawia się raz
@@ -49,9 +69,14 @@ dla danej rodziny pakietów, także przy bezpośrednim imporcie podmodułu. Nowe
 importy nie aktywują aliasów. Opcjonalne zależności PDF pozostają niezaładowane
 aż do użycia renderowania.
 
-Zagnieżdżone stare importy działają w czasie wykonania, ale IDE i narzędzia
-sprawdzające typy mogą nie rozpoznawać dynamicznych aliasów. Do analizy
-statycznej używaj publicznych importów pokazanych powyżej.
+Fasada `ksef2.clients` pozostaje obsługiwana. Jej dawne podmoduły, takie jak
+`ksef2.clients.authenticated` i `ksef2.clients.online`, ostrzegają przy
+pierwszym użyciu i wskazują na kanoniczne moduły klientów.
+
+Moduły zgodności `ksef2.clients.*` są rzeczywistymi modułami re-eksportującymi,
+więc IDE i narzędzia sprawdzające typy mogą je rozpoznawać. Drzewa `core`,
+`domain`, `infra` i `services` nadal używają aliasów czasu wykonania; do analizy
+statycznej tych ścieżek używaj publicznych importów pokazanych powyżej.
 
 ## Wysyłka, oczekiwanie i pobieranie UPO
 
@@ -85,9 +110,21 @@ Jeśli masz tylko zapisaną referencję, pobierz UPO przez
 W kodzie async użyj await osobno dla każdej operacji:
 
 ```python
-submission = await session.send_invoice(invoice_xml)
-status = await submission.wait(timeout=120.0)
-upo = await submission.download_upo()
+import asyncio
+from pathlib import Path
+
+from ksef2 import AsyncClient, Environment, FormSchema
+
+async def main() -> None:
+    invoice_xml = Path("invoice.xml").read_bytes()
+    async with AsyncClient(Environment.TEST) as client:
+        auth = await client.authentication.with_test_certificate(nip="5261040828")
+        async with auth.online_session(form_code=FormSchema.FA3) as session:
+            submission = await session.send_invoice(invoice_xml)
+            status = await submission.wait(timeout=120.0)
+            upo = await submission.download_upo()
+
+asyncio.run(main())
 ```
 
 ## Wyszukiwanie, pobieranie i eksport
@@ -132,6 +169,14 @@ oraz `next_cursor`. Przekaż ten kursor do `.page()` później, w razie potrzeby
 innego procesu, a wyszukiwanie wznowi się na stronie po niej: kursor
 wyszukiwania faktur zawiera filtry, parametry i granicę obcięcia żądania, które
 wznawia.
+
+## Błędy uwierzytelniania i uprawnień
+
+HTTP 401 nadal zgłasza `KSeFAuthError`. HTTP 403 zgłasza teraz
+`KSeFPermissionDeniedError`, który jest błędem API, ale nie błędem
+uwierzytelnienia. Jeśli obsługa przez `except KSeFAuthError` odzyskiwała po HTTP
+403, dodaj obsługę `KSeFPermissionDeniedError` albo przechwytuj
+`KSeFApiError` dla obu przypadków.
 
 ## Błędy transportu
 

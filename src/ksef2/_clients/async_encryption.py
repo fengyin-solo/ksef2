@@ -2,6 +2,8 @@
 
 from typing import final
 
+from ksef2._domain.models.base import validation_errors
+
 from ksef2._core.async_protocols import AsyncMiddleware
 from ksef2._domain.models.encryption import CertUsage, PublicKeyCertificate
 from ksef2._endpoints.async_encryption import AsyncEncryptionEndpoints
@@ -52,9 +54,10 @@ class AsyncEncryptionClient:
         if usage is None:
             return certificates
 
-        requested = {to_spec(value) for value in usage}
-        return [
-            cert
-            for cert in certificates
-            if any(to_spec(cert_usage) in requested for cert_usage in cert.usage)
-        ]
+        with validation_errors():
+            requested = {to_spec(value) for value in usage}
+            return [
+                cert
+                for cert in certificates
+                if any(to_spec(cert_usage) in requested for cert_usage in cert.usage)
+            ]

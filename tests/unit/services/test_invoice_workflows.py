@@ -29,8 +29,8 @@ from ksef2._domain.models.session import FormSchema
 from ksef2._infra.schema.api import spec
 from ksef2.clients import ExportedInvoices
 from tests.unit.fakes.transport import RecordedCall
-from tests.unit.flavors import Flavor
-from tests.unit.payloads import (
+from tests.unit.support.flavors import Flavor
+from tests.unit.support.payloads import (
     InvoiceMetadataFactory,
     KSEF_1,
     KSEF_2,
@@ -247,9 +247,17 @@ class TestExport:
         # KSeF encrypts each part on its own; the SDK decrypts and then joins them.
         first, second = payload[: len(payload) // 2], payload[len(payload) // 2 :]
         flavor.transport.enqueue(package_status(inv_export_status_resp, 100))
-        flavor.transport.enqueue(package_status(inv_export_status_resp, 200, 2))
-        flavor.transport.enqueue(content=encrypt_invoice(first, key=KEY, iv=IV))
-        flavor.transport.enqueue(content=encrypt_invoice(second, key=KEY, iv=IV))
+        encrypted_first = encrypt_invoice(first, key=KEY, iv=IV)
+        encrypted_second = encrypt_invoice(second, key=KEY, iv=IV)
+        flavor.transport.enqueue(
+            package_status(
+                inv_export_status_resp,
+                200,
+                part_data=[(first, encrypted_first), (second, encrypted_second)],
+            )
+        )
+        flavor.transport.enqueue(content=encrypted_first)
+        flavor.transport.enqueue(content=encrypted_second)
 
         exported = flavor.run(job.wait(timeout=1.0, poll_interval=0.0))
 
@@ -405,7 +413,7 @@ import sys
 from ksef2._domain.models.invoices import InvoicesFilter
 from ksef2._domain.models.pagination import InvoiceMetadataParams
 from tests.unit.factories.invoices import QueryInvoicesMetadataResponseFactory
-from tests.unit.flavors import Flavor
+from tests.unit.support.flavors import Flavor
 from tests.unit.services.test_invoice_workflows import _boundary_page
 
 flavor = Flavor("sync")
@@ -423,6 +431,7 @@ page = service.search(
         role="seller",
         date_type="issue_date",
         date_from="2026-01-01T00:00:00+00:00",
+        date_to="2026-02-01T00:00:00+00:00",
     ),
     InvoiceMetadataParams(page_size=15),
 ).page(sys.argv[1])
@@ -676,6 +685,7 @@ class TestSearchCursors:
             role="buyer",
             date_type="invoicing_date",
             date_from=datetime(2026, 1, 1, tzinfo=UTC),
+            date_to=datetime(2026, 2, 1, tzinfo=UTC),
             invoice_schema=FormSchema.PEF3,
         )
         service = flavor.invoices_service()
@@ -887,12 +897,21 @@ def test_resume_checks_explicit_end_date(
     def build(end: datetime | None = None) -> InvoicesFilter:
         start = datetime(2026, 1, 1, tzinfo=UTC)
         if factory == "buyer":
-            return InvoicesFilter.for_buyer(date_from=start, date_to=end)
+            return InvoicesFilter.for_buyer(
+                date_from=start,
+                date_to=end or datetime(2026, 2, 1, tzinfo=UTC),
+            )
         if factory == "seller":
-            return InvoicesFilter.for_seller(date_from=start, date_to=end)
+            return InvoicesFilter.for_seller(
+                date_from=start,
+                date_to=end or datetime(2026, 2, 1, tzinfo=UTC),
+            )
         if end is None:
             return InvoicesFilter(
-                role="seller", date_type="issue_date", date_from=start
+                role="seller",
+                date_type="issue_date",
+                date_from=start,
+                date_to=datetime(2026, 2, 1, tzinfo=UTC),
             )
         return InvoicesFilter(
             role="seller", date_type="issue_date", date_from=start, date_to=end

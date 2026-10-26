@@ -2,8 +2,20 @@
 
 import json
 import re
-from collections.abc import Mapping
-from typing import Annotated, Any, Literal, Self, cast
+from importlib import import_module
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
+from typing import (
+    Annotated,
+    Any,
+    Callable,
+    ClassVar,
+    Literal,
+    Self,
+    Unpack,
+    cast,
+    override,
+)
 
 from pydantic import (
     AliasChoices,
@@ -13,12 +25,80 @@ from pydantic import (
     BeforeValidator,
     ConfigDict,
     model_validator,
+    ValidationError,
 )
-from pydantic.alias_generators import to_camel
+from pydantic.alias_generators import to_camel, to_snake
 
 from ksef2._logging import get_logger
 
 logger = get_logger(__name__)
+
+
+def _validation_exception(error: ValidationError, model_name: str) -> Exception:
+    exception_module = import_module("ksef2._core.exceptions")
+    error_type = cast(
+        Callable[..., Exception], getattr(exception_module, "KSeFValidationError")
+    )
+    detail = error.errors()[0]
+    reason = detail["msg"]
+    if detail["loc"]:
+        reason += " (" + ".".join(str(part) for part in detail["loc"]) + ")"
+    return error_type(f"Invalid {model_name} input: {reason}", validation_error=error)
+
+
+def _wrapped_sdk_validation_error(error: ValidationError) -> Exception | None:
+    """Find an SDK validation error already embedded in Pydantic's error context."""
+    exception_module = import_module("ksef2._core.exceptions")
+    error_type = cast(type[Exception], getattr(exception_module, "KSeFValidationError"))
+    for detail in error.errors():
+        context = detail.get("ctx")
+        if isinstance(context, dict):
+            nested_error = context.get("error")
+            if isinstance(nested_error, error_type):
+                return nested_error
+    return None
+
+
+@contextmanager
+def validation_errors(parameter: str | None = None) -> Iterator[None]:
+    """Wrap public input conversions using the SDK model-validation exception.
+
+    ``parameter`` names the public argument when a whole object is converted.
+    Otherwise the failing field names the argument. Preserve the original
+    Pydantic error even when a domain model has already wrapped it.
+    """
+    exception_module = import_module("ksef2._core.exceptions")
+    error_type = cast(type[Exception], getattr(exception_module, "KSeFValidationError"))
+    try:
+        yield
+    except (ValidationError, error_type) as exc:
+        if not isinstance(exc, ValidationError) and type(exc) is not error_type:
+            raise
+        error = (
+            exc
+            if isinstance(exc, ValidationError)
+            else getattr(exc, "validation_error", None)
+        )
+        if not isinstance(error, ValidationError):
+            raise
+        location = [
+            to_snake(str(part))
+            for part in error.errors()[0]["loc"]
+            if isinstance(part, str)
+        ]
+        public_fields = {
+            "invoice_size": "invoice_xml",
+            "subject_nip": "nip",
+            "revocation_reason": "reason",
+            "encrypted_invoice_size": "invoice_xml",
+            "subject_identifier": "subject_value",
+            "context_identifier": "context_value",
+            "target_identifier": "target_value",
+            "subject_details": "subject_value",
+        }
+        field = public_fields.get(location[0], location[0]) if location else "input"
+        label = parameter or field
+        raise _validation_exception(error, label) from error
 
 
 _AliasSpec = str | AliasPath | AliasChoices | None
@@ -75,6 +155,122 @@ class KSeFBaseModel(BaseModel):
     """Base model that ignores undeclared fields and logs warnings about them."""
 
     model_config = ConfigDict(extra="ignore")
+    wrap_validation_errors: ClassVar[bool] = True
+
+    def __init_subclass__(cls, **kwargs: Unpack[ConfigDict]) -> None:
+        super().__init_subclass__(**kwargs)
+        # Explicit opt-ins, including Fa3Model, use this same SDK wrapper.
+        if "wrap_validation_errors" in cls.__dict__:
+            return
+        if cls.__module__.startswith("ksef2._domain.models.fa3."):
+            cls.wrap_validation_errors = any(
+                base.wrap_validation_errors
+                for base in cls.__bases__
+                if issubclass(base, KSeFBaseModel)
+                and base.__module__.startswith("ksef2._domain.models.fa3.")
+            )
+        elif cls.__module__.startswith("ksef2."):
+            cls.wrap_validation_errors = cls.__module__.startswith(
+                "ksef2._domain.models."
+            )
+
+    def __init__(self, **data: Any) -> None:  # pyright: ignore[reportAny, reportExplicitAny]
+        try:
+            super().__init__(**data)
+        except ValidationError as exc:
+            if self.wrap_validation_errors:
+                wrapped_error = _wrapped_sdk_validation_error(exc)
+                if wrapped_error is not None:
+                    raise wrapped_error from wrapped_error.__cause__ or exc
+                raise _validation_exception(exc, type(self).__name__) from exc
+            raise
+
+    @classmethod
+    @override
+    def model_validate(cls, obj: Any, **kwargs: Any) -> Self:  # pyright: ignore[reportAny, reportExplicitAny]
+        """Validate an object, optionally wrapping input errors for SDK-facing models.
+
+        Args:
+            obj: Object to validate.
+            **kwargs: Pydantic validation options.
+
+        Returns:
+            The validated model.
+        """
+        try:
+            return super().model_validate(obj, **kwargs)  # pyright: ignore[reportAny]
+        except ValidationError as exc:
+            if cls.wrap_validation_errors:
+                wrapped_error = _wrapped_sdk_validation_error(exc)
+                if wrapped_error is not None:
+                    cause = wrapped_error.__cause__ or exc
+                    raise wrapped_error from cause
+                raise _validation_exception(exc, cls.__name__) from exc
+            raise
+
+    @classmethod
+    @override
+    def model_validate_json(
+        cls,
+        json_data: str | bytes | bytearray,
+        *,
+        strict: bool | None = None,
+        extra: Literal["allow", "ignore", "forbid"] | None = None,
+        context: object | None = None,
+        by_alias: bool | None = None,
+        by_name: bool | None = None,
+    ) -> Self:
+        """Validate JSON, optionally wrapping errors for SDK-facing models.
+
+        Args:
+            json_data: JSON text or bytes to validate.
+            strict: Whether to validate strictly.
+            extra: How to handle extra input fields.
+            context: Additional data available to validators.
+            by_alias: Whether to accept field aliases.
+            by_name: Whether to accept field names.
+
+        Returns:
+            The validated model.
+        """
+        try:
+            return super().model_validate_json(
+                json_data,
+                strict=strict,
+                extra=extra,
+                context=context,
+                by_alias=by_alias,
+                by_name=by_name,
+            )
+        except ValidationError as exc:
+            if cls.wrap_validation_errors:
+                wrapped_error = _wrapped_sdk_validation_error(exc)
+                if wrapped_error is not None:
+                    raise wrapped_error from wrapped_error.__cause__ or exc
+                raise _validation_exception(exc, cls.__name__) from exc
+            raise
+
+    @classmethod
+    @override
+    def model_validate_strings(cls, obj: Any, **kwargs: Any) -> Self:  # pyright: ignore[reportAny, reportExplicitAny]
+        """Validate string data with the same SDK error contract as other entry points.
+
+        Args:
+            obj: String-valued data to validate.
+            **kwargs: Pydantic validation options.
+
+        Returns:
+            The validated model.
+        """
+        try:
+            return super().model_validate_strings(obj, **kwargs)  # pyright: ignore[reportAny]
+        except ValidationError as exc:
+            if cls.wrap_validation_errors:
+                wrapped_error = _wrapped_sdk_validation_error(exc)
+                if wrapped_error is not None:
+                    raise wrapped_error from wrapped_error.__cause__ or exc
+                raise _validation_exception(exc, cls.__name__) from exc
+            raise
 
     @model_validator(mode="before")
     @classmethod

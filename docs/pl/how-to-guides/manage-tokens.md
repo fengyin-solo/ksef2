@@ -7,6 +7,13 @@ Użyj `auth.tokens`, gdy uwierzytelniony kontekst ma tworzyć albo wycofywać
 tokeny KSeF dla automatyzacji. Przykłady zakładają, że masz już
 uwierzytelnionego klienta `auth`.
 
+Przekaż co najmniej jedno uprawnienie do `generate()`. Wartości tekstowe
+używają snake_case, np. `"invoice_read"`. Możesz też podać
+`TokenPermissionEnum.INVOICE_READ`. Wartość API, np. `"InvoiceRead"`, zgłasza
+`KSeFArgumentError` z sugestią `did you mean "invoice_read"?`. Puste listy
+uprawnień, puste numery referencyjne w `revoke()` i puste wartości `ksef_token`
+w `with_token()` zgłaszają lokalnie `KSeFArgumentError` przed żądaniem HTTP.
+
 ## Wygeneruj token
 
 Wybierz najmniejszy zestaw uprawnień wymagany przez automatyzację, która będzie
@@ -41,8 +48,6 @@ Po zapisaniu credentiala poczekaj jawnie, gdy następna operacja wymaga już
 aktywnego tokena:
 
 ```python
-status = auth.tokens.generate(...).wait(timeout=60.0, poll_interval=1.0)
-# albo na uchwycie, który już masz:
 status = token.wait(timeout=60.0, poll_interval=1.0)
 ```
 
@@ -84,7 +89,7 @@ for item in auth.tokens.list():
 
 # TokenInfo
 # {
-#   "reference_number": "20260625-TOKEN-...",
+#   "reference_number": "20260625-EC-0123456789-ABCDEF0123-45",
 #   "description": "nightly invoice export",
 #   "requested_permissions": ["invoice_read"],
 #   "status": "active"
@@ -131,17 +136,17 @@ async to samo odczytanie to `second = await auth.tokens.list().page(cursor)`.
 Do późniejszych operacji cyklu życia użyj numeru referencyjnego tokena.
 
 ```python
-status = auth.tokens.get_status(reference_number="20260625-TOKEN-...")
+status = auth.tokens.get_status(reference_number="20260625-EC-0123456789-ABCDEF0123-45")
 
 # TokenStatusResponse
 # {
-#   "reference_number": "20260625-TOKEN-...",
+#   "reference_number": "20260625-EC-0123456789-ABCDEF0123-45",
 #   "status": "active"
 # }
 ```
 
 ```python
-auth.tokens.revoke(reference_number="20260625-TOKEN-...")
+auth.tokens.revoke(reference_number="20260625-EC-0123456789-ABCDEF0123-45")
 ```
 
 :::tip[Oddziel referencję od sekretu]

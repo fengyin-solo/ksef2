@@ -6,13 +6,35 @@ description: Transport configuration, retry behavior, workflow timeouts, logging
 This page records operational behavior that affects production integrations.
 It is not a sending or authentication walkthrough.
 
+## Logging fields
+
+The SDK emits structured events through the standard `ksef2` logger. It is
+silent by default, so the application can use its own handlers and formatting.
+To use the SDK console or JSON renderer, call
+`ksef2.logging.configure_logging()` during application startup. Events use
+standard `DEBUG`, `INFO`, `WARNING` and `ERROR` levels. The SDK does not log
+tokens, cryptographic keys or presigned URLs.
+
 ## TransportConfig
 
 `TransportConfig` is used only when the SDK creates the underlying `httpx`
 client. If you pass `http_client`, that supplied client owns HTTP timeout, pool,
 TLS, proxy, `trust_env`, HTTP/2, custom transport, and event-hook settings.
+Its `base_url` must match the root client's required `environment`. An empty
+base URL is filled from that environment; a different URL raises
+`KSeFArgumentError` when the root client is constructed. For example,
+`Client("test", http_client=httpx.Client())` routes to the TEST API, while a
+client already configured for another environment is rejected.
 
 ```python
+from ksef2 import (
+    ConnectionPoolConfig,
+    RetryConfig,
+    TimeoutConfig,
+    TlsConfig,
+    TransportConfig,
+)
+
 TransportConfig(
     timeouts=TimeoutConfig(),
     pool=ConnectionPoolConfig(),
@@ -81,12 +103,18 @@ retryable HTTP responses for retryable request types.
 | `max_retry_after` | `120.0` |
 | `backoff_multiplier` | `2.0` |
 | `retryable_status_codes` | `(429, 502, 503, 504)` |
+| `jitter` | `True` |
 
-Retry delay is exponential:
+The exponential backoff ceiling is:
 
 ```text
 min(initial_delay * backoff_multiplier ** (attempt - 1), max_delay)
 ```
+
+`jitter=True` uses full jitter: each retry samples uniformly from zero to the
+ceiling above. Set `jitter=False` to use that ceiling as the exact delay.
+This also applies to HTTP retries made by polling helpers; their regular
+`poll_interval` stays fixed. `Retry-After` is never jittered.
 
 `max_delay` caps only the exponential backoff. A `Retry-After` header (seconds
 or HTTP-date form) is honored exactly when it is at or below
@@ -100,6 +128,9 @@ The ceiling bounds one sleep, not the whole request. If KSeF repeats the same
 `(max_attempts - 1) * max_retry_after` before it gives up. With the defaults
 that is 240 seconds, because the SDK sleeps 120 seconds twice. Lower
 `max_attempts` or `max_retry_after` when a request handler cannot afford that.
+`max_attempts` applies to each HTTP request. A `wait()` poller starts another
+request after retryable server, rate-limit, or transport errors and counts its
+backoff and request time against the poller's `timeout`.
 
 ## Retryable requests
 
@@ -117,20 +148,36 @@ Retryable `POST` groups:
 
 | Area | Operations |
 | --- | --- |
-| Authentication | challenge, refresh token |
+| Authentication | challenge; refresh token only after `429` |
 | Invoices | metadata query |
 | Certificates | query, retrieve |
 | Permissions | personal, authorization, EU entity, person, subordinate entity, and subunit queries |
 
-Invoice submission, permission grants, certificate enrollment, token
-generation, online-session opening, and batch-session opening are not retried by
-the SDK retry middleware. Persist returned references and resume by status
-instead of recreating those operations blindly.
+Invoice submission is retried only when KSeF returns `429`, because that
+response confirms the invoice was not processed. The SDK honors `Retry-After`
+within `max_retry_after`. It does not retry submission after a `5xx` or a lost
+response; check `session.list_invoices()` before resending when the outcome is
+ambiguous. Permission grants, certificate enrollment, token generation,
+online-session opening, and batch-session opening are not retried by the SDK
+retry middleware. Persist returned references and resume by status instead of
+recreating those operations blindly.
 
 Authentication token redemption is also never retried because KSeF returns its
 access/refresh pair only once. A lost redemption response raises
 `KSeFAuthTokenRedemptionError` with `outcome_ambiguous=True`; do not repeat the
 redemption automatically.
+
+Refresh-token requests are retried only after an explicit `429`. The SDK does
+not retry them after a transport error or `5xx`, since the token may already
+have rotated.
+
+## Download concurrency
+
+The SDK does not throttle concurrent downloads. When downloading many invoices,
+limit concurrency in the application (for example with a semaphore) and use the
+current KSeF limits reported by `auth.limits` to choose the bound. A `429` is
+retried for the configured per-request attempts; excess concurrent work can
+still exhaust those attempts.
 
 ## Access-token refresh
 
@@ -168,6 +215,8 @@ To manage tokens yourself, turn the behavior off. Expired tokens then surface
 as `KSeFAuthError` and `client.authentication.refresh()` stays available.
 
 ```python
+from ksef2 import Client, Environment, TransportConfig
+
 client = Client(Environment.PRODUCTION, transport_config=TransportConfig(auto_refresh_tokens=False))
 ```
 

@@ -4,7 +4,7 @@
 """Async KSeF token branch client."""
 
 import builtins
-from collections.abc import Generator, Iterator
+from collections.abc import Generator, Iterator, Sequence
 from typing import cast, final, override
 
 from typing_extensions import deprecated
@@ -13,7 +13,11 @@ from ksef2._clients._handles import OperationHandle, not_after_resume
 from ksef2._clients._pager import Pager
 from ksef2._clients._pagination_cursor import ContinuationCursor
 from ksef2._core import exceptions
+from ksef2._core.polling import poll_until as _until
 from ksef2._core.protocols import Middleware
+from ksef2._domain.identifiers import require_nonempty
+from ksef2._domain.models._enum import coerce_enum
+from ksef2._domain.models.base import validation_errors
 from ksef2._domain.models.pagination import Page, TokenListParams
 from ksef2._domain.models.tokens import (
     GeneratedTokenResumeState,
@@ -22,10 +26,13 @@ from ksef2._domain.models.tokens import (
     QueryTokensResponse,
     TokenInfo,
     TokenPermission,
+    TokenPermissionEnum,
     TokenStatusResponse,
 )
 from ksef2._endpoints.tokens import TokenEndpoints
 from ksef2._infra.mappers.tokens import from_spec, to_spec
+
+poll_until = _until
 
 
 @final
@@ -251,7 +258,7 @@ class TokensClient:
     def generate(
         self,
         *,
-        permissions: builtins.list[TokenPermission],
+        permissions: Sequence[TokenPermission | TokenPermissionEnum | str],
         description: str,
     ) -> GeneratedToken:
         """Create a token and return a handle exposing its one-time credential.
@@ -273,11 +280,24 @@ class TokensClient:
             token.wait()
             ```
         """
-        request = GenerateTokenRequest(
-            permissions=permissions,
-            description=description,
-        )
-        body = to_spec(request)
+        require_nonempty(permissions, "permissions")
+        normalized_permissions = [
+            coerce_enum(
+                TokenPermissionEnum,
+                value,
+                snake_case_only=True,
+                parameter="permissions",
+            ).value
+            for value in permissions
+        ]
+        with validation_errors():
+            request = GenerateTokenRequest(
+                permissions=cast(
+                    builtins.list[TokenPermission], normalized_permissions
+                ),
+                description=description,
+            )
+            body = to_spec(request)
         spec_resp = self._endpoints.generate_token(body=body)
         response = from_spec(spec_resp)
         return GeneratedToken(self, response.reference_number, response)
@@ -295,7 +315,7 @@ class TokensClient:
             A handle that polls the token's status. It has no ``token``: the one-time secret is never part of the saved state.
 
         Raises:
-            ValidationError: If ``state`` is JSON that is not a saved token state.
+            KSeFValidationError: If ``state`` is JSON that is not a saved token state.
 
         Example:
             ```python
@@ -303,11 +323,12 @@ class TokensClient:
             status = handle.wait()
             ```
         """
-        restored = (
-            state
-            if isinstance(state, GeneratedTokenResumeState)
-            else GeneratedTokenResumeState.from_json(state)
-        )
+        with validation_errors("state"):
+            restored = (
+                state
+                if isinstance(state, GeneratedTokenResumeState)
+                else GeneratedTokenResumeState.from_json(state)
+            )
         return GeneratedToken(self, restored.reference_number)
 
     def _list_page(
@@ -423,6 +444,7 @@ class TokensClient:
         Args:
             reference_number: Reference number of the token to revoke.
         """
+        require_nonempty(reference_number, "reference_number")
         self._endpoints.revoke_token(reference_number=reference_number)
 
     def list(self, *, params: TokenListParams | None = None) -> Pager[TokenInfo]:

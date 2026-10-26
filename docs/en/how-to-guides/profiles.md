@@ -90,10 +90,15 @@ with Client(profile.sdk_environment) as client:
 Async clients use the same profile file and selection order:
 
 ```python
+import asyncio
+
 from ksef2 import AsyncClient, Environment
 
-async with AsyncClient(Environment.TEST) as client:
-    auth = await client.authentication.with_profile("test-company")
+async def main() -> None:
+    async with AsyncClient(Environment.TEST) as client:
+        auth = await client.authentication.with_profile("test-company")
+
+asyncio.run(main())
 ```
 
 ## Profile selection order

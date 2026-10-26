@@ -13,7 +13,7 @@ from ksef2._clients.online import OnlineSessionClient
 from ksef2._clients.online import InvoiceSubmission
 from ksef2._core.exceptions import (
     KSeFApiError,
-    KSeFAuthError,
+    KSeFPermissionDeniedError,
     KSeFBatchSessionTimeoutError,
     KSeFClientClosedError,
     KSeFInvoiceProcessingTimeoutError,
@@ -32,8 +32,8 @@ from ksef2._domain.models.batch import BatchSessionResumeState
 from ksef2._domain.models.invoices import SendInvoiceResponse
 from ksef2._domain.models.session import OnlineSessionResumeState
 from ksef2._infra.schema.api import spec
-from tests.unit.flavors import Flavor
-from tests.unit.payloads import (
+from tests.unit.support.flavors import Flavor
+from tests.unit.support.payloads import (
     INVOICE_REF,
     KSEF_NUMBER,
     UPO_REFS,
@@ -335,7 +335,7 @@ class TestInvoiceSubmissionDownloadUpo:
             _legacy_error(21301, "No authorization."), status_code=403
         )
 
-        with pytest.raises(KSeFAuthError):
+        with pytest.raises(KSeFPermissionDeniedError):
             flavor.run(submission.download_upo())
 
         assert len(flavor.transport.calls) == 1

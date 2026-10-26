@@ -28,7 +28,7 @@ class TransactionState(TypedDict):
     orders: list[TransactionOrder]
     lot_numbers: list[str]
     delivery_terms: str | None
-    contract_exchange_rate: Decimal | None
+    contract_exchange_rate: Decimal | int | float | str | None
     contract_currency: str | None
     transports: list[TransactionTransport]
     intermediary_entity: bool
@@ -110,7 +110,7 @@ class TransactionBuilder[TParent]:
         self,
         *,
         rate: Annotated[
-            Decimal | None,
+            Decimal | int | float | str | None,
             builder_param(
                 "Contract exchange rate used in the transaction section.",
                 examples=["4.2512"],
@@ -519,7 +519,7 @@ class TransactionBuilder[TParent]:
         Returns:
             The built ``TransactionConditions``.
         """
-        return TransactionConditions(**self._state)
+        return TransactionConditions.model_validate({**self._state})
 
     def _is_empty(self) -> bool:
         return self._state == _default_state()
@@ -534,7 +534,7 @@ class TransactionBuilder[TParent]:
             ValueError: If transaction details are empty.
         """
         if self._is_empty():
-            raise ValueError(
+            raise _validation_error(
                 "Transaction details are empty. Set at least one field before calling done()."
             )
         self._on_done(self.build())
@@ -558,3 +558,9 @@ class TransactionBuilderMixin:
 
     def _set_transaction(self, value: TransactionConditions) -> None:
         self._transaction_conditions = value
+
+
+def _validation_error(message: str):
+    from ksef2._core.exceptions import KSeFValidationError
+
+    return KSeFValidationError(message)

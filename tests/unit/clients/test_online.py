@@ -9,12 +9,14 @@ from ksef2._core.exceptions import (
     KSeFInvoiceProcessingTimeoutError,
     KSeFInvoiceRejectedError,
     KSeFSessionError,
+    KSeFValidationError,
 )
 from ksef2._core.routes import InvoiceRoutes, SessionRoutes
+from ksef2._domain.models.invoices import SendInvoiceResponse
 from ksef2._domain.models.session import OnlineSessionResumeState
 from ksef2._infra.schema.api import spec
 from tests.unit.fakes.transport import FakeTransport
-from tests.unit.helpers import legacy_api
+from tests.unit.support.helpers import legacy_api
 
 
 def _build_client(
@@ -25,6 +27,42 @@ def _build_client(
 
 
 class TestOnlineSessionClient:
+    def test_send_invoice_rejects_payload_over_default_size_before_upload(
+        self,
+        fake_transport: FakeTransport,
+        domain_online_session_state: BaseFactory[OnlineSessionResumeState],
+    ) -> None:
+        client = _build_client(fake_transport, domain_online_session_state)
+
+        with pytest.raises(KSeFValidationError, match="1 MB"):
+            _ = client.send_invoice(b"x" * 1_000_001)
+
+        assert fake_transport.calls == []
+
+    def test_send_invoice_accepts_known_attachment_limit(
+        self,
+        fake_transport: FakeTransport,
+        domain_online_session_state: BaseFactory[OnlineSessionResumeState],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        client = OnlineSessionClient(
+            fake_transport,
+            domain_online_session_state.build(),
+            max_invoice_size_bytes=2_000_000,
+        )
+        response = SendInvoiceResponse(reference_number="invoice-reference")
+        monkeypatch.setattr(
+            "ksef2._clients.online.encrypt_invoice", lambda **_: b"encrypted"
+        )
+        monkeypatch.setattr(client._invoice_eps, "send", lambda **_: response)
+        monkeypatch.setattr(
+            "ksef2._clients.online.invoice_from_spec", lambda value: value
+        )
+
+        submission = client.send_invoice(b"x" * 1_500_000)
+
+        assert submission.reference_number == "invoice-reference"
+
     def test_close_is_idempotent_and_blocks_further_calls(
         self,
         fake_transport: FakeTransport,

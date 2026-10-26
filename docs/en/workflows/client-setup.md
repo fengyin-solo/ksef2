@@ -24,11 +24,19 @@ with Client(Environment.TEST) as client:
 
 ### Async
 
+Run this example with `asyncio.run(main())`. See the
+[client setup guide](../how-to-guides/client-setup.md) for lifecycle patterns.
+
 ```python
+import asyncio
+
 from ksef2 import AsyncClient, Environment
 
-async with AsyncClient(Environment.TEST) as client:
-    auth = await client.authentication.with_test_certificate(nip="5261040828")
+async def main() -> None:
+    async with AsyncClient(Environment.TEST) as client:
+        auth = await client.authentication.with_test_certificate(nip="5261040828")
+
+asyncio.run(main())
 ```
 
 Use `Environment.DEMO` or `Environment.PRODUCTION` outside local TEST

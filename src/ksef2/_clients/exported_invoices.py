@@ -1,6 +1,7 @@
 """Decrypted invoice export, ready to read or save."""
 
 import io
+import os
 import json
 import re
 import stat
@@ -11,6 +12,7 @@ from pathlib import Path, PurePosixPath
 from typing import Self, cast, final
 
 from ksef2._core import exceptions
+from ksef2._core.paths import require_path
 from ksef2._domain.models.compression import CompressionType, normalize_compression_type
 from ksef2._domain.models.invoices import (
     InvoiceMetadata,
@@ -18,6 +20,7 @@ from ksef2._domain.models.invoices import (
 )
 from ksef2._infra.mappers.invoices import from_spec
 from ksef2._infra.schema.api import spec
+
 
 METADATA_FILE_NAME = "_metadata.json"
 _DRIVE_RE = re.compile(r"^[A-Za-z]:")
@@ -49,6 +52,7 @@ class ExportedInvoices:
             package: Package metadata from the export status, if known.
         """
         self._archive = b"".join(parts)
+        self._archive_path: Path | None = None
         self._package = package
         self._compression: CompressionType = "zip"
         self._metadata: list[InvoiceMetadata] | None = None
@@ -61,6 +65,8 @@ class ExportedInvoices:
         Returns:
             The decrypted and joined package parts, exactly as KSeF built the archive.
         """
+        if self._archive_path is not None:
+            return self._archive_path.read_bytes()
         return self._archive
 
     @property
@@ -77,7 +83,8 @@ class ExportedInvoices:
         """Get the invoice metadata stored in the package.
 
         Returns:
-            The parsed ``invoices`` list of ``_metadata.json``, or ``None`` if the package has no such file.
+            The parsed ``invoices`` list of ``_metadata.json``, an empty list if
+            the package reports zero invoices, or ``None`` if metadata is unavailable.
 
         Raises:
             KSeFResponseValidationError: If ``_metadata.json`` is not valid metadata.
@@ -101,7 +108,7 @@ class ExportedInvoices:
             tarfile.TarError: If a TarGz archive is invalid.
             ValueError: If an archive contains links or special files.
         """
-        if not self._archive:
+        if self._is_empty():
             return
         with self._open() as archive:
             for filename, is_directory, info in _archive_entries(archive):
@@ -133,7 +140,7 @@ class ExportedInvoices:
             OSError: If a file or directory cannot be written.
         """
         root = Path(directory)
-        if not self._archive:
+        if self._is_empty():
             root.mkdir(parents=True, exist_ok=True)
             return []
         with self._open() as archive:
@@ -183,6 +190,50 @@ class ExportedInvoices:
         result._compression = compression
         return result
 
+    @classmethod
+    def from_path(
+        cls,
+        path: os.PathLike[str],
+        *,
+        compression: CompressionType = "zip",
+        package: InvoicePackage | None = None,
+    ) -> Self:
+        """Open a decrypted ZIP or TarGz package from disk without loading it.
+
+        Invoice entries are read only as the iterator reaches them. The returned
+        object keeps the path, so the file must remain available while it is used.
+
+        Args:
+            path: Path to the decrypted archive file, as any ``os.PathLike``.
+            compression: Archive format, inferred as TarGz for ``.tar.gz`` or
+                ``.tgz`` paths and ZIP otherwise.
+            package: Optional export status metadata associated with the archive.
+
+        Returns:
+            An export result backed by the archive file.
+
+        Raises:
+            KSeFArgumentError: If ``path`` is a ``str``, ``bytes`` or not ``os.PathLike``.
+        """
+        result = cls([])
+        result._archive_path = require_path(path)
+        if compression == "zip" and result._archive_path.name.lower().endswith(
+            (".tar.gz", ".tgz")
+        ):
+            compression = "tar_gz"
+        result._compression = normalize_compression_type(compression)
+        result._package = package
+        return result
+
+    def _is_empty(self) -> bool:
+        if (
+            self._package is not None
+            and self._package.invoice_count == 0
+            and not self._package.parts
+        ):
+            return True
+        return self._archive_path is None and not self._archive
+
     def _open(self) -> zipfile.ZipFile | tarfile.TarFile:
         compression = (
             self._package.compression_type
@@ -190,12 +241,20 @@ class ExportedInvoices:
             else self._compression
         )
         if compression == "tar_gz":
+            if self._archive_path is not None:
+                return tarfile.open(self._archive_path, mode="r:gz")
             return tarfile.open(fileobj=io.BytesIO(self._archive), mode="r:gz")
+        if self._archive_path is not None:
+            return zipfile.ZipFile(self._archive_path, "r")
         return zipfile.ZipFile(io.BytesIO(self._archive), "r")
 
     def _read_metadata(self) -> list[InvoiceMetadata] | None:
-        if not self._archive:
-            return None
+        if self._is_empty():
+            return (
+                []
+                if self._package is not None and self._package.invoice_count == 0
+                else None
+            )
         with self._open() as archive:
             for filename, is_directory, info in _archive_entries(archive):
                 if is_directory or PurePosixPath(filename).name != METADATA_FILE_NAME:

@@ -7,6 +7,7 @@ import httpx
 import pytest
 from polyfactory import BaseFactory
 
+from ksef2._core.crypto import encrypt_invoice, sha256_b64
 from ksef2._core.exceptions import (
     ExceptionCode,
     KSeFApiError,
@@ -19,7 +20,7 @@ from ksef2._domain.models import invoices
 from ksef2._infra.schema.api import spec
 from ksef2._services.async_invoices import AsyncInvoicesService
 from tests.unit.fakes.transport import AsyncFakeTransport
-from tests.unit.helpers import legacy_api
+from tests.unit.support.helpers import legacy_api
 
 
 def _build_service(async_fake_transport: AsyncFakeTransport) -> AsyncInvoicesService:
@@ -54,6 +55,8 @@ def _ready_export_package() -> spec.InvoicePackage:
 
 
 def _invoice_package_with_part_name(part_name: str) -> invoices.InvoicePackage:
+    plaintext = b"decrypted"
+    ciphertext = encrypt_invoice(plaintext, key=b"0" * 32, iv=b"1" * 16)
     return invoices.InvoicePackage.model_validate(
         {
             "invoice_count": 1,
@@ -64,10 +67,10 @@ def _invoice_package_with_part_name(part_name: str) -> invoices.InvoicePackage:
                     "part_name": part_name,
                     "method": "GET",
                     "url": "https://example.com/export/part-1?sig=secret",
-                    "part_size": 64,
-                    "part_hash": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
-                    "encrypted_part_size": 128,
-                    "encrypted_part_hash": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
+                    "part_size": len(plaintext),
+                    "part_hash": sha256_b64(plaintext),
+                    "encrypted_part_size": len(ciphertext),
+                    "encrypted_part_hash": sha256_b64(ciphertext),
                     "expiration_date": datetime.now(timezone.utc),
                 }
             ],
@@ -173,18 +176,12 @@ class TestAsyncInvoicesService:
         async_fake_transport.responses.append(
             httpx.Response(
                 status_code=200,
-                content=b"encrypted",
+                content=encrypt_invoice(b"decrypted", key=handle.aes_key, iv=handle.iv),
                 request=httpx.Request("GET", "https://example.com/export/part-1"),
             )
         )
 
-        with (
-            patch(
-                "ksef2._services.async_invoices.decrypt_aes_cbc",
-                return_value=b"decrypted",
-            ),
-            patch("ksef2._services.async_invoices.logger.info") as log_info,
-        ):
+        with patch("ksef2._services.async_invoices.logger.info") as log_info:
             saved_files = asyncio.run(
                 service.fetch_package(
                     package=package,
@@ -218,20 +215,19 @@ class TestAsyncInvoicesService:
         async_fake_transport.responses.append(
             httpx.Response(
                 status_code=200,
-                content=b"encrypted",
+                content=encrypt_invoice(b"decrypted", key=handle.aes_key, iv=handle.iv),
                 request=httpx.Request("GET", "https://example.com/export/part-1"),
             )
         )
 
-        with patch("ksef2._services.async_invoices.decrypt_aes_cbc", return_value=b"x"):
-            with pytest.raises(ValueError, match="Invalid export package part name"):
-                _ = asyncio.run(
-                    service.fetch_package(
-                        package=package,
-                        export=handle,
-                        target_directory=tmp_path,
-                    )
+        with pytest.raises(ValueError, match="Invalid export package part name"):
+            _ = asyncio.run(
+                service.fetch_package(
+                    package=package,
+                    export=handle,
+                    target_directory=tmp_path,
                 )
+            )
 
     @legacy_api
     def test_wait_for_invoices_returns_when_metadata_appears(
@@ -288,12 +284,16 @@ class TestAsyncInvoicesService:
     ) -> None:
         service = _build_service(async_fake_transport)
         async_fake_transport.enqueue(
-            inv_export_status_resp.build(package=None).model_dump(mode="json")
+            inv_export_status_resp.build(
+                status=spec.StatusInfo(code=100, description="Pending"),
+                package=None,
+            ).model_dump(mode="json")
         )
         async_fake_transport.enqueue(
-            inv_export_status_resp.build(package=_ready_export_package()).model_dump(
-                mode="json"
-            )
+            inv_export_status_resp.build(
+                status=spec.StatusInfo(code=200, description="Completed"),
+                package=_ready_export_package(),
+            ).model_dump(mode="json")
         )
 
         package = asyncio.run(
@@ -315,7 +315,10 @@ class TestAsyncInvoicesService:
     ) -> None:
         service = _build_service(async_fake_transport)
         async_fake_transport.enqueue(
-            inv_export_status_resp.build(package=None).model_dump(mode="json")
+            inv_export_status_resp.build(
+                status=spec.StatusInfo(code=100, description="Pending"),
+                package=None,
+            ).model_dump(mode="json")
         )
 
         with pytest.raises(KSeFExportTimeoutError):

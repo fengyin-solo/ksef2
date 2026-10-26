@@ -1,6 +1,7 @@
 import base64
 import datetime
 import hashlib
+import io
 
 import pytest
 from cryptography import x509
@@ -85,16 +86,31 @@ def test_encrypt_invoice_wraps_invalid_key_sizes() -> None:
         crypto.encrypt_invoice(b"x", b"short", b"0" * 16)
 
 
-def test_decrypt_rejects_invalid_padding_and_block_length() -> None:
-    """A random wrong CBC key can produce valid padding; use a fixed rejection case."""
-    key, iv = b"k" * 32, b"i" * 16
-    other_key = b"x" * 32
+def test_decrypt_rejects_invalid_padding_and_wrong_keys() -> None:
+    # Fixed inputs: a random wrong key decrypts to valid PKCS#7 padding about
+    # 1 time in 256, which made this test flaky.
+    key = bytes(range(32))
+    other_key = bytes(range(32, 64))
+    iv = bytes(range(16))
     encrypted = crypto.encrypt_invoice(b"payload", key, iv)
+
+    # With these bytes the wrong key decrypts the single block to garbage whose
+    # last byte is 0x1d (29). PKCS#7 padding bytes must be 1..16, so decryption
+    # can never succeed by chance. Pin that so a change to the inputs fails here.
+    garbage = decrypt_without_unpadding(other_key, iv, encrypted)
+    assert garbage[-1] == 0x1D
 
     with pytest.raises(KSeFEncryptionError, match="AES-CBC decryption failed"):
         crypto.decrypt_aes_cbc(encrypted, other_key, iv)
     with pytest.raises(KSeFEncryptionError, match="AES-CBC decryption failed"):
         crypto.decrypt_aes_cbc(b"not-a-block-multiple", key, iv)
+
+
+def decrypt_without_unpadding(key: bytes, iv: bytes, ciphertext: bytes) -> bytes:
+    decryptor = crypto.Cipher(
+        crypto.algorithms.AES(key), crypto.modes.CBC(iv)
+    ).decryptor()
+    return decryptor.update(ciphertext) + decryptor.finalize()
 
 
 def test_decrypt_rejects_inconsistent_padding_bytes() -> None:
@@ -166,3 +182,35 @@ def test_sha256_b64_matches_hashlib() -> None:
         crypto.sha256_b64(b"abc")
         == base64.b64encode(hashlib.sha256(b"abc").digest()).decode()
     )
+
+
+@pytest.mark.parametrize("size", [0, 15, 16, 17, 100])
+@pytest.mark.parametrize("chunk_size", [16, 32, 64 * 1024])
+def test_streaming_decrypt_matches_in_memory_decrypt(
+    size: int, chunk_size: int
+) -> None:
+    key, iv = bytes(range(32)), bytes(range(16))
+    plaintext = bytes(range(256))[:size]
+    encrypted = crypto.encrypt_invoice(plaintext, key, iv)
+    output = io.BytesIO()
+
+    written, digest = crypto.decrypt_aes_cbc_to(
+        encrypted, key, iv, output, chunk_size=chunk_size
+    )
+
+    assert output.getvalue() == crypto.decrypt_aes_cbc(encrypted, key, iv)
+    assert (written, digest) == (size, crypto.sha256_b64(plaintext))
+
+
+def test_streaming_decrypt_rejects_padding_like_in_memory_decrypt() -> None:
+    key, iv = bytes(range(32)), bytes(range(16))
+    zero_pad = encryptor_for(key, iv, bytes(16))
+    forged = encryptor_for(key, iv, bytes(11) + bytes([1, 2, 3, 4, 5]))
+
+    with pytest.raises(KSeFEncryptionError, match="Invalid PKCS#7 padding byte"):
+        _ = crypto.decrypt_aes_cbc_to(zero_pad, key, iv, io.BytesIO())
+    with pytest.raises(KSeFEncryptionError, match="Invalid PKCS#7 padding"):
+        _ = crypto.decrypt_aes_cbc_to(forged, key, iv, io.BytesIO())
+    for ciphertext in (b"", b"not-a-block-multiple"):
+        with pytest.raises(KSeFEncryptionError, match="invalid block length"):
+            _ = crypto.decrypt_aes_cbc_to(ciphertext, key, iv, io.BytesIO())

@@ -8,10 +8,11 @@ from pydantic import Field, model_validator
 
 from ksef2._domain.models.base import (
     CURRENT_FORMAT_VERSION,
-    KSeFBaseModel,
     KSeFPersistedModel,
     PersistedFormatVersion,
 )
+from ksef2._domain.models.base import KSeFBaseModel as KSeFBaseModel
+from ksef2._domain.models.fa3.base import Fa3Model
 from ksef2._domain.models.fa3.attachment import Attachment
 from ksef2._domain.models.fa3.body import KsefInvoiceBody
 from ksef2._domain.models.fa3.footer import InvoiceFooter
@@ -81,7 +82,7 @@ class KsefInvoiceDraft(KSeFPersistedModel):
         )
 
 
-class KsefInvoice(KSeFBaseModel):
+class KsefInvoice(Fa3Model):
     """Root public aggregate for a FA(3) invoice."""
 
     header: Annotated[InvoiceHeader, Field(description="Maps to Faktura.Naglowek")]

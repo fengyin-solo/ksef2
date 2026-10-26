@@ -1,6 +1,216 @@
-## v1.0.0 (unreleased)
+## v1.0.0 (2026-10-26)
+
+### Fixed
+
+- Fix English and Polish documentation examples for limits, authentication,
+  token activation, imports, async entry points, certificate file paths, and
+  sample identifiers. Document client and session concurrency boundaries.
+- Add safe filename/path hints for PEM, PKCS#12, and XML content inputs. Existing
+  PEM string paths retain their 1.x deprecation behavior.
+- Report synchronous `close()` misuse on async clients and sessions with
+  `KSeFArgumentError` and guidance to use `await ...aclose()` or `async with`.
+- Enable full jitter for retry backoff through `RetryConfig.jitter`, including
+  HTTP retries during polling. `jitter=False` keeps deterministic backoff;
+  `Retry-After` values and their existing ceiling remain unchanged.
+
+- Wrap invalid non-builder public model and request-conversion inputs in the
+  SDK validation-error hierarchy, preserving the Pydantic cause and naming the
+  public parameter. Validate KSeF invoice-number filters at construction,
+  including both current and legacy formats.
+- Reject invalid PESEL checksums and PESEL/NIP formats in permission grants, mismatched
+  identifier types, empty permission lists, empty revoke IDs, and empty KSeF
+  token credentials before HTTP requests. Person and entity grants accept
+  snake_case strings or permission enums; PascalCase permissions suggest the
+  corresponding snake_case value.
+- Completed exports with zero invoices return immediately from deprecated polling
+  helpers. Both `export().wait()` and `export().download(path)` return empty
+  metadata and invoice lists for these packages without opening an archive.
+- In-memory export downloads verify encrypted and plaintext sizes and SHA-256
+  hashes using the same checks as downloads to disk.
+- Require an explicit FA(3) partial-payment status before building payment entries,
+  correct both builder guides, and report invalid builder fields as
+  `KSeFValidationError` with the original validation error as the cause. Builder
+  amount, quantity, price, and exchange-rate hints now accept floats and numeric
+  strings, matching runtime decimal conversion.
+
+- Restore deprecated `ksef2.clients.*` submodule imports throughout 1.x.
+
+ksef2 1.0.0 is being prepared as the first stable release. It targets KSeF
+OpenAPI 2.8.1 and starts the 1.x compatibility contract. Collective-identifier
+invoice queries change because KSeF replaced the endpoint. Old SDK import paths
+and method names remain functional throughout 1.x (#171). Read
+[Breaking changes](#breaking-changes) and [Deprecated](#deprecated) before upgrading.
+
+### Highlights
+
+- `ExportJob.download(Path)` decrypts export parts to disk with per-part size and
+  hash verification, and `ExportedInvoices.from_path()` reads ZIP and TarGz
+  archives without loading the whole archive into memory (#305). Both accept
+  any `os.PathLike` and reject `str`/`bytes` with `KSeFArgumentError`.
+
+- Offline validation rejects invoice metadata ranges longer than 100 days, documents
+  metadata page-size bounds, checks invoice sizes before sending or batch
+  encryption, computes batch part counts before encryption, validates signing
+  certificates and transport configuration, and defaults FA(3) XML serialization
+  to compact output (#299). PDF exports reject malformed roots and KSeF numbers,
+  and the token example stops before a placeholder can be sent.
+
+- Public input handling follows one rule: `bytes` and `str` are content, while
+  `Path` is a file. Batch preparation catches strings that name existing files,
+  FA(3) parsing accepts XML text with declarations, and PEM helpers warn when
+  legacy string paths are used (#297, #304).
+
+- The documented import paths (`ksef2`, `ksef2.clients`, `ksef2.models`,
+  `ksef2.fa3`, `ksef2.xades`, `ksef2.logging`, `ksef2.profiles`,
+  `ksef2.renderers`, `ksef2.raw`,
+  `ksef2.raw.mappers`, and the new `ksef2.testdata`) are the compatibility
+  contract for the whole 1.x line. The rule is simple: a module path with no
+  underscore is public, and anything with an underscore is private and may change
+  in any release. See the
+  [public API contract](https://docs.stacking.me/sdk/reference/public-api/)
+  and the [1.0.0 release notes](https://docs.stacking.me/sdk/reference/release-notes-1-0-0/).
+- `model_dump()` and `model_dump_json()` redact secrets by default and are not a
+  persistence format. Use `to_dict()` / `to_json()` / `from_dict()` on resume
+  states and `to_sensitive_dict()` to persist.
+- The invoice and admin workflows have their final 1.x shape: operations that
+  start asynchronous KSeF work return a handle with `.wait()`, every collection
+  returns one `Pager`, and access tokens refresh automatically (#162, #163, #165).
+  See the [1.0.0 release notes](https://docs.stacking.me/sdk/reference/release-notes-1-0-0/)
+  for a before/after.
+- KSeF errors come from one pipeline with one message format, carry `ksef_code`,
+  `trace_id` and `details`, and say what to do next in `hint` (#167).
+- Public Pydantic model validation and invoice-builder validation raise SDK
+  exceptions; HTTP 403 raises `KSeFPermissionDeniedError`, separate from
+  `KSeFAuthError`; terminal operation failures share `KSeFOperationFailedError`
+  (#296).
+- Deprecations are visible to type checkers and IDEs (PEP 702 `@deprecated`) and
+  remain functional through the 1.x line. Removal is a 2.0 decision (#171).
+- Polling helpers continue through retryable server, rate-limit and transport
+  errors until their timeout. Invoice sends and refresh-token requests retry
+  only after an explicit `429`; ambiguous transport failures are not retried.
+  Connect failures are reported as non-ambiguous and lost invoice responses
+  include a recovery hint (#300).
+
+### Fixed
+
+- **FA(3) builder (#293, #304).** Emit summary amounts for VAT buckets with
+  rows even when rounding or correction arithmetic produces zero, validate
+  foreign-currency VAT exchange rates, and document rounding, corrections, and
+  large-invoice performance. #304 parser string handling remains in #297; the
+  missing corrected-invoice error remains in #296.
+
+### Breaking changes
+
+- **Explicit client environments and URL alignment (#294, #295).** `Client`,
+  `AsyncClient`, and `InvoicePDFExporter` now require an environment. Pass an
+  `Environment` or a case-insensitive name such as `"test"`. A supplied
+  `http_client` with no `base_url` inherits the selected environment URL; a
+  conflicting URL raises `KSeFArgumentError` during construction. This prevents
+  environment guards and network routing from disagreeing.
+
+- **Collective-identifier invoice queries (#128).** KSeF API 2.8.1 replaced
+  `GET /collective-identifiers/{collectiveIdentifierNumber}/invoices` with
+  `POST /collective-identifiers/invoices`, which takes up to 10 identifiers in
+  the body. The old call is removed, not deprecated. Migration is mechanical:
+
+  ```python
+  # before (0.22.x)
+  page = auth.collective_identifiers.list_invoices(collective_identifier_number=cid)
+  everything = auth.collective_identifiers.list_all_invoices(
+      collective_identifier_number=cid
+  )
+
+  # after (1.0.0)
+  for invoice in auth.collective_identifiers.list_invoices(
+      collective_identifier_numbers=[cid]
+  ):
+      ...
+  ```
+
+  `list_invoices` now returns a `Pager` (iterate items, `.pages()`, `.first_page()`)
+  and no longer takes `continuation_token`; `list_all_invoices` remains as a
+  deprecated alias that still returns pages (#163). The high-level client
+  validates 1 to 10 identifiers before sending. The raw
+  endpoint takes a request body instead of a path parameter:
+
+  ```python
+  from ksef2.raw import spec
+
+  # before (0.22.x)
+  auth.raw.collective_identifiers.list_invoices(cid)
+
+  # after (1.0.0)
+  auth.raw.collective_identifiers.list_invoices(
+      spec.CollectiveIdentifierInvoicesQueryRequest(collectiveIdentifierNumbers=[cid])
+  )
+  ```
+
+### Deprecated
+
+- Keep the former `ksef2.core`, `domain`, `infra` and `services` imports,
+  including submodules, as deprecated aliases throughout 1.x (#171). The first
+  import loads the canonical package tree and warns once per package family.
+- Keep deprecated call names, including invoice send/wait/UPO, metadata search,
+  download and export aliases, through 1.x. Removal is a 2.0 decision and may
+  happen no earlier than 2.0.0, replacing the former 1.10.0 removal schedule.
+- Add English and Polish migration examples for legacy imports and workflows.
+
+- **Former implementation imports (#153, #171).** Implementations moved to
+  private `_`-prefixed paths. The old paths remain as deprecated aliases
+  throughout 1.x, warning with the public replacement. #171 supplies those aliases
+  and the migration examples. Use documented public modules rather than the private paths
+  in the table below for new code.
+
+  | Old import | Private implementation |
+  | --- | --- |
+  | `ksef2.core` | `ksef2._core` |
+  | `ksef2.domain` | `ksef2._domain` |
+  | `ksef2.infra` | `ksef2._infra` |
+  | `ksef2.endpoints` | `ksef2._endpoints` |
+  | `ksef2.services` | `ksef2._services` |
+  | `ksef2.clients.<module>` (`base`, `auth`, `online`, `async_*`, ...) | `ksef2._clients.<module>` (`ksef2.clients` stays the public facade with the same `__all__`) |
+  | `ksef2.config` | `ksef2._config` (names stay exported from `ksef2`) |
+  | `ksef2._logging` | `ksef2.logging` (`configure_logging`) |
+  | `ksef2.raw.facade`, `ksef2.raw.async_facade` | `ksef2.raw._facade`, `ksef2.raw._async_facade` (names stay exported from `ksef2.raw`) |
+
+  If you imported something from an old path, import it from the public module
+  instead (see [Added](#added) for names newly exported from `ksef2.models`).
+
+Old SDK imports and method names remain functional through 1.x. Replaced
+methods keep their old behavior and return type and carry deprecation warnings.
+Removal is a 2.0 decision (#171), including APIs deprecated in 0.19.0. See the
+[deprecated APIs table](https://docs.stacking.me/sdk/reference/public-api/#deprecated-apis)
+on the public API page for every alias and its replacement.
+
+- The invoice, batch and export workflows (#162): `send_invoice_and_wait`,
+  `wait_for_invoice_ready`, the `auth.batch.*` `prepare_batch` / `submit_batch` /
+  `wait_for_completion` family, `query_metadata` / `all_metadata` /
+  `wait_for_invoices`, `download_invoice`, `schedule_export` /
+  `wait_for_export_package` / `fetch_package` and related names.
+  `auth.resume_online_session()` and `auth.resume_batch_session()` give way to
+  `online_session(state=...)` and `batch_session(state=...)`.
+- The token, certificate, PEPPOL, session, collective-identifier and permission
+  `query` / `all` / `list_page` / `query_*` methods give way to `list()` /
+  `list_*()` (#163).
+- `InvoicesClient` and `AsyncInvoicesClient` imported from `ksef2.clients`; use
+  `auth.invoices` (#163).
+- The 0.19.0 deprecations (`Client.authenticated()`, `get_state()`,
+  `*SessionState` aliases, `dump_state()` / `model_dump_sensitive()` /
+  `from_state()`, `BatchSessionClient.access_token`, `from_encoded(access_token=...)`,
+  the stored `access_token` key) and the legacy `auth_timeout` profile key
+  (#150, #162).
 
 ### Added
+
+- SDK events use the standard `ksef2` logger and remain silent unless the
+  application configures logging. `ksef2.logging.configure_logging()` opts in
+  to the SDK console or JSON renderer. SDK events use standard logging levels
+  and do not include tokens, cryptographic keys or presigned URLs (#301).
+- `ksef2.renderers` is the public path for XSLT and PDF rendering. PDF use
+  requires `ksef2[pdf]`; `InvoicePDFExporter` raises an actionable `ImportError`
+  on first use when that extra is absent. `InvoiceBuilder` is the canonical
+  `ksef2.fa3` name; `FA3InvoiceBuilder` remains a deprecated alias with removal
+  no earlier than 2.0.0 (#302).
 
 - `PreparedBatch.to_sensitive_dict()` and `to_sensitive_json()` export a prepared
   batch in full, including encrypted parts as URL-safe Base64 with `=` padding
@@ -67,6 +277,80 @@
   matches the session is rejected before anything is uploaded, and part bytes plus
   encryption material stay out of repr and model dumps (#256).
 
+- Handles with `.wait()` for operations KSeF finishes asynchronously, each exposing
+  the fields of the response it replaces: `InvoiceSubmission` from
+  `session.send_invoice(xml)` (also `get_status()`, `download_upo()`), `ExportJob`,
+  `GeneratedToken` from `tokens.generate()`, `PermissionOperation` from
+  `permissions.grant_*()` / `revoke()`, `CertificateEnrollment` from
+  `certificates.enroll()`, and the generic `OperationHandle` (#162, #163).
+- `auth.invoices.search(filters)`, returning a `Pager`; `auth.invoices.download(ksef_number)`;
+  and `auth.invoices.export(filters)`, whose `ExportJob.wait()` returns
+  `ExportedInvoices` (`.invoices()`, `.metadata`, `.archive`, `.save()`) (#162).
+- `auth.batch.prepare()` and `auth.batch.submit()`, which opens, uploads and closes
+  the batch and returns the closed `BatchSessionClient` (#162).
+- One `Pager` for every collection (tokens, certificates, PEPPOL, sessions,
+  collective identifiers and all `permissions.list_*()`): iterate items, `.pages()`,
+  `.first_page()` (#162, #163).
+- Resume through the method that starts the work, with `state=` (the resume-state
+  object or its JSON): `auth.online_session(state=...)`,
+  `auth.batch_session(state=...)`, `auth.invoices.export(state=...)`. Exports are
+  resumable through `ExportJob.resume_state()` and the new `ExportResumeState`, and
+  `session.submission(reference_number)` returns the handle for an invoice sent
+  earlier (#162).
+- Automatic access-token refresh: shortly before expiry and once after a 401, shared
+  by concurrent requests. Disable with `TransportConfig(auto_refresh_tokens=False)`
+  (#165).
+- New exceptions: `KSeFArgumentError`, `KSeFAuthenticationExpiredError`,
+  `KSeFExportFailedError`, `KSeFOnlineSessionTimeoutError`,
+  `KSeFPermissionOperationFailedError`, `KSeFPermissionOperationTimeoutError`,
+  `KSeFCertificateEnrollmentFailedError` and
+  `KSeFCertificateEnrollmentTimeoutError` (#162, #163, #165).
+- Narrower exception classes, so callers can catch what they mean instead of
+  checking `ksef_code`: `KSeFNotFoundError` (KSeF codes 21164, 21173, 21175, 25005,
+  25008 and 71001), `KSeFServerError` (21184), `KSeFResponseValidationError`,
+  `KSeFProfileConfigError`, `KSeFSessionFailedError` and
+  `KSeFTokenActivationFailedError`. Codes 21301, 21304 and 21308 raise
+  `KSeFAuthError` even on HTTP 400. Every polling timeout derives from
+  `KSeFPollingTimeoutError`, which exposes `timeout`. All of them subclass the
+  classes callers already catch (#273).
+- `tokens.get_status()`, `sessions.terminate(reference_number)` and
+  `permissions.revoke()` (#163).
+- `KSeFApiError.ksef_code` (the raw KSeF code, also for codes the SDK does not
+  list), `trace_id` and `details`; `KSeFException.hint`, which says what to do next;
+  and `KSeFNotReadyError` for KSeF codes 21165 and 21178 (#167).
+- Explicit processing waits through `wait(timeout=..., poll_interval=...)`;
+  `download_upo()` never polls (#169).
+- Problem Details responses by default, including trace IDs for HTTP 400 and
+  429. Set `TransportConfig(error_format="legacy")` for the older response
+  format; HTTP 401, 403 and 410 always use Problem Details (#169, #175).
+- `RetryConfig.max_retry_after`, defaulting to 120 seconds. Retry-After values
+  within this ceiling are honored even above `max_delay`; larger values fail
+  immediately with `KSeFRateLimitError` so the caller can reschedule (#178).
+- `Retry-After` is read in its HTTP-date form as well as in seconds, in errors and
+  in the retry middleware (#167).
+- `ksef2.testdata` with `generate_nip()` and `generate_pesel()` for TEST-environment
+  data (#148).
+- `CertUsageEnum` is exported from `ksef2.models` (#148).
+- 21 new `ksef2.models` exports, so code that imported them from internal paths has
+  a public home (#153): `ContextIdentifierTypeEnum`, `CertificateStatusEnum`,
+  `CertificateTypeEnum`, `RevocationReasonEnum`,
+  `validate_certificate_serial_number`, `AuthorizationPermissionTypeEnum`,
+  `AuthorizationSubjectIdentifierTypeEnum`, `EntityPermissionTypeEnum`,
+  `EuEntityAdminContextIdentifierTypeEnum`, `EuEntityPermissionTypeEnum`,
+  `IndirectPermissionTypeEnum`, `IndirectTargetIdentifierTypeEnum`,
+  `SubunitIdentifierTypeEnum`, `AuthContextIdentifierTypeEnum`,
+  `IdentifierTypeEnum` (the TEST-data one: `nip`, `pesel`, `fingerprint`,
+  `system`), `PermissionTypeEnum`, `SubjectTypeEnum`,
+  `TokenAuthorIdentifierTypeEnum`, `TokenPermissionEnum`, `TokenStatusEnum` and
+  `CurrencyCodes`.
+- Python 3.14 support: tested in CI and smoke-tested on the built wheel on 3.12,
+  3.13 and 3.14 (#146).
+- PyPI project URLs and classifiers, including
+  `Development Status :: 5 - Production/Stable` (#146).
+- `ProfileConfig` accepts the flat `auth_timeout` key written by ksef2-cli 0.0.2,
+  maps it to `max_poll_attempts` and warns, instead of silently using the 60-second
+  default (#150).
+- `typing-extensions` is now a direct dependency, for `@deprecated` (#150).
 - Page any collection one cursor at a time with `pager.page(cursor)`, which returns
   a `Page` holding `items` and `next_cursor`. A cursor is opaque, versioned SDK
   state, so a job that stops, restarts, or hands work to another process continues
@@ -86,6 +370,26 @@
 
 ### Changed
 
+- Deprecation policy: old imports and methods remain functional through 1.x;
+  removal is a 2.0 decision (#171). This supersedes the earlier 1.10.0 plan.
+- `session.send_invoice()` keeps its name but now returns an `InvoiceSubmission`
+  handle (#162).
+- Argument errors from `batch_session()`, `online_session()` and `export()` are
+  now `KSeFArgumentError`, which subclasses `KSeFValidationError` (and
+  `TypeError`), so existing handlers still catch them (#162).
+- `PermissionOperation.wait()` raises `KSeFPermissionOperationFailedError` when
+  KSeF rejects a grant, for example with status 440 on TEST (#163).
+
+- API error messages have one format: `KSeF rejected <METHOD path> (HTTP ..., KSeF
+  code ...): <description>`, followed by `Details`, `Trace ID` and `Hint` lines. The
+  response body is no longer dumped into the message; it stays on `e.response`.
+  Messages are for people: branch on the exception class or `ksef_code`, never on
+  message text (#167).
+- `download_upo()` fetches immediately. To poll until the UPO is ready, use
+  `wait(timeout=..., poll_interval=...)` before `download_upo()` on a submission
+  or a closed online or batch session (#169).
+- `KSeFAuthError.exception_code` now reflects the KSeF code instead of always
+  being `UNKNOWN_ERROR` (#167).
 - The PyPI page now carries discoverability metadata: package keywords, a
   description naming KSeF 2.0, FA(3) and sync/async, `Natural Language`
   classifiers and project URLs (Homepage, Documentation, Repository, Issues,
@@ -96,22 +400,75 @@
   request that takes KSeF's own continuation token, which resumable `page()`
   paging does not replace. `auth.tokens.list_all()` remains deprecated in favour
   of `auth.tokens.list()` (#265).
-
 - `FormSchema` is written to JSON as its member name, such as `"FA3"`, in model
   dumps, saved state and pagination cursors, and reads back from that name or from
   the list form earlier versions wrote. A model holding a `FormSchema` now survives a
   JSON round trip, so an invoice search filtered by `invoice_schema` resumes from its
   cursor, and its JSON Schema is a string enum of the member names (#265).
 
-### Deprecated
+### KSeF API
 
-- Keep the former `ksef2.core`, `domain`, `infra` and `services` imports,
-  including submodules, as deprecated aliases throughout 1.x (#171). The first
-  import loads the canonical package tree and warns once per package family.
-- Keep deprecated call names, including invoice send/wait/UPO, metadata search,
-  download and export aliases, through 1.x. Removal is a 2.0 decision and may
-  happen no earlier than 2.0.0, replacing the former 1.10.0 removal schedule.
-- Add English and Polish migration examples for legacy imports and workflows.
+- Targets KSeF OpenAPI 2.9.0; API coverage is 100% of the 83 endpoints in the spec.
+  The personal-permissions query response gains `ownerPermissions` and the
+  `OwnerPermissionScope` enum in the raw models (#264).
+- Policy: a breaking change forced by KSeF itself may ship in a minor release under
+  a "KSeF API changes" heading. Breaking changes the SDK chooses to make need a
+  new major version.
+
+### Fixed
+
+- Enum inputs now accept documented values case-insensitively across online session
+  form codes, invoice export compression and sort order, FA(3) VAT markers, and PDF
+  page sizes. Invalid enum inputs raise `KSeFArgumentError` with valid choices.
+  Numeric VAT rates such as `23` and `Decimal("0.23")` are rejected; pass the FA(3)
+  marker as a string, such as `"23"` or `"zw"` (#298).
+- FA(3) tax exemptions write only the selected legal basis, and new-transport
+  annotations can be attached without supplying other annotation fields (#179, #176).
+- Give each invoice in the batch examples its own FA(3) number (#135).
+- Compare `(method, path)` pairs in the API coverage check and enforce the result,
+  so a missing or SDK-only endpoint fails the check (#129).
+- Remove the invalid `[project] pythonpath` setting from `pyproject.toml` (#146).
+
+### Build and CI
+
+- Run the invoice workflows against KSeF TEST instead of skipping them (#138), on
+  every push to `main`, pull request and dispatch through a new `integration.yml`,
+  and in the release path with a check that rejects workflows that never ran (#139).
+- Releases no longer dispatch a docs deployment. The ksef2-docs site picks up the
+  new release on its daily run or a manual run (#154).
+- Smoke-test the built wheel on Python 3.12, 3.13 and 3.14 before publishing, and
+  add 3.14 to the CI matrix (#146).
+- `scripts/validate_examples.py` rejects examples and documentation code blocks that
+  import from a module path with an underscore-prefixed component;
+  `scripts/validate_docs_paths.py` and the OpenAPI-version check cover the docs
+  pages (#148, #153, #136).
+- Public-module visibility checks cover the documented imports. The legacy
+  compatibility gate checks the retained import paths and methods (#171).
+- A docstring test and ruff pydocstyle keep every public API documented (#159).
+- `scripts/validate_docs_markdown.py` checks the docs Markdown (#158).
+- Remove the in-repo CLI script and its integration test; the CLI lives in the
+  separate `ksef2-cli` package (#137).
+
+### Docs
+
+- Rewrite the examples and documentation snippets to import from public paths only;
+  the one example that needs internals moved to `scripts/advanced_examples/` (#148).
+- Document the public API contract, the "Deprecated APIs" table, the secrets and
+  serialization rules and the KSeF-driven change policy, in English and Polish
+  (#148, #150).
+- Correct the 1.0.0 release notes (OpenAPI 2.8.1, collective-identifier surface),
+  drop the stale pre-1.0 migration page and add drift gates (#136).
+- Document every public API with Google-style docstrings (1428 of 1428 public
+  units and 957 of 957 model fields). The docstrings are now the source of the
+  generated API reference (#159).
+- The SDK docs are plain Markdown instead of MDX (#158).
+
+### Release history note
+
+Two earlier versions never reached PyPI. v0.21.0 was bumped but never tagged; its
+changes (OpenAPI 2.8.1) shipped in v0.22.0. The v0.22.1 tag points at a commit whose
+project version was still 0.22.0, so the publish run failed its version check; its
+fix (#118) shipped in v0.22.2. PyPI goes 0.20.0, 0.22.0, 0.22.2, 1.0.0.
 
 ### Breaking
 
@@ -128,6 +485,15 @@
   `KSeFExternalTransferError`, `KSeFBatchUploadError` and
   `KSeFAuthTokenRedemptionError` now derive from `KSeFTransportError` while keeping
   their own codes, attributes and recovery behaviour (#268).
+
+### Fixed
+
+- Person permission queries no longer duplicate the entity name and no longer
+  drop the entity address. `PersonPermissionDetail` maps the API's
+  `subjectEntityDetails.fullName` to `entity_full_name` and exposes
+  `subjectEntityDetails.address` as `entity_address`, replacing
+  `entity_first_name` and `entity_last_name`, which held the same full name in
+  both fields and discarded the address (#205).
 
 ## v0.22.2 (2026-09-25)
 

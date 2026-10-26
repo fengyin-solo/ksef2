@@ -8,16 +8,16 @@ Use the how-to guide when you need a runnable setup sequence.
 
 ## Root client constructors
 
-```python
+```text
 Client(
-    environment=Environment.PRODUCTION,
+    environment=Environment.TEST,
     *,
     transport_config=None,
     http_client=None,
 )
 
 AsyncClient(
-    environment=Environment.PRODUCTION,
+    environment=Environment.TEST,
     *,
     transport_config=None,
     http_client=None,
@@ -26,12 +26,20 @@ AsyncClient(
 
 | Argument | Sync type | Async type | Default | Meaning |
 | --- | --- | --- | --- | --- |
-| `environment` | `Environment` | `Environment` | `Environment.PRODUCTION` | KSeF environment and base URL used by the root client. |
+| `environment` | `Environment | str` | `Environment | str` | Required | KSeF environment and base URL used by the root client. Strings accept case-insensitive names such as `"test"`. |
 | `transport_config` | `TransportConfig | None` | `TransportConfig | None` | SDK-managed HTTP timeout, pool, TLS, proxy, HTTP/2, and retry settings. |
 | `http_client` | `httpx.Client | None` | `httpx.AsyncClient | None` | Caller-supplied HTTP client. When provided, the caller owns its HTTP settings and final close. |
 
 When `http_client` is omitted, the SDK creates the underlying `httpx` client
 from `transport_config` and closes it when the root client closes.
+When supplying `http_client`, its `base_url` must match the selected
+`Environment`; the SDK uses that client for requests without replacing its
+base URL.
+
+When you supply `http_client`, its `base_url` must match `environment`. An
+empty `base_url` is set to the selected environment URL; a different URL raises
+`KSeFArgumentError` during construction. This keeps routing and TEST-only
+feature guards aligned.
 
 ## Root client members
 
@@ -45,6 +53,11 @@ from `transport_config` and closes it when the root client closes.
 | `authenticated(auth_tokens)` | `Client`, `AsyncClient` | `AuthenticatedClient` / `AsyncAuthenticatedClient` | Deprecated compatibility wrapper. Use `authentication.resume(AuthenticationResumeState.from_tokens(auth_tokens))`. |
 | `close()` | `Client` | `None` | Idempotently closes an SDK-owned sync HTTP client and invalidates cached branches. |
 | `aclose()` | `AsyncClient` | `None` | Idempotently closes async resources and invalidates cached branches. |
+
+`AsyncClient.close()`, `AsyncOnlineSessionClient.close()`, and
+`AsyncBatchSessionClient.close()` raise `KSeFArgumentError` immediately and leave
+resources open. Use `await client.aclose()`, `await session.aclose()`, or
+`async with`. These `close()` guards are synchronous and cannot be awaited.
 
 Branch properties are cached while the root client is open. After the root
 client closes, branch access and operations guarded by lifecycle middleware
@@ -106,6 +119,31 @@ They do not own an independent HTTP client.
 When `http_client` is supplied, HTTP-client settings such as timeout, pool,
 TLS, proxy, `trust_env`, HTTP/2, custom transports, and event hooks come from
 that supplied object. SDK retry middleware still uses `transport_config.retry`.
+
+## Threads, tasks, and serialization
+
+Use one `Client` and its authenticated branches per worker thread. The underlying
+`httpx.Client` supports concurrent requests, and the SDK's `threading.Lock`
+serializes token refreshes within one authenticated client. However, certificate
+and limit caches and client lifecycle state are not protected by that lock, so
+the complete SDK client is not guaranteed to be thread-safe.
+
+An `AsyncClient` and its authenticated branches can serve independent requests
+from multiple tasks on the same event loop. Token refresh uses `asyncio.Lock`.
+Do not share them across threads or event loops. Wait for all tasks before
+closing the client, and coordinate changes to cached limits or certificate stores.
+
+Give each online or batch session one owner, or serialize its operations with an
+application lock. Session close flags and upload state have no concurrency lock;
+sending or uploading must not race with closing or another upload of the same batch.
+
+KSeF rate limits apply per context regardless of how many clients, threads, or
+tasks use it. Bound concurrency across those workers.
+
+Clients are not picklable or deep-copyable by design; resume states and invoice
+models are serializable, so transfer those and construct a client in the receiving
+process. Persist resume states with `to_json()` and restore them through the
+corresponding authenticated branch.
 
 ## Lifecycle errors
 

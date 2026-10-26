@@ -9,16 +9,16 @@ konfiguracji.
 
 ## Konstruktory klienta bazowego
 
-```python
+```text
 Client(
-    environment=Environment.PRODUCTION,
+    environment=Environment.TEST,
     *,
     transport_config=None,
     http_client=None,
 )
 
 AsyncClient(
-    environment=Environment.PRODUCTION,
+    environment=Environment.TEST,
     *,
     transport_config=None,
     http_client=None,
@@ -27,12 +27,20 @@ AsyncClient(
 
 | Argument | Typ sync | Typ async | Domyślnie | Znaczenie |
 | --- | --- | --- | --- | --- |
-| `environment` | `Environment` | `Environment` | `Environment.PRODUCTION` | Środowisko KSeF i bazowy URL klienta. |
+| `environment` | `Environment | str` | `Environment | str` | Wymagane | Środowisko KSeF i bazowy URL klienta. Nazwy tekstowe nie rozróżniają wielkości liter, np. `"test"`. |
 | `transport_config` | `TransportConfig | None` | `TransportConfig | None` | Timeouty HTTP, pool, TLS, proxy, HTTP/2 i retry dla klienta HTTP tworzonego przez SDK. |
 | `http_client` | `httpx.Client | None` | `httpx.AsyncClient | None` | Klient HTTP przekazany przez aplikację. Gdy jest podany, aplikacja posiada jego ustawienia HTTP i końcowe zamknięcie. |
 
 Gdy `http_client` nie jest podany, SDK tworzy klienta `httpx` z
 `transport_config` i zamyka go razem z klientem bazowym.
+Przekazany `http_client` musi mieć `base_url` zgodny z wybranym
+`Environment`; SDK używa tego klienta do requestów i nie zastępuje jego
+`base_url`.
+
+Gdy przekazujesz `http_client`, jego `base_url` musi pasować do `environment`.
+Pusty `base_url` zostanie ustawiony na URL wybranego środowiska; inny URL
+spowoduje `KSeFArgumentError` podczas tworzenia klienta. Dzięki temu routing i
+ograniczenia funkcji TEST pozostają zgodne.
 
 ## Elementy klienta bazowego
 
@@ -46,6 +54,12 @@ Gdy `http_client` nie jest podany, SDK tworzy klienta `httpx` z
 | `authenticated(auth_tokens)` | `Client`, `AsyncClient` | `AuthenticatedClient` / `AsyncAuthenticatedClient` | Deprecated compatibility wrapper. Użyj `authentication.resume(AuthenticationResumeState.from_tokens(auth_tokens))`. |
 | `close()` | `Client` | `None` | Idempotentnie zamyka klienta HTTP sync należącego do SDK i unieważnia moduły w cache. |
 | `aclose()` | `AsyncClient` | `None` | Idempotentnie zamyka zasoby async i unieważnia moduły w cache. |
+
+`AsyncClient.close()`, `AsyncOnlineSessionClient.close()` i
+`AsyncBatchSessionClient.close()` natychmiast zgłaszają `KSeFArgumentError`
+i pozostawiają zasoby otwarte. Użyj `await client.aclose()`,
+`await session.aclose()` lub `async with`. Metody `close()` są synchroniczne
+i nie można ich używać z `await`.
 
 Właściwości modułów są cache'owane, dopóki klient bazowy jest otwarty. Po
 zamknięciu klienta dostęp do modułów i operacje chronione middleware cyklu życia
@@ -107,6 +121,34 @@ głównego. Nie posiadają osobnego klienta HTTP.
 Gdy `http_client` jest podany, ustawienia HTTP takie jak timeout, pool, TLS,
 proxy, `trust_env`, HTTP/2, custom transporty i event hooki pochodzą z tego
 obiektu. Middleware retry SDK nadal używa `transport_config.retry`.
+
+## Wątki, zadania i serializacja
+
+Używaj osobnego `Client` i jego uwierzytelnionych gałęzi w każdym wątku roboczym.
+Bazowy `httpx.Client` obsługuje współbieżne żądania, a `threading.Lock` w SDK
+serializuje odświeżanie tokenów w obrębie jednego uwierzytelnionego klienta.
+Ta blokada nie chroni jednak pamięci podręcznej certyfikatów i limitów ani stanu
+cyklu życia klienta, więc SDK nie gwarantuje bezpieczeństwa całego klienta
+przy współdzieleniu między wątkami.
+
+`AsyncClient` i jego uwierzytelnione gałęzie mogą obsługiwać niezależne żądania
+wielu zadań w jednej pętli zdarzeń. Odświeżanie tokenów używa `asyncio.Lock`.
+Nie współdziel ich między wątkami ani pętlami zdarzeń. Przed zamknięciem klienta
+poczekaj na wszystkie zadania i koordynuj zmiany pamięci podręcznej limitów
+lub magazynów certyfikatów.
+
+Przypisz każdej sesji online lub wsadowej jednego właściciela albo serializuj
+jej operacje blokadą aplikacji. Flagi zamknięcia sesji i stan wysyłki nie mają
+blokady współbieżności. Wysyłanie faktur lub części paczki nie może konkurować
+z zamykaniem sesji ani ponownym wysyłaniem tej samej paczki.
+
+Limity żądań KSeF obowiązują dla kontekstu niezależnie od liczby klientów, wątków
+czy zadań, które go używają. Ograniczaj współbieżność łącznie dla tych workerów.
+
+Klienci z założenia nie obsługują pickle ani głębokiego kopiowania; stany
+wznowienia i modele faktur można serializować, więc przekazuj je i twórz klienta
+w procesie odbierającym. Zapisuj stany wznowienia przez `to_json()` i odtwarzaj je
+przez odpowiednią uwierzytelnioną gałąź.
 
 ## Błędy lifecycle
 

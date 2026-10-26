@@ -19,8 +19,8 @@ from ksef2._domain.models.batch import (
 )
 from ksef2._domain.models.session import SessionEncryptionMaterial
 from ksef2._infra.schema.api import spec
-from tests.unit.flavors import Flavor
-from tests.unit.helpers import VALID_PUBLIC_KEY_ID
+from tests.unit.support.flavors import Flavor
+from tests.unit.support.helpers import VALID_PUBLIC_KEY_ID
 
 KEY = b"k" * 32
 IV = b"v" * 16
@@ -97,6 +97,16 @@ class TestPrepare:
     def test_rejects_an_empty_batch(self, flavor: Flavor) -> None:
         with pytest.raises(KSeFValidationError):
             flavor.run(_service(flavor).prepare([]))
+
+    def test_rejects_part_count_before_batch_model_validation(
+        self, flavor: Flavor
+    ) -> None:
+        with pytest.raises(KSeFValidationError, match="needs 133 parts") as caught:
+            flavor.run(_service(flavor).prepare([b"<one />"], max_part_size=1))
+
+        assert caught.value.__cause__ is None
+        assert caught.value.context["part_count"] == 133
+        assert caught.value.errors() == []
 
     def test_rejects_a_missing_file(self, flavor: Flavor, tmp_path: Path) -> None:
         with pytest.raises(FileNotFoundError):

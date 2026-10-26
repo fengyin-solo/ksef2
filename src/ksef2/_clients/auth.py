@@ -3,6 +3,7 @@
 
 """Authentication branch client."""
 
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import final
 
@@ -19,12 +20,18 @@ from ksef2._clients.profiles import (
     profile_context_type,
     resolve_profile_secret,
 )
-from ksef2._config import Environment
+from ksef2._config import Environment, resolve_legacy_environment
 from ksef2._core import exceptions
 from ksef2._core.crypto import encrypt_token
 from ksef2._core.polling import poll_until
 from ksef2._core.protocols import Middleware
 from ksef2._core.stores import CertificateStoreProtocol
+from ksef2._domain.identifiers import (
+    require_nonempty,
+)
+from ksef2._domain.identifiers import (
+    validate_nip_checksum as _validated_nip,
+)
 from ksef2._domain.models.auth import (
     AuthenticationResumeState,
     AuthOperationStatus,
@@ -33,6 +40,7 @@ from ksef2._domain.models.auth import (
     InitTokenAuthenticationRequest,
     RefreshedToken,
 )
+from ksef2._domain.models.base import validation_errors
 from ksef2._domain.models.xades import XAdESCredentials
 from ksef2._endpoints.auth import AuthEndpoints
 from ksef2._infra.mappers.auth import from_spec, to_spec
@@ -71,7 +79,7 @@ class AuthClient:
         self,
         transport: Middleware,
         certificate_store: CertificateStoreProtocol,
-        environment: Environment = Environment.PRODUCTION,
+        environment: Environment | None = None,
         transfer_transport: Middleware | None = None,
         auto_refresh_tokens: bool = True,
     ) -> None:
@@ -80,14 +88,20 @@ class AuthClient:
         Args:
             transport: Middleware chain used for unauthenticated requests.
             certificate_store: Store holding the KSeF public-key certificates used to encrypt tokens.
-            environment: KSeF environment the client talks to.
+            environment: KSeF environment the client talks to. Omitting it is deprecated; use the root client's ``authentication`` branch.
             transfer_transport: Middleware used for transfers outside the KSeF API such as batch part uploads; defaults to ``transport``.
             auto_refresh_tokens: Whether authenticated clients refresh their access token automatically.
         """
         self._transport = transport
         self._transfer_transport = transfer_transport or transport
         self._certificate_store = certificate_store
-        self._environment = environment
+        self._environment = resolve_legacy_environment(
+            environment,
+            replacement=(
+                "`Client(environment).authentication` or "
+                "`AsyncClient(environment).authentication`"
+            ),
+        )
         self._auto_refresh_tokens = auto_refresh_tokens
         self._certificates = EncryptionClient(transport)
         self._auth_ep = AuthEndpoints(transport)
@@ -105,11 +119,12 @@ class AuthClient:
         Returns:
             An authenticated client bound to the saved tokens.
         """
-        resume = (
-            AuthenticationResumeState.from_json(state)
-            if isinstance(state, str)
-            else state
-        )
+        with validation_errors("state"):
+            resume = (
+                AuthenticationResumeState.from_json(state)
+                if isinstance(state, str)
+                else state
+            )
         return self._build_authenticated_client(auth_tokens=resume.to_tokens())
 
     def with_token(
@@ -149,6 +164,7 @@ class AuthClient:
             )
             ```
         """
+        require_nonempty(ksef_token, "ksef_token")
         self._ensure_certificates()
 
         challenge = from_spec(self._auth_ep.challenge())
@@ -162,14 +178,16 @@ class AuthClient:
         encrypted = encrypt_token(
             ksef_token, str(challenge.timestamp_ms), cert.certificate
         )
-        request = InitTokenAuthenticationRequest(
-            challenge=challenge.challenge,
-            context_type=context_type,
-            context_value=nip,
-            encrypted_token=encrypted,
-            public_key_id=cert.public_key_id,
-        )
-        init_resp = from_spec(self._auth_ep.token_auth(body=to_spec(request)))
+        with validation_errors():
+            request = InitTokenAuthenticationRequest(
+                challenge=challenge.challenge,
+                context_type=context_type,
+                context_value=nip,
+                encrypted_token=encrypted,
+                public_key_id=cert.public_key_id,
+            )
+            body = to_spec(request)
+        init_resp = from_spec(self._auth_ep.token_auth(body=body))
 
         self._poll_until_authenticated(
             auth_token=init_resp.authentication_token.token,
@@ -185,7 +203,7 @@ class AuthClient:
     def with_xades(
         self,
         *,
-        nip: str,
+        nip: str | None,
         cert: Certificate | None = None,
         private_key: XAdESPrivateKey | None = None,
         credentials: XAdESCredentials | None = None,
@@ -238,6 +256,7 @@ class AuthClient:
             )
             ```
         """
+        nip = _validated_nip(nip)
         if credentials is not None:
             if cert is not None or private_key is not None:
                 raise exceptions.KSeFArgumentError(
@@ -253,6 +272,18 @@ class AuthClient:
                 )
             signing_cert = cert
             signing_key = private_key
+
+        if credentials is None:
+            _ = XAdESCredentials(signing_cert, signing_key)
+        now = datetime.now(timezone.utc)
+        if (
+            now < signing_cert.not_valid_before_utc
+            or now > signing_cert.not_valid_after_utc
+        ):
+            raise exceptions.KSeFArgumentError(
+                "The XAdES certificate is outside its validity period.",
+                hint="Use a certificate that is currently valid.",
+            )
 
         challenge = from_spec(self._auth_ep.challenge())
         signed_xml = _build_signed_xades(
@@ -280,7 +311,7 @@ class AuthClient:
     def with_test_certificate(
         self,
         *,
-        nip: str,
+        nip: str | None,
         verify_chain: bool = False,
         timeout: float = 60.0,
         poll_interval: float = 1.0,
@@ -307,6 +338,7 @@ class AuthClient:
             auth = client.authentication.with_test_certificate(nip="5261040828")
             ```
         """
+        nip = _validated_nip(nip)
         if self._environment is not Environment.TEST:
             raise exceptions.KSeFUnsupportedEnvironmentError(
                 "with_test_certificate() is only available for Environment.TEST"

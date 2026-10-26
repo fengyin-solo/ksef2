@@ -6,6 +6,7 @@
 from typing import final
 
 from ksef2._core.protocols import Middleware
+from ksef2._domain.models.base import validation_errors
 from ksef2._domain.models.encryption import CertUsage, PublicKeyCertificate
 from ksef2._endpoints.encryption import EncryptionEndpoints
 from ksef2._infra.mappers.encryption import from_spec, to_spec
@@ -54,9 +55,10 @@ class EncryptionClient:
         if usage is None:
             return certificates
 
-        requested = {to_spec(value) for value in usage}
-        return [
-            cert
-            for cert in certificates
-            if any(to_spec(cert_usage) in requested for cert_usage in cert.usage)
-        ]
+        with validation_errors():
+            requested = {to_spec(value) for value in usage}
+            return [
+                cert
+                for cert in certificates
+                if any(to_spec(cert_usage) in requested for cert_usage in cert.usage)
+            ]

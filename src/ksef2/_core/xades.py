@@ -1,6 +1,7 @@
 """Helpers for loading certificates and creating XAdES authentication payloads."""
 
 import datetime
+import warnings
 from pathlib import Path
 
 from cryptography import x509
@@ -19,6 +20,7 @@ from signxml.algorithms import (
 )
 from signxml.xades.xades import XAdESSigner
 
+from ksef2._core.paths import reject_path_like_content
 from ksef2._core.xml import parse_xml_bytes
 
 # OID 2.5.4.97 = organizationIdentifier (used in company-seal certificates)
@@ -31,29 +33,58 @@ _AUTH_TOKEN_NS = "http://ksef.mf.gov.pl/auth/token/2.0"
 XAdESPrivateKey = RSAPrivateKey | EllipticCurvePrivateKey
 
 
+def _certificate_input_bytes(source: bytes | str | Path) -> bytes:
+    if isinstance(source, bytes):
+        return source
+    if isinstance(source, Path):
+        return source.read_bytes()
+    if source.lstrip("\ufeff \t\r\n").startswith("-----BEGIN"):
+        return source.encode("utf-8")
+    path = Path(source)
+    try:
+        is_file = path.is_file()
+    except (OSError, ValueError):
+        is_file = False
+    if is_file:
+        warnings.warn(
+            "Passing a string path is deprecated; pass Path(...) to read a file. "
+            "String paths remain supported throughout 1.x and may be removed no "
+            "earlier than 2.0.0.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+        return path.read_bytes()
+    reject_path_like_content(source, content_type="PEM or PKCS#12", missing_file=True)
+    return source.encode("utf-8")
+
+
 def load_certificate_from_pem(source: bytes | str | Path) -> Certificate:
-    """Load an X.509 certificate from PEM data or a PEM file path.
+    """Load an X.509 certificate from PEM content or a PEM file.
 
     Args:
-        source: PEM-encoded bytes, or a path (``str`` / ``Path``) to a ``.pem`` / ``.crt`` file.
+        source: PEM content as bytes or text, or a ``Path`` to a ``.pem`` / ``.crt`` file.
+
+    Raises:
+        KSeFArgumentError: If a short string looks like a missing file path.
 
     Returns:
         The certificate, ready to pass to ``client.authentication.with_xades()``.
 
     Example:
         ```python
+        from pathlib import Path
         from ksef2 import Client, Environment
         from ksef2.xades import load_certificate_from_pem, load_private_key_from_pem
 
-        cert = load_certificate_from_pem("cert.pem")
-        key = load_private_key_from_pem("key.pem")
+        cert = load_certificate_from_pem(Path("cert.pem"))
+        key = load_private_key_from_pem(Path("key.pem"))
 
         auth = Client(Environment.DEMO).authentication.with_xades(
             nip="1234567890", cert=cert, private_key=key
         )
         ```
     """
-    data = Path(source).read_bytes() if not isinstance(source, bytes) else source
+    data = _certificate_input_bytes(source)
     return x509.load_pem_x509_certificate(data)
 
 
@@ -62,10 +93,10 @@ def load_private_key_from_pem(
     *,
     password: bytes | None = None,
 ) -> XAdESPrivateKey:
-    """Load an RSA or EC private key from PEM data or a PEM file path.
+    """Load an RSA or EC private key from PEM content or a PEM file.
 
     Args:
-        source: PEM-encoded bytes, or a path (``str`` / ``Path``) to a ``.pem`` / ``.key`` file.
+        source: PEM content as bytes or text, or a ``Path`` to a ``.pem`` / ``.key`` file.
         password: Decryption password if the key is encrypted, otherwise ``None``.
 
     Returns:
@@ -73,9 +104,10 @@ def load_private_key_from_pem(
         :class:`~cryptography.hazmat.primitives.asymmetric.ec.EllipticCurvePrivateKey`.
 
     Raises:
+        KSeFArgumentError: If a short string looks like a missing file path.
         TypeError: If the decoded key is not an RSA or EC private key.
     """
-    data = Path(source).read_bytes() if not isinstance(source, bytes) else source
+    data = _certificate_input_bytes(source)
     key = serialization.load_pem_private_key(data, password=password)
     if not isinstance(key, (RSAPrivateKey, EllipticCurvePrivateKey)):
         raise TypeError(f"Expected RSA or EC private key, got {type(key).__name__}")
@@ -90,7 +122,7 @@ def load_certificate_and_key_from_p12(
     """Load a certificate and RSA or EC private key from a PKCS#12 (.p12 / .pfx) file.
 
     Args:
-        source: Raw PKCS#12 bytes, or a path (``str`` / ``Path``) to the ``.p12`` / ``.pfx`` file.
+        source: PKCS#12 bytes or a ``Path`` to the ``.p12`` / ``.pfx`` file.
         password: Decryption password for the archive, or ``None`` if unencrypted.
 
     Returns:
@@ -102,10 +134,11 @@ def load_certificate_and_key_from_p12(
         :func:`load_certificate_from_pem` + :func:`load_private_key_from_pem` — no conversion needed.
 
     Raises:
+        KSeFArgumentError: If a short string looks like a missing file path.
         ValueError: If the archive does not contain a certificate.
         TypeError: If the decoded key is not an RSA or EC private key.
     """
-    data = Path(source).read_bytes() if not isinstance(source, bytes) else source
+    data = _certificate_input_bytes(source)
     private_key, cert, _ = pkcs12.load_key_and_certificates(data, password)
     if cert is None:
         raise ValueError("No certificate found in PKCS#12 archive")

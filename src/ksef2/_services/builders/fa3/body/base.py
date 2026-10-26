@@ -22,7 +22,7 @@ class BodyCoreState(TypedDict):
     date_of_supply: date | None
     period_start: date | None
     period_end: date | None
-    vat_currency_exchange_rate: Decimal | None
+    vat_currency_exchange_rate: Decimal | int | float | str | None
     fp_invoice: bool
     related_party_transaction: bool
     additional_description: list[AdditionalDescriptionEntry]
@@ -265,7 +265,7 @@ class BaseBodyBuilder:
     def vat_currency_exchange_rate(
         self,
         value: Annotated[
-            Decimal | None,
+            Decimal | int | float | str | None,
             builder_param(
                 "Exchange rate used for VAT calculations when the invoice currency differs from PLN.",
                 examples=["4.2512"],

@@ -71,14 +71,16 @@ class SimplifiedBodyBuilder[TParent](
         Returns:
             The built ``KsefInvoiceBody``.
         """
-        return KsefInvoiceBody(
-            **self._state,
-            invoice_type=InvoiceType.UPR,
-            rows=list(self._rows),
-            payment=self._payment,
-            annotations=self._annotations,
-            transaction_conditions=self._transaction_conditions,
-            settlement=self._settlement,
+        return KsefInvoiceBody.model_validate(
+            {
+                **self._state,
+                "invoice_type": InvoiceType.UPR,
+                "rows": list(self._rows),
+                "payment": self._payment,
+                "annotations": self._annotations,
+                "transaction_conditions": self._transaction_conditions,
+                "settlement": self._settlement,
+            }
         )
 
     @override
@@ -117,6 +119,14 @@ class SimplifiedBodyBuilder[TParent](
             ValueError: If this body builder has no parent invoice builder.
         """
         if self._parent is None or self._on_done is None:
-            raise ValueError("SimplifiedBodyBuilder requires a parent to call done().")
+            raise _validation_error(
+                "SimplifiedBodyBuilder requires a parent to call done()."
+            )
         self._on_done(self.build())
         return self._parent
+
+
+def _validation_error(message: str):
+    from ksef2._core.exceptions import KSeFValidationError
+
+    return KSeFValidationError(message)

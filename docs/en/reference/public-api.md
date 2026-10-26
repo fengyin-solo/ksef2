@@ -13,11 +13,12 @@ They are the paths intended to remain stable through the 1.x line.
 | `ksef2` | Root clients, environment and transport config, `FormSchema`, `__version__`, and public exceptions. |
 | `ksef2.clients` | Concrete sync/async clients, the stable `InvoicesService` / `BatchService` workflow types, and the handle, paging and export result types (`InvoiceSubmission`, `ExportJob`, `GeneratedToken`, `PermissionOperation`, `CertificateEnrollment`, `ExportedInvoices`, `Pager`, `OperationHandle`), plus async twins, for type annotations. |
 | `ksef2.models` | SDK request, response, filter, pagination (including `Page`), token, permission, session, batch, export and resume-state (`ExportResumeState`, `GeneratedTokenResumeState`, `CertificateEnrollmentResumeState`, `PermissionOperationResumeState`, `InvoiceSubmissionResumeState`) models, plus the XAdES credential holder (`XAdESCredentials`). |
-| `ksef2.fa3` | FA(3) invoice builder, draft snapshots, and public FA(3) domain models used by builder workflows. |
+| `ksef2.fa3` | `InvoiceBuilder` is the canonical FA(3) builder. `FA3InvoiceBuilder` remains a deprecated alias through 1.x; draft snapshots and FA(3) domain models are also exported here. |
+| `ksef2.logging` | `configure_logging()` to opt in to structured SDK logging. |
 | `ksef2.xades` | Certificate loading, TEST certificate generation, local XAdES signing helpers, `LocalSigner`, and the `XAdESCredentials` holder accepted by `with_xades()`. |
 | `ksef2.testdata` | TEST-only helpers that generate valid NIP and PESEL numbers (`generate_nip`, `generate_pesel`). |
 | `ksef2.profiles` | Local `ksef2-cli` compatible profile config helpers. |
-| `ksef2.renderers` | Optional local XSLT/PDF invoice rendering helpers. |
+| `ksef2.renderers` | Local XSLT rendering; PDF rendering also requires the `[pdf]` extra. `InvoicePDFExporter` reports a clear install error when first used without it. |
 | `ksef2.raw` | Low-level endpoint clients, schema-native `spec` and `supp` models, and low-level crypto helpers. |
 | `ksef2.raw.mappers` | Public mappers for crossing between raw schema models and SDK models. |
 
@@ -25,11 +26,30 @@ Prefer the highest-level import that fits the workflow:
 
 ```python
 from ksef2 import Client, Environment, FormSchema, KSeFApiError
-from ksef2.fa3 import FA3InvoiceBuilder, KsefInvoiceDraft, VatRate
+from ksef2.fa3 import InvoiceBuilder, KsefInvoiceDraft, VatRate
 from ksef2.models import InvoicesFilter, InvoiceMetadataParams
 from ksef2.renderers import InvoicePDFExporter, InvoiceXSLTRenderer
 from ksef2.xades import XAdESCredentials, load_certificate_from_pem
 ```
+
+Only PDF rendering needs an optional extra: install `ksef2[pdf]`. Runtime type
+checking needs `ksef2[runtime-checks]`. All other modules listed above work with
+the base installation. `ksef2.pdf` is not a separate module; use
+`ksef2.renderers` for both renderers.
+
+The SDK is silent by default and sends records through the standard `ksef2`
+logger. Applications can configure their own standard logging handlers and
+levels, or opt into the SDK's console/JSON renderer:
+
+```python
+from ksef2.logging import configure_logging
+
+configure_logging(level="INFO", renderer="console")
+```
+
+`configure_logging()` is application configuration and is never called by the
+SDK. SDK events use standard logging levels and structured fields. Tokens,
+cryptographic keys and presigned URLs are not included in SDK log events.
 
 ## Root package exports
 
@@ -205,7 +225,7 @@ and resumable paging does not replace it. Every `Pager`, including the one from
 `auth.invoices.search(...)`, answers `.page(cursor)` with a `Page` holding
 `items` and the `next_cursor` you store to continue that collection later.
 
-`FA3InvoiceBuilder.dump_state()` and `from_state()` are a separate builder
+`InvoiceBuilder.dump_state()` and `from_state()` are a separate builder
 draft API and are not deprecated.
 
 ## Reference

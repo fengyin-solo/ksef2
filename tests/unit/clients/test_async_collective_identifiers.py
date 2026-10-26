@@ -1,9 +1,9 @@
+from ksef2 import KSeFValidationError
 import asyncio
 from datetime import datetime, timezone
 
 import pytest
 from polyfactory.factories import BaseFactory
-from pydantic import ValidationError
 
 from ksef2._clients.async_collective_identifiers import AsyncCollectiveIdentifiersClient
 from ksef2._core.routes import CollectiveIdentifierRoutes
@@ -17,7 +17,7 @@ from tests.unit.factories.collective_identifiers import (
     CollectiveIdentifiersQueryResponseFactory,
 )
 from tests.unit.fakes.transport import AsyncFakeTransport
-from tests.unit.helpers import legacy_api
+from tests.unit.support.helpers import legacy_api
 
 _KSEF_NUMBER = "1234567890-20250625-ABC123-DEF456-07"
 _SECOND_KSEF_NUMBER = "1234567890-20250625-ABC123-DEF457-08"
@@ -188,7 +188,7 @@ class TestAsyncCollectiveIdentifiersClient:
         )
         client = AsyncCollectiveIdentifiersClient(async_fake_transport)
 
-        with pytest.raises(ValidationError, match="collective_identifier_numbers"):
+        with pytest.raises(KSeFValidationError, match="collective_identifier_numbers"):
             _ = asyncio.run(
                 client.list_invoices(collective_identifier_numbers).first_page()
             )

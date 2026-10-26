@@ -25,10 +25,15 @@ with Client(Environment.TEST) as client:
 ### Async
 
 ```python
+import asyncio
+
 from ksef2 import AsyncClient, Environment
 
-async with AsyncClient(Environment.TEST) as client:
-    auth = await client.authentication.with_test_certificate(nip="5261040828")
+async def main() -> None:
+    async with AsyncClient(Environment.TEST) as client:
+        auth = await client.authentication.with_test_certificate(nip="5261040828")
+
+asyncio.run(main())
 ```
 
 Poza lokalnymi przepływami TEST używaj `Environment.DEMO` albo
@@ -62,13 +67,19 @@ def get_client() -> Iterator[Client]:
         client.close()
 ```
 
-Aplikacje async używają tej samej granicy przez `async with`:
+Aplikacje async używają tej samej granicy przez `async with` wewnątrz funkcji
+asynchronicznej:
 
 ```python
+import asyncio
+
 from ksef2 import AsyncClient, Environment
 
-async with AsyncClient(Environment.TEST) as client:
-    auth = await client.authentication.with_test_certificate(nip="5261040828")
+async def main() -> None:
+    async with AsyncClient(Environment.TEST) as client:
+        auth = await client.authentication.with_test_certificate(nip="5261040828")
+
+asyncio.run(main())
 ```
 
 Sesje online i batch też są granicami cyklu życia. Używaj context managera

@@ -12,10 +12,14 @@ from ksef2._clients.async_authenticated import AsyncAuthenticatedClient
 from ksef2._clients.async_encryption import AsyncEncryptionClient
 from ksef2._clients.async_peppol import AsyncPeppolClient
 from ksef2._clients.async_testdata import AsyncTestDataClient
-from ksef2._config import Environment, TransportConfig
+from ksef2._config import Environment, TransportConfig, validate_transport_config
 from ksef2._core import exceptions, stores
-from ksef2._core.http_config import build_http_client_kwargs
+from ksef2._core.http_config import (
+    apply_environment_base_url,
+    build_http_client_kwargs,
+)
 from ksef2._core.async_http import AsyncHttpTransport
+from ksef2._domain.models._enum import coerce_enum
 from ksef2._core.middlewares.async_exceptions import AsyncKSeFExceptionMiddleware
 from ksef2._core.middlewares.async_lifecycle import (
     AsyncClientLifecycleMiddleware,
@@ -54,26 +58,36 @@ class AsyncClient:
 
     def __init__(
         self,
-        environment: Environment = Environment.PRODUCTION,
+        environment: Environment | str,
         *,
-        transport_config: TransportConfig | None = None,
+        transport_config: object | None = None,
         http_client: httpx.AsyncClient | None = None,
         certificate_store: stores.CertificateStoreProtocol | None = None,
     ) -> None:
         """Create the client.
 
         Args:
-            environment: KSeF environment to talk to. Defaults to production.
+            environment: Required KSeF environment to talk to. Accepts an ``Environment`` or a case-insensitive environment name.
             transport_config: HTTP transport settings (timeouts, retries, TLS, connection pool). Defaults are used when omitted.
             http_client: Existing ``httpx.AsyncClient`` to use instead of building one. The caller then owns it and must close it.
             certificate_store: Store for KSeF public-key certificates; an in-memory store is created when omitted.
         """
+        environment = coerce_enum(Environment, environment)
         self._environment = environment
-        self._transport_config = transport_config or TransportConfig()
+        self._transport_config = (
+            validate_transport_config(transport_config)
+            if transport_config is not None
+            else TransportConfig()
+        )
         self._http_client = http_client or self._build_http_client(
             environment=environment,
             config=self._transport_config,
         )
+        if http_client is not None:
+            apply_environment_base_url(
+                http_client=http_client,
+                environment=environment,
+            )
         self._owns_http_client = http_client is None
         self._lifecycle_state = AsyncClientLifecycleState()
         self._http_transport = AsyncHttpTransport(
@@ -207,6 +221,17 @@ class AsyncClient:
         self._ensure_open()
         return self.authentication.resume(
             AuthenticationResumeState.from_tokens(auth_tokens)
+        )
+
+    def close(self) -> None:
+        """Raise a usage error without closing resources.
+
+        Raises:
+            KSeFArgumentError: Always. Use ``await client.aclose() or async with``.
+        """
+        raise exceptions.KSeFArgumentError(
+            "This is an async client; use await client.aclose() or async with.",
+            hint="Use await client.aclose() or async with.",
         )
 
     async def aclose(self) -> None:

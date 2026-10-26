@@ -15,6 +15,7 @@ from ksef2._clients._pager import Pager
 from ksef2._clients._pagination_cursor import OffsetCursor
 from ksef2._core import exceptions
 from ksef2._core.protocols import Middleware
+from ksef2._domain.models.base import validation_errors
 from ksef2._domain.models.certificates import (
     CertificateEnrollmentData,
     CertificateEnrollmentResponse,
@@ -259,13 +260,14 @@ class CertificatesClient:
             print(status.certificate_serial_number)
             ```
         """
-        request = EnrollCertificateRequest(
-            certificate_name=certificate_name,
-            certificate_type=certificate_type,
-            csr=csr,
-            valid_from=valid_from,
-        )
-        body = to_spec(request)
+        with validation_errors():
+            request = EnrollCertificateRequest(
+                certificate_name=certificate_name,
+                certificate_type=certificate_type,
+                csr=csr,
+                valid_from=valid_from,
+            )
+            body = to_spec(request)
         response = from_spec(self._endpoints.enroll(body=body))
         return CertificateEnrollment(self, response.reference_number, response)
 
@@ -284,7 +286,7 @@ class CertificatesClient:
             A handle that polls the enrollment's status. It has no ``timestamp``: the acceptance time is not part of the saved state.
 
         Raises:
-            ValidationError: If ``state`` is JSON that is not a saved enrollment state.
+            KSeFValidationError: If ``state`` is JSON that is not a saved enrollment state.
 
         Example:
             ```python
@@ -292,11 +294,12 @@ class CertificatesClient:
             status = enrollment.wait()
             ```
         """
-        restored = (
-            state
-            if isinstance(state, CertificateEnrollmentResumeState)
-            else CertificateEnrollmentResumeState.from_json(state)
-        )
+        with validation_errors("state"):
+            restored = (
+                state
+                if isinstance(state, CertificateEnrollmentResumeState)
+                else CertificateEnrollmentResumeState.from_json(state)
+            )
         return CertificateEnrollment(self, restored.reference_number)
 
     def get_enrollment_status(
@@ -331,10 +334,11 @@ class CertificatesClient:
         Returns:
             The requested certificates with their DER data.
         """
-        request = RetrieveCertificatesRequest(
-            certificate_serial_numbers=certificate_serial_numbers,
-        )
-        body = to_spec(request)
+        with validation_errors():
+            request = RetrieveCertificatesRequest(
+                certificate_serial_numbers=certificate_serial_numbers,
+            )
+            body = to_spec(request)
         return from_spec(self._endpoints.retrieve(body=body))
 
     def revoke(
@@ -352,8 +356,9 @@ class CertificatesClient:
         validated_serial_number = validate_certificate_serial_number(
             certificate_serial_number
         )
-        request = RevokeCertificateRequest(revocation_reason=reason)
-        body = to_spec(request)
+        with validation_errors():
+            request = RevokeCertificateRequest(revocation_reason=reason)
+            body = to_spec(request)
         self._endpoints.revoke(
             certificate_serial_number=validated_serial_number,
             body=body,
@@ -370,14 +375,15 @@ class CertificatesClient:
         params: OffsetPaginationParams | None = None,
     ) -> CertificatesInfoList:
         parameters = params or OffsetPaginationParams()
-        request = QueryCertificatesRequest(
-            certificate_serial_number=certificate_serial_number,
-            name=name,
-            certificate_type=certificate_type,
-            status=status,
-            expires_after=expires_after,
-        )
-        body = to_spec(request)
+        with validation_errors():
+            request = QueryCertificatesRequest(
+                certificate_serial_number=certificate_serial_number,
+                name=name,
+                certificate_type=certificate_type,
+                status=status,
+                expires_after=expires_after,
+            )
+            body = to_spec(request)
         spec_resp = self._endpoints.query(body=body, **parameters.to_query_params())
         return from_spec(spec_resp)
 

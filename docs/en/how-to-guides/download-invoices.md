@@ -13,7 +13,7 @@ If you already have a KSeF number, direct download is the shortest path.
 ```python
 from pathlib import Path
 
-ksef_number = "1234567890-20260625-..."
+ksef_number = "5261040828-20260625-ABCDEF012345-67"
 
 xml_bytes = auth.invoices.download(ksef_number)
 Path("invoice.xml").write_bytes(xml_bytes)
@@ -59,6 +59,19 @@ the next sync window.
 `export()` schedules the export and returns an `ExportJob`. Its `wait()` polls
 until the package is ready, downloads and decrypts the parts, joins them and
 returns an `ExportedInvoices` object.
+
+For large packages, `job.download(Path(...))` writes the joined decrypted archive
+to disk and returns an `ExportedInvoices` backed by that path. Each AES part is
+decrypted in chunks and checked against the size and SHA-256 values from KSeF;
+output goes to a new, uniquely named temporary file beside the destination,
+which atomically replaces the destination only after all parts pass. On
+failure the temporary file is removed and an existing destination is left as
+it was. The current HTTP transport buffers each encrypted response,
+so memory use is bounded by the downloaded encrypted part, not by the full
+decrypted archive.
+
+The optional `compression_type` accepts `"zip"` or `"tar_gz"`. When omitted,
+the server chooses the package format.
 
 ```python
 job = auth.invoices.export(filters)
@@ -129,6 +142,11 @@ written = restored.save(Path("downloads"))
 The factory defaults to `compression="zip"`. For TarGz exports, store the archive
 bytes in a `.tar.gz` file and pass `compression="tar_gz"` when restoring. Use the
 same compression format as the original export; the factory does not detect it.
+If the archive is already on disk, use `ExportedInvoices.from_path(path,
+compression="zip")` to read invoice entries without loading the whole archive.
+Both methods accept a `Path` or any other `os.PathLike` object; a `str` or
+`bytes` value raises `KSeFArgumentError`, because the SDK treats strings as
+content, not file names.
 
 Construction does not open or validate the archive. `metadata` reads
 `_metadata.json` on first access and caches the result: `None` means the file is
@@ -234,12 +252,15 @@ output = exporter.export_to_file(
 Use the actual assigned KSeF number for the invoice. Supplying `ksef_number`
 adds a locally generated SVG QR and displays that number below it. Omitting it
 keeps the existing PDF output without a QR. The same keyword works with
-`export_from_path()` and `export_from_string()`. The environment defaults to
-`Environment.PRODUCTION`; select `TEST` or `DEMO` for invoices from those systems.
+`export_from_path()` and `export_from_string()`. `verification_environment` is
+required; select the environment that issued the invoice.
 The QR identifies the seller NIP, issue date and SHA-256 of the **original XML
 bytes**, encoded as unpadded Base64URL, according to the
 [Ministry's verification QR specification](https://github.com/CIRFMF/ksef-docs/blob/main/kody-qr.md).
 Use bytes when calling `export_from_string()`; a string is encoded as UTF-8.
+Short filename-like strings passed to `export_from_string()` or
+`InvoiceXSLTRenderer.render_from_string()` raise `KSeFArgumentError`.
+Use their `export_from_path()` or `render_from_path()` methods to read files.
 Reserializing an invoice changes its hash. Rendering does not check its acceptance
 or verify that the supplied KSeF number belongs to it.
 

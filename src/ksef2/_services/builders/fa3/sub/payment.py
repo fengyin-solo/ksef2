@@ -75,7 +75,7 @@ PaymentDescriptionParam = Annotated[
     ),
 ]
 PaymentAmountParam = Annotated[
-    Decimal,
+    Decimal | int | float | str,
     builder_param(
         "Monetary amount used for payment entries.",
         examples=["500.00"],
@@ -195,7 +195,7 @@ class PaymentBuilder[TParent]:
         """Set the partial payment status value.
 
         Args:
-            status: Partial payment status recorded on the invoice.
+            status: "partial" for paid in part, or "final" for fully paid in installments.
 
         Returns:
             The builder, for chaining.
@@ -375,12 +375,14 @@ class PaymentBuilder[TParent]:
             The builder, for chaining.
         """
         self._state["partial_payments"].append(
-            PartialPayment(
-                amount=amount,
-                payment_date=payment_date,
-                payment_form=payment_form,
-                other_payment_form=other_payment_form,
-                payment_description=payment_description,
+            PartialPayment.model_validate(
+                {
+                    "amount": amount,
+                    "payment_date": payment_date,
+                    "payment_form": payment_form,
+                    "other_payment_form": other_payment_form,
+                    "payment_description": payment_description,
+                }
             )
         )
         return self
@@ -703,7 +705,8 @@ class PaymentBuilder[TParent]:
             The built ``InvoicePayment``.
 
         Raises:
-            ValueError: If a custom payment form is enabled without a description.
+            KSeFValidationError: If partial payments have no explicit status, or a
+                custom payment form has no description.
         """
         self._validate_state()
         return InvoicePayment(**self._state)
@@ -718,11 +721,11 @@ class PaymentBuilder[TParent]:
             The parent builder.
 
         Raises:
-            ValueError: If payment details are empty, or a custom payment form has
-                no description.
+            KSeFValidationError: If payment details are empty, partial payments have
+                no explicit status, or a custom payment form has no description.
         """
         if self._is_empty():
-            raise ValueError(
+            raise _validation_error(
                 "Payment details are empty. Set at least one field before calling done()."
             )
 
@@ -730,11 +733,21 @@ class PaymentBuilder[TParent]:
         return self._parent
 
     def _validate_state(self) -> None:
+        if (
+            self._state["partial_payments"]
+            and self._state["partial_payment_status"] is None
+        ):
+            raise _validation_error(
+                'partial_payments require partial_payment_status("partial") for an invoice '
+                'paid in part, or partial_payment_status("final") for an invoice fully '
+                "paid in installments (XSD values 1 and 2)."
+            )
+
         if not self._state["paid"]:
             self._state["payment_date"] = None
 
         if self._state["other_payment_form"] and not self._state["payment_description"]:
-            raise ValueError(
+            raise _validation_error(
                 "payment_description is required when other_payment_form is enabled"
             )
 
@@ -754,3 +767,9 @@ class PaymentBuilderMixin:
 
     def _set_payment(self, value: InvoicePayment) -> None:
         self._payment = value
+
+
+def _validation_error(message: str):
+    from ksef2._core.exceptions import KSeFValidationError
+
+    return KSeFValidationError(message)

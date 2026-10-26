@@ -2,6 +2,8 @@
 
 from typing import final
 
+from ksef2._domain.models.base import validation_errors
+
 from ksef2._core.async_protocols import AsyncMiddleware
 from ksef2._domain.models.limits import ApiRateLimits, ContextLimits, SubjectLimits
 from ksef2._endpoints.async_limits import AsyncLimitEndpoints
@@ -30,6 +32,16 @@ class AsyncLimitsClient:
             transport: Middleware chain used for requests to KSeF.
         """
         self._endpoints = AsyncLimitEndpoints(transport)
+        self._cached_context_limits: ContextLimits | None = None
+
+    @property
+    def cached_context_limits(self) -> ContextLimits | None:
+        """Return context limits fetched by this client, if available.
+
+        Returns:
+            The cached context limits, or ``None`` if they have not been fetched.
+        """
+        return self._cached_context_limits
 
     async def get_context_limits(self) -> ContextLimits:
         """Return the effective limits for online and batch sessions.
@@ -37,7 +49,9 @@ class AsyncLimitsClient:
         Returns:
             The effective limits for online and batch sessions.
         """
-        return from_spec(await self._endpoints.get_context_limits())
+        limits = from_spec(await self._endpoints.get_context_limits())
+        self._cached_context_limits = limits
+        return limits
 
     async def get_subject_limits(self) -> SubjectLimits:
         """Return the effective limits for certificate enrollments and issuance.
@@ -61,11 +75,15 @@ class AsyncLimitsClient:
         Args:
             limits: New session limits.
         """
-        await self._endpoints.set_session_limits(body=to_spec(limits))
+        with validation_errors("limits"):
+            body = to_spec(limits)
+        await self._endpoints.set_session_limits(body=body)
+        self._cached_context_limits = limits
 
     async def reset_session_limits(self) -> None:
         """Reset session limits to their default values."""
         await self._endpoints.reset_session_limits()
+        self._cached_context_limits = None
 
     async def set_subject_limits(self, *, limits: SubjectLimits) -> None:
         """Override subject-level certificate and enrollment limits.
@@ -73,7 +91,9 @@ class AsyncLimitsClient:
         Args:
             limits: New subject-level limits.
         """
-        await self._endpoints.set_subject_limits(body=to_spec(limits))
+        with validation_errors("limits"):
+            body = to_spec(limits)
+        await self._endpoints.set_subject_limits(body=body)
 
     async def reset_subject_limits(self) -> None:
         """Reset subject-level limits to their default values."""
@@ -85,7 +105,9 @@ class AsyncLimitsClient:
         Args:
             limits: New API rate limits.
         """
-        await self._endpoints.set_api_rate_limits(body=to_spec(limits))
+        with validation_errors("limits"):
+            body = to_spec(limits)
+        await self._endpoints.set_api_rate_limits(body=body)
 
     async def reset_api_rate_limits(self) -> None:
         """Reset API rate limits to their default values."""

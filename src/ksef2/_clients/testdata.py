@@ -11,6 +11,7 @@ import httpx
 
 from ksef2._core import exceptions
 from ksef2._core.protocols import Middleware
+from ksef2._domain.models.base import validation_errors
 from ksef2._domain.models.testdata import (
     AuthContextIdentifier,
     BlockContextRequest,
@@ -77,14 +78,16 @@ class TestDataClient:
             subunits: Subunits to create with the subject; ``None`` for none.
             created_date: Creation date to record for the subject; ``None`` for now.
         """
-        request = CreateSubjectRequest(
-            subject_nip=nip,
-            subject_type=subject_type,
-            description=description,
-            subunits=subunits,
-            created_date=created_date,
-        )
-        self._endpoints.create_subject(to_spec(request))
+        with validation_errors():
+            request = CreateSubjectRequest(
+                subject_nip=nip,
+                subject_type=subject_type,
+                description=description,
+                subunits=subunits,
+                created_date=created_date,
+            )
+            body = to_spec(request)
+        self._endpoints.create_subject(body)
 
     def delete_subject(self, *, nip: str) -> None:
         """Delete a test subject by NIP.
@@ -92,7 +95,9 @@ class TestDataClient:
         Args:
             nip: NIP of the subject to delete.
         """
-        self._endpoints.delete_subject(to_spec(DeleteSubjectRequest(subject_nip=nip)))
+        with validation_errors():
+            body = to_spec(DeleteSubjectRequest(subject_nip=nip))
+        self._endpoints.delete_subject(body)
 
     def create_person(
         self,
@@ -114,15 +119,17 @@ class TestDataClient:
             is_deceased: Whether the person is marked as deceased.
             created_date: Creation date to record for the person; ``None`` for now.
         """
-        request = CreatePersonRequest(
-            nip=nip,
-            pesel=pesel,
-            description=description,
-            is_bailiff=is_bailiff,
-            is_deceased=is_deceased,
-            created_date=created_date,
-        )
-        self._endpoints.create_person(to_spec(request))
+        with validation_errors():
+            request = CreatePersonRequest(
+                nip=nip,
+                pesel=pesel,
+                description=description,
+                is_bailiff=is_bailiff,
+                is_deceased=is_deceased,
+                created_date=created_date,
+            )
+            body = to_spec(request)
+        self._endpoints.create_person(body)
 
     def delete_person(self, *, nip: str) -> None:
         """Delete a test person by subject NIP.
@@ -130,7 +137,9 @@ class TestDataClient:
         Args:
             nip: NIP of the person to delete.
         """
-        self._endpoints.delete_person(to_spec(DeletePersonRequest(nip=nip)))
+        with validation_errors():
+            body = to_spec(DeletePersonRequest(nip=nip))
+        self._endpoints.delete_person(body)
 
     def grant_permissions(
         self,
@@ -146,12 +155,14 @@ class TestDataClient:
             grant_to: Identifier of the subject receiving the permissions.
             in_context_of: Identifier of the context in which the permissions apply.
         """
-        request = GrantPermissionsRequest(
-            permissions=permissions,
-            grant_to=grant_to,
-            in_context_of=in_context_of,
-        )
-        self._endpoints.grant_permissions(to_spec(request))
+        with validation_errors():
+            request = GrantPermissionsRequest(
+                permissions=permissions,
+                grant_to=grant_to,
+                in_context_of=in_context_of,
+            )
+            body = to_spec(request)
+        self._endpoints.grant_permissions(body)
 
     def revoke_permissions(
         self, *, revoke_from: Identifier, in_context_of: Identifier
@@ -162,11 +173,13 @@ class TestDataClient:
             revoke_from: Identifier of the subject losing the permissions.
             in_context_of: Identifier of the context from which the permissions are revoked.
         """
-        request = RevokePermissionsRequest(
-            revoke_from=revoke_from,
-            in_context_of=in_context_of,
-        )
-        self._endpoints.revoke_permissions(to_spec(request))
+        with validation_errors():
+            request = RevokePermissionsRequest(
+                revoke_from=revoke_from,
+                in_context_of=in_context_of,
+            )
+            body = to_spec(request)
+        self._endpoints.revoke_permissions(body)
 
     def enable_attachments(self, *, nip: str) -> None:
         """Enable invoice attachments for a test subject.
@@ -174,7 +187,9 @@ class TestDataClient:
         Args:
             nip: NIP of the subject to enable attachments for.
         """
-        self._endpoints.enable_attachments(to_spec(EnableAttachmentsRequest(nip=nip)))
+        with validation_errors():
+            body = to_spec(EnableAttachmentsRequest(nip=nip))
+        self._endpoints.enable_attachments(body)
 
     def revoke_attachments(
         self, *, nip: str, expected_end_date: date | None = None
@@ -185,11 +200,13 @@ class TestDataClient:
             nip: NIP of the subject to revoke attachments for.
             expected_end_date: Date on which attachment permission should end; ``None`` to revoke immediately.
         """
-        request = RevokeAttachmentsRequest(
-            nip=nip,
-            expected_end_date=expected_end_date,
-        )
-        self._endpoints.revoke_attachments(to_spec(request))
+        with validation_errors():
+            request = RevokeAttachmentsRequest(
+                nip=nip,
+                expected_end_date=expected_end_date,
+            )
+            body = to_spec(request)
+        self._endpoints.revoke_attachments(body)
 
     def block_context(self, *, context: AuthContextIdentifier) -> None:
         """Block authentication for a specific test context.
@@ -197,7 +214,9 @@ class TestDataClient:
         Args:
             context: Authentication context to block.
         """
-        self._endpoints.block_context(to_spec(BlockContextRequest(context=context)))
+        with validation_errors():
+            body = to_spec(BlockContextRequest(context=context))
+        self._endpoints.block_context(body)
 
     def unblock_context(self, *, context: AuthContextIdentifier) -> None:
         """Unblock authentication for a specific test context.
@@ -205,7 +224,9 @@ class TestDataClient:
         Args:
             context: Authentication context to unblock.
         """
-        self._endpoints.unblock_context(to_spec(UnblockContextRequest(context=context)))
+        with validation_errors():
+            body = to_spec(UnblockContextRequest(context=context))
+        self._endpoints.unblock_context(body)
 
     def update_certificate_valid_to(
         self,
@@ -219,10 +240,12 @@ class TestDataClient:
             serial_number: Serial number of the certificate to shorten.
             valid_to: New, earlier end of the certificate validity period.
         """
-        request = UpdateCertificateRequest(valid_to=valid_to)
+        with validation_errors():
+            request = UpdateCertificateRequest(valid_to=valid_to)
+            body = to_spec(request)
         self._endpoints.update_certificate(
             serial_number=serial_number,
-            body=to_spec(request),
+            body=body,
         )
 
     def temporal(self) -> "TemporalTestData":

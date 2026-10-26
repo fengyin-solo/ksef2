@@ -7,6 +7,20 @@ Użyj `auth.permissions`, gdy uwierzytelniony kontekst ma nadawać, sprawdzać a
 cofać uprawnienia KSeF. Zmiany uprawnień są asynchroniczne: metody grant i
 revoke najpierw zwracają referencję operacji.
 
+Podaj 11-cyfrowy PESEL z poprawną sumą kontrolną lub NIP zgodny z 10-cyfrowym
+wzorcem OpenAPI. Nadawanie uprawnień nie sprawdza sumy kontrolnej NIP.
+Identyfikator musi odpowiadać `subject_type`. SDK sprawdza te wartości przed
+wysłaniem nadania uprawnień. Puste listy uprawnień oraz puste identyfikatory
+w `revoke()` i `revoke_authorization()` zgłaszają `KSeFArgumentError` z podpowiedzią
+`hint` przed wysłaniem żądania.
+
+W `grant_person()` i `grant_entity()` podawaj uprawnienia w snake_case lub jako
+odpowiednie elementy enum, tak jak w `tokens.generate()`. Możesz użyć
+`"invoice_read"`, `PersonPermissionTypeEnum.INVOICE_READ` lub
+`EntityPermissionTypeEnum.INVOICE_READ`. Aby umożliwić delegowanie uprawnienia
+podmiotowi, użyj `EntityPermission(type="invoice_read", can_delegate=True)`.
+Wartość `"InvoiceRead"` zgłasza błąd z sugestią `"invoice_read"`.
+
 ## Nadaj uprawnienia
 
 Wybierz metodę nadania pasującą do docelowego podmiotu. Utrzymuj zakres
@@ -17,7 +31,7 @@ uprawnień tak mały, jak pozwala na to przepływ.
 ```python
 operation = auth.permissions.grant_person(
     subject_type="pesel",
-    subject_value="90010112345",
+    subject_value="44051401458",
     permissions=["invoice_read"],
     description="Read invoices",
     first_name="Jan",
@@ -36,7 +50,7 @@ operation = auth.permissions.grant_person(
 from ksef2.models import EntityPermission
 
 operation = auth.permissions.grant_entity(
-    subject_value="1234567890",
+    subject_value="5261040828",
     permissions=[
         EntityPermission(type="invoice_read", can_delegate=False),
     ],
@@ -50,7 +64,7 @@ operation = auth.permissions.grant_entity(
 ```python
 operation = auth.permissions.grant_authorization(
     subject_type="nip",
-    subject_value="1234567890",
+    subject_value="5261040828",
     permission="self_invoicing",
     description="Self-invoicing agreement",
     entity_name="Partner Sp. z o.o.",
@@ -163,20 +177,20 @@ for grant in grants:
 
 ## Cofnij uprawnienia
 
-Użyj identyfikatora uprawnienia zwróconego przez listę. Cofnięcie też zwraca
+Użyj rekordu `permission` wybranego z listy powyżej. Cofnięcie też zwraca
 uchwyt `PermissionOperation`.
 
 ```python
-operation = auth.permissions.revoke(permission_id="permission-id")
+operation = auth.permissions.revoke(permission_id=permission.id)
 status = operation.wait()
 print(status.status.code, status.status.description)
 ```
 
-Dla nadań autoryzacji użyj metody cofania autoryzacji:
+Dla rekordu `grant` wybranego z listy autoryzacji użyj metody cofania autoryzacji:
 
 ```python
 operation = auth.permissions.revoke_authorization(
-    permission_id="authorization-id",
+    permission_id=grant.id,
 )
 ```
 

@@ -5,6 +5,8 @@ from typing import final, overload
 
 from typing_extensions import deprecated
 
+from ksef2._domain.models.base import validation_errors
+
 from ksef2._clients._async_session import _AwaitableSession
 from ksef2._clients.async_batch import AsyncBatchSessionClient
 from ksef2._clients.async_certificates import AsyncCertificatesClient
@@ -20,7 +22,7 @@ from ksef2._clients.async_permissions import AsyncPermissionsClient
 from ksef2._clients.async_session_management import AsyncSessionManagementClient
 from ksef2._clients.async_testdata import AsyncTestDataClient
 from ksef2._clients.async_tokens import AsyncTokensClient
-from ksef2._config import Environment
+from ksef2._config import Environment, resolve_legacy_environment
 from ksef2._core.async_protocols import AsyncMiddleware
 from ksef2._core.async_token_manager import AsyncRefresh, AsyncTokenManager
 from ksef2._core import exceptions
@@ -28,6 +30,7 @@ from ksef2._core.crypto import encrypt_symmetric_key, generate_session_key
 from ksef2._core.middlewares.async_auth import AsyncBearerTokenMiddleware
 from ksef2._core.stores import CertificateStoreProtocol
 from ksef2._domain.models.auth import AuthenticationResumeState, AuthTokens
+from ksef2._domain.models._enum import coerce_enum
 from ksef2._domain.models import (
     BatchFileInfo,
     BatchSessionResumeState,
@@ -36,6 +39,7 @@ from ksef2._domain.models import (
 )
 from ksef2._domain.models.session import (
     FormSchema,
+    FormSchemaInput,
     OnlineSessionResumeState,
     OpenOnlineSessionRequest,
     SessionEncryptionMaterial,
@@ -46,6 +50,7 @@ from ksef2._infra.mappers.sessions import to_spec as session_to_spec
 from ksef2.raw._async_facade import AsyncRawAuthenticatedClient
 from ksef2._services.async_batch import AsyncBatchService
 from ksef2._services.async_invoices import AsyncInvoicesService
+from ksef2._services.batch_preparation import max_invoice_size_bytes
 
 
 @final
@@ -68,7 +73,7 @@ class AsyncAuthenticatedClient:
         transport: AsyncMiddleware,
         auth_tokens: AuthTokens,
         certificate_store: CertificateStoreProtocol,
-        environment: Environment = Environment.PRODUCTION,
+        environment: Environment | None = None,
         transfer_transport: AsyncMiddleware | None = None,
         refresh_access_token: AsyncRefresh | None = None,
     ) -> None:
@@ -78,7 +83,7 @@ class AsyncAuthenticatedClient:
             transport: Middleware chain used for requests.
             auth_tokens: Access and refresh tokens obtained from authentication.
             certificate_store: Store holding the KSeF public-key certificates used to encrypt session keys.
-            environment: KSeF environment the client talks to.
+            environment: KSeF environment the client talks to. Omitting it is deprecated; use the root client's ``authentication.resume(...)`` flow.
             transfer_transport: Middleware used for transfers outside the KSeF API such as batch part uploads; defaults to ``transport``.
             refresh_access_token: Callable exchanging a refresh token for a new access token. When given, the client refreshes its access token shortly before it expires and once after a 401 response; ``None`` disables automatic refresh.
         """
@@ -86,7 +91,13 @@ class AsyncAuthenticatedClient:
         self._transfer_transport = transfer_transport or transport
         self._token_manager = AsyncTokenManager(auth_tokens, refresh_access_token)
         self._certificate_store = certificate_store
-        self._environment = environment
+        self._environment = resolve_legacy_environment(
+            environment,
+            replacement=(
+                "`Client(environment).authentication.resume(...)` or "
+                "`AsyncClient(environment).authentication.resume(...)`"
+            ),
+        )
         self._authed_transport = AsyncBearerTokenMiddleware(
             transport, self._token_manager
         )
@@ -178,15 +189,15 @@ class AsyncAuthenticatedClient:
     ) -> AsyncOnlineSessionClient:
         material = await self._get_encryption_material()
 
-        request = OpenOnlineSessionRequest(
-            encrypted_key=material.encrypted_key,
-            iv=material.iv,
-            public_key_id=material.public_key_id,
-            form_code=form_code,
-        )
-        session_data = session_from_spec(
-            await self._session_eps.open_online(session_to_spec(request))
-        )
+        with validation_errors():
+            request = OpenOnlineSessionRequest(
+                encrypted_key=material.encrypted_key,
+                iv=material.iv,
+                public_key_id=material.public_key_id,
+                form_code=form_code,
+            )
+            body = session_to_spec(request)
+        session_data = session_from_spec(await self._session_eps.open_online(body))
 
         state = OnlineSessionResumeState.from_encoded(
             reference_number=session_data.reference_number,
@@ -195,13 +206,20 @@ class AsyncAuthenticatedClient:
             valid_until=session_data.valid_until,
             form_code=form_code,
         )
-        return AsyncOnlineSessionClient(transport=self._authed_transport, state=state)
+        limits = self.limits.cached_context_limits
+        return AsyncOnlineSessionClient(
+            transport=self._authed_transport,
+            state=state,
+            max_invoice_size_bytes=max_invoice_size_bytes(
+                limits.online_session if limits is not None else None
+            ),
+        )
 
     @overload
     def online_session(
         self,
         *,
-        form_code: FormSchema,
+        form_code: FormSchemaInput,
     ) -> _AwaitableSession[AsyncOnlineSessionClient]: ...
 
     @overload
@@ -214,7 +232,7 @@ class AsyncAuthenticatedClient:
     def online_session(
         self,
         *,
-        form_code: FormSchema | None = None,
+        form_code: FormSchemaInput | None = None,
         state: OnlineSessionResumeState | str | None = None,
     ) -> _AwaitableSession[AsyncOnlineSessionClient]:
         """Open a new online invoice session, or resume one from saved state.
@@ -232,7 +250,7 @@ class AsyncAuthenticatedClient:
             A session client that can be used as a context manager and closes the session on exit.
 
         Raises:
-            KSeFArgumentError: If neither or both of ``form_code`` and ``state`` are given.
+            KSeFArgumentError: If ``form_code`` is invalid or neither or both of ``form_code`` and ``state`` are given.
             NoCertificateAvailableError: If no valid symmetric-key certificate is
                 available.
             KSeFEncryptionError: If symmetric-key encryption fails.
@@ -258,7 +276,9 @@ class AsyncAuthenticatedClient:
         if state is not None:
             return _AwaitableSession(self._resume_online_session_async(state))
         assert form_code is not None
-        return _AwaitableSession(self._open_online_session(form_code=form_code))
+        return _AwaitableSession(
+            self._open_online_session(form_code=coerce_enum(FormSchema, form_code))
+        )
 
     async def _resume_online_session_async(
         self, state: OnlineSessionResumeState | str
@@ -268,13 +288,21 @@ class AsyncAuthenticatedClient:
     def _rebind_online_session(
         self, state: OnlineSessionResumeState | str
     ) -> AsyncOnlineSessionClient:
-        resume = (
-            OnlineSessionResumeState.from_json(state)
-            if isinstance(state, str)
-            else state
-        )
+        with validation_errors("state"):
+            resume = (
+                OnlineSessionResumeState.from_json(state)
+                if isinstance(state, str)
+                else state
+            )
         return AsyncOnlineSessionClient(
-            transport=self._authed_transport, state=resume, resumed=True
+            transport=self._authed_transport,
+            state=resume,
+            resumed=True,
+            max_invoice_size_bytes=max_invoice_size_bytes(
+                self.limits.cached_context_limits.online_session
+                if self.limits.cached_context_limits is not None
+                else None
+            ),
         )
 
     @deprecated(
@@ -310,7 +338,7 @@ class AsyncAuthenticatedClient:
         self,
         *,
         batch_file: BatchFileInfo,
-        form_code: FormSchema = FormSchema.FA3,
+        form_code: FormSchemaInput = FormSchema.FA3,
         offline_mode: bool = False,
     ) -> _AwaitableSession[AsyncBatchSessionClient]: ...
 
@@ -327,7 +355,7 @@ class AsyncAuthenticatedClient:
         *,
         prepared_batch: PreparedBatch | None = None,
         batch_file: BatchFileInfo | None = None,
-        form_code: FormSchema | None = None,
+        form_code: FormSchemaInput | None = None,
         offline_mode: bool | None = None,
         state: BatchSessionResumeState | str | None = None,
     ) -> _AwaitableSession[AsyncBatchSessionClient]:
@@ -401,7 +429,11 @@ class AsyncAuthenticatedClient:
             self._open_batch_session_from_input(
                 prepared_batch=prepared_batch,
                 batch_file=batch_file,
-                form_code=form_code or FormSchema.FA3,
+                form_code=(
+                    coerce_enum(FormSchema, form_code)
+                    if form_code is not None
+                    else FormSchema.FA3
+                ),
                 offline_mode=bool(offline_mode),
             )
         )
@@ -418,11 +450,12 @@ class AsyncAuthenticatedClient:
         state: BatchSessionResumeState | str,
         prepared_batch: PreparedBatch | None = None,
     ) -> AsyncBatchSessionClient:
-        resume = (
-            BatchSessionResumeState.from_json(state)
-            if isinstance(state, str)
-            else state
-        )
+        with validation_errors("state"):
+            resume = (
+                BatchSessionResumeState.from_json(state)
+                if isinstance(state, str)
+                else state
+            )
         if prepared_batch is not None:
             if (
                 resume.prepared_batch_digest is None
@@ -495,16 +528,18 @@ class AsyncAuthenticatedClient:
         offline_mode: bool = False,
         prepared_batch: PreparedBatch | None = None,
     ) -> AsyncBatchSessionClient:
-        request = OpenBatchSessionRequest(
-            encrypted_key=encryption_material.encrypted_key,
-            iv=encryption_material.iv,
-            public_key_id=encryption_material.public_key_id,
-            batch_file=batch_file,
-            form_code=form_code,
-            offline_mode=offline_mode,
-        )
+        with validation_errors():
+            request = OpenBatchSessionRequest(
+                encrypted_key=encryption_material.encrypted_key,
+                iv=encryption_material.iv,
+                public_key_id=encryption_material.public_key_id,
+                batch_file=batch_file,
+                form_code=form_code,
+                offline_mode=offline_mode,
+            )
+            body = session_to_spec(request)
         session_response = session_from_spec(
-            await self._session_eps.open_batch(body=session_to_spec(request))
+            await self._session_eps.open_batch(body=body)
         )
 
         state = BatchSessionResumeState.from_encoded(
@@ -532,7 +567,7 @@ class AsyncAuthenticatedClient:
         iv: bytes,
         encrypted_key: bytes,
         public_key_id: str | None = None,
-        form_code: FormSchema = FormSchema.FA3,
+        form_code: FormSchemaInput = FormSchema.FA3,
         offline_mode: bool = False,
         prepared_batch: PreparedBatch | None = None,
     ) -> _AwaitableSession[AsyncBatchSessionClient]:
@@ -545,7 +580,7 @@ class AsyncAuthenticatedClient:
                     encrypted_key=encrypted_key,
                     public_key_id=public_key_id,
                 ),
-                form_code=form_code,
+                form_code=coerce_enum(FormSchema, form_code),
                 offline_mode=offline_mode,
                 prepared_batch=prepared_batch,
             )
@@ -563,7 +598,7 @@ class AsyncAuthenticatedClient:
         iv: bytes,
         encrypted_key: bytes,
         public_key_id: str | None = None,
-        form_code: FormSchema = FormSchema.FA3,
+        form_code: FormSchemaInput = FormSchema.FA3,
         offline_mode: bool = False,
         prepared_batch: PreparedBatch | None = None,
     ) -> _AwaitableSession[AsyncBatchSessionClient]:
@@ -595,7 +630,7 @@ class AsyncAuthenticatedClient:
             iv=iv,
             encrypted_key=encrypted_key,
             public_key_id=public_key_id,
-            form_code=form_code,
+            form_code=coerce_enum(FormSchema, form_code),
             offline_mode=offline_mode,
             prepared_batch=prepared_batch,
         )
@@ -653,6 +688,7 @@ class AsyncAuthenticatedClient:
             upload_transport=self._transfer_transport,
             get_encryption_key=self._get_encryption_material,
             open_batch_session=self._open_batch_session_with_material,
+            get_context_limits=lambda: self.limits.cached_context_limits,
         )
 
     @cached_property

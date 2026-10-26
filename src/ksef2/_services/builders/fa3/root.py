@@ -8,11 +8,13 @@ from pathlib import Path
 from typing import Annotated, Self, override
 
 from lxml import etree
+from pydantic import ValidationError
 from xsdata.formats.dataclass.serializers import XmlSerializer
 from xsdata.formats.dataclass.serializers.config import SerializerConfig
 
 from ksef2._domain.models.fa3 import Attachment, InvoiceFooter, KsefInvoiceDraft
-from ksef2._domain.models.fa3.body.root import KsefInvoiceBody
+from ksef2._domain.models.fa3.body.root import InvoiceType, KsefInvoiceBody
+from ksef2._domain.models.fa3.body.tax import SaleCategory, TaxRegime
 from ksef2._domain.protocols import BaseBuilderProtocol
 from ksef2._domain.models.fa3.header import InvoiceHeader
 from ksef2._domain.models.fa3.invoice import KsefInvoice
@@ -622,7 +624,7 @@ class StandardInvoiceBuilder(
             ),
         ] = None,
         share_percentage: Annotated[
-            Decimal | None,
+            Decimal | int | float | str | None,
             builder_param(
                 "Share percentage assigned to the third party when the invoice scenario requires it.",
                 examples=["50.00"],
@@ -691,7 +693,7 @@ class StandardInvoiceBuilder(
         address = None
         if address_line_1 is not None:
             if address_country_code is None:
-                raise ValueError(
+                raise _validation_error(
                     "address_country_code is required when providing a third-party address."
                 )
             address = self._build_address(
@@ -711,11 +713,11 @@ class StandardInvoiceBuilder(
             )
         ):
             if correspondence_address_line_1 is None:
-                raise ValueError(
+                raise _validation_error(
                     "correspondence_address_line_1 is required when providing a correspondence address."
                 )
             if correspondence_country_code is None:
-                raise ValueError(
+                raise _validation_error(
                     "correspondence_country_code is required when providing a correspondence address."
                 )
             correspondence_address = self._build_address(
@@ -732,24 +734,26 @@ class StandardInvoiceBuilder(
                 for contact in contacts
             ]
 
-        third_party = InvoiceThirdParty(
-            tax_id=tax_id,
-            internal_id=internal_id,
-            eu_vat_id=eu_vat_id,
-            country_code=identity_country_code,
-            other_id=other_id,
-            no_id=no_id,
-            name=name,
-            address=address,
-            correspondence_address=correspondence_address,
-            contact=built_contacts,
-            role=role,
-            other_role=other_role,
-            role_description=role_description,
-            share_percentage=share_percentage,
-            customer_number=customer_number,
-            eori_number=eori_number,
-            buyer_id=buyer_id,
+        third_party = InvoiceThirdParty.model_validate(
+            {
+                "tax_id": tax_id,
+                "internal_id": internal_id,
+                "eu_vat_id": eu_vat_id,
+                "country_code": identity_country_code,
+                "other_id": other_id,
+                "no_id": no_id,
+                "name": name,
+                "address": address,
+                "correspondence_address": correspondence_address,
+                "contact": built_contacts,
+                "role": role,
+                "other_role": other_role,
+                "role_description": role_description,
+                "share_percentage": share_percentage,
+                "customer_number": customer_number,
+                "eori_number": eori_number,
+                "buyer_id": buyer_id,
+            }
         )
         return self.add_third_party_model(third_party)
 
@@ -973,26 +977,81 @@ class StandardInvoiceBuilder(
             ValueError: If the required header, seller, buyer, or body is missing.
         """
         if self._header is None:
-            raise ValueError("Invoice header is required but not set.")
+            raise _validation_error("Invoice header is required but not set.")
         if self._seller is None:
-            raise ValueError("Invoice seller is required but not set.")
+            raise _validation_error("Invoice seller is required but not set.")
         if self._buyer is None:
-            raise ValueError("Invoice buyer is required but not set.")
+            raise _validation_error("Invoice buyer is required but not set.")
         if self._body is None:
-            raise ValueError("Invoice body is required but not set.")
+            raise _validation_error("Invoice body is required but not set.")
+
+        financial_rows = (
+            self._body.order_lines
+            if self._body.invoice_type == InvoiceType.ZAL
+            or (
+                self._body.invoice_type == InvoiceType.CORRECTING_ZAL
+                and self._body.order is not None
+            )
+            else self._body.rows
+        )
+        summary_overrides = self._body.summary_overrides
+        has_pln_vat_summary_override = summary_overrides is not None and any(
+            value is not None
+            for value in (
+                summary_overrides.base_rate_vat_total_pln,
+                summary_overrides.first_reduced_rate_vat_total_pln,
+                summary_overrides.second_reduced_rate_vat_total_pln,
+                summary_overrides.taxi_flat_rate_vat_total_pln,
+            )
+        )
+        rows_requiring_pln_vat_conversion = (
+            row
+            for row in financial_rows
+            if row.vat_amount is not None
+            and row.vat_amount != Decimal("0.00")
+            and (
+                row.sale_category
+                in {
+                    SaleCategory.RATE_23,
+                    SaleCategory.RATE_22,
+                    SaleCategory.RATE_8,
+                    SaleCategory.RATE_7,
+                    SaleCategory.RATE_5,
+                }
+                or row.tax_regime == TaxRegime.TAXI_FLAT_RATE
+            )
+        )
+        if (
+            self._body.currency.upper() != "PLN"
+            and self._body.vat_currency_exchange_rate is None
+            and any(
+                row.currency_exchange_rate is None
+                for row in rows_requiring_pln_vat_conversion
+            )
+            and not has_pln_vat_summary_override
+        ):
+            raise _validation_error(
+                "Foreign-currency invoices require a body or row exchange rate, "
+                "or explicit PLN VAT summary overrides"
+            )
 
         if self._third_parties is None:
             self._third_parties = []
 
-        return KsefInvoice(
-            header=self._header,
-            seller=self._seller,
-            buyer=self._buyer,
-            third_parties=self._third_parties,
-            body=self._body,
-            footer=self._footer,
-            attachment=self._attachment,
-        )
+        try:
+            return KsefInvoice(
+                header=self._header,
+                seller=self._seller,
+                buyer=self._buyer,
+                third_parties=self._third_parties,
+                body=self._body,
+                footer=self._footer,
+                attachment=self._attachment,
+            )
+        except ValidationError as exc:
+            raise _validation_error(
+                "Invalid invoice builder state.", validation_error=exc
+            ) from exc
 
     def to_spec(self) -> Faktura:
         """Convert the built invoice to the generated FA(3) schema model.
@@ -1008,7 +1067,7 @@ class StandardInvoiceBuilder(
     def to_xml(
         self,
         *,
-        pretty_print: bool = True,
+        pretty_print: bool = False,
         xml_declaration: bool = True,
         encoding: str = "UTF-8",
         validate: bool = True,
@@ -1044,7 +1103,9 @@ class StandardInvoiceBuilder(
                 document = etree.fromstring(xml.encode(encoding), parser)
                 _load_fa3_schema().assertValid(document)
             except (etree.DocumentInvalid, etree.XMLSyntaxError) as exc:
-                raise ValueError(f"FA(3) XML schema validation failed: {exc}") from exc
+                raise _validation_error(
+                    f"FA(3) XML schema validation failed: {exc}"
+                ) from exc
         return xml
 
     @staticmethod
@@ -1071,7 +1132,9 @@ class StandardInvoiceBuilder(
         address = None
         if address_line_1:
             if country_code is None:
-                raise ValueError("country_code is required when providing an address.")
+                raise _validation_error(
+                    "country_code is required when providing an address."
+                )
             address = StandardInvoiceBuilder._build_address(
                 country_code=country_code,
                 address_line_1=address_line_1,
@@ -1107,3 +1170,9 @@ class StandardInvoiceBuilder(
             address_line_2=address_line_2,
             gln=gln,
         )
+
+
+def _validation_error(message: str, *, validation_error: Exception | None = None):
+    from ksef2._core.exceptions import KSeFValidationError
+
+    return KSeFValidationError(message, validation_error=validation_error)

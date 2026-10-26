@@ -7,6 +7,13 @@ Use `auth.tokens` when an authenticated context needs to create or retire KSeF
 tokens for automation. The examples assume you already have an authenticated
 client named `auth`.
 
+Pass at least one permission to `generate()`. Permission strings use
+snake_case, such as `"invoice_read"`; `TokenPermissionEnum.INVOICE_READ` is also
+accepted. An API value such as `"InvoiceRead"` raises `KSeFArgumentError` with
+`did you mean "invoice_read"?`. Empty permission lists, empty token references
+passed to `revoke()`, and empty `ksef_token` values passed to `with_token()` fail
+locally with `KSeFArgumentError` before any HTTP request.
+
 ## Generate a token
 
 Choose the smallest permission set required by the automation that will use the
@@ -41,8 +48,6 @@ After persisting the credential, wait explicitly when the next operation needs
 an active token:
 
 ```python
-status = auth.tokens.generate(...).wait(timeout=60.0, poll_interval=1.0)
-# or, on the handle you already hold:
 status = token.wait(timeout=60.0, poll_interval=1.0)
 ```
 
@@ -84,7 +89,7 @@ for item in auth.tokens.list():
 
 # TokenInfo
 # {
-#   "reference_number": "20260625-TOKEN-...",
+#   "reference_number": "20260625-EC-0123456789-ABCDEF0123-45",
 #   "description": "nightly invoice export",
 #   "requested_permissions": ["invoice_read"],
 #   "status": "active"
@@ -131,17 +136,17 @@ same read is `second = await auth.tokens.list().page(cursor)`.
 Use the token reference number for later lifecycle operations.
 
 ```python
-status = auth.tokens.get_status(reference_number="20260625-TOKEN-...")
+status = auth.tokens.get_status(reference_number="20260625-EC-0123456789-ABCDEF0123-45")
 
 # TokenStatusResponse
 # {
-#   "reference_number": "20260625-TOKEN-...",
+#   "reference_number": "20260625-EC-0123456789-ABCDEF0123-45",
 #   "status": "active"
 # }
 ```
 
 ```python
-auth.tokens.revoke(reference_number="20260625-TOKEN-...")
+auth.tokens.revoke(reference_number="20260625-EC-0123456789-ABCDEF0123-45")
 ```
 
 :::tip[Keep reference and secret separately]

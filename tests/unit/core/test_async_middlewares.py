@@ -28,10 +28,11 @@ from ksef2._core.exceptions import (
     KSeFApiError,
     KSeFAuthError,
     KSeFClientClosedError,
+    KSeFPermissionDeniedError,
     KSeFRateLimitError,
 )
 from tests.unit.fakes.transport import AsyncFakeTransport
-from tests.unit.helpers import static_token_manager as _manager
+from tests.unit.support.helpers import static_token_manager as _manager
 
 
 # ---------------------------------------------------------------------------
@@ -348,7 +349,7 @@ class TestAsyncKSeFExceptionMiddleware:
             await middleware.request("GET", "/test")
 
     async def test_403_raises_auth_error(self) -> None:
-        """403 response raises KSeFAuthError."""
+        """403 response raises KSeFPermissionDeniedError."""
         fake = AsyncFakeTransport()
         fake.enqueue(
             json_body={
@@ -365,7 +366,7 @@ class TestAsyncKSeFExceptionMiddleware:
         )
 
         middleware = AsyncKSeFExceptionMiddleware(fake)
-        with pytest.raises(KSeFAuthError):
+        with pytest.raises(KSeFPermissionDeniedError):
             await middleware.request("GET", "/test")
 
     async def test_429_raises_rate_limit_error(self) -> None:
@@ -700,7 +701,11 @@ class TestAsyncRetryAfterCeiling:
             fake.enqueue(json_body={"error": "unavailable"}, status_code=503)
 
         config = RetryConfig(
-            max_attempts=5, initial_delay=0.5, backoff_multiplier=2.0, max_delay=4.0
+            max_attempts=5,
+            initial_delay=0.5,
+            backoff_multiplier=2.0,
+            max_delay=4.0,
+            jitter=False,
         )
         sleep_calls: list[float] = []
         mock_sleep = AsyncMock(side_effect=lambda s: sleep_calls.append(s))

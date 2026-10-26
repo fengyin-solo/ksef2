@@ -3,13 +3,13 @@ title: Build FA(3) Invoices
 description: Generate complete FA(3) invoice models and XML with the fluent builder.
 ---
 
-Use `FA3InvoiceBuilder` when your application owns invoice data as Python
+Use `InvoiceBuilder` when your application owns invoice data as Python
 objects and you want the SDK to produce typed FA(3) models and XML. The builder
 uses public SDK field names, then produces the same `KsefInvoice` aggregate used
 by the FA(3) mappers.
 
 :::tip[The builder covers advanced invoice paths]
-`FA3InvoiceBuilder` is the public nested builder for standard, simplified,
+`InvoiceBuilder` is the public nested builder for standard, simplified,
 correction, advance, settlement, correction-advance, and
 correction-settlement invoices. Use direct `KsefInvoice` model construction
 only when you already have model instances or need to bypass the fluent DSL.
@@ -38,10 +38,10 @@ then add nested body sections.
 from datetime import date
 from decimal import Decimal
 
-from ksef2.fa3 import FA3InvoiceBuilder, VatRate
+from ksef2.fa3 import InvoiceBuilder, VatRate
 
 builder = (
-    FA3InvoiceBuilder()
+    InvoiceBuilder()
     .header(system_info="ksef2 builder guide")
     .seller(
         name="Demo Seller Sp. z o.o.",
@@ -58,31 +58,31 @@ builder = (
         address_line_2="00-002 Warszawa",
     )
     .standard()
-        .issue_date(date(2026, 6, 24))
-        .issue_place("Warszawa")
-        .invoice_number("FV/1/2026")
-        .rows()
-            .add_line(
-                name="Implementation service",
-                quantity=Decimal("2"),
-                unit_price_net=Decimal("150.00"),
-                vat_rate=VatRate.VAT_23,
-            )
-            .add_line(
-                name="Support package",
-                quantity=Decimal("1"),
-                unit_price_net=Decimal("50.00"),
-                vat_rate=VatRate.VAT_8,
-            )
-        .done()
-        .payment()
-            .via("bank_transfer")
-            .due_on(date(2026, 7, 8))
-            .bank_account("PL10101010101010101010101010")
-        .done()
-        .annotations()
-            .split_payment()
-        .done()
+    .issue_date(date(2026, 6, 24))
+    .issue_place("Warszawa")
+    .invoice_number("FV/1/2026")
+    .rows()
+    .add_line(
+        name="Implementation service",
+        quantity=Decimal("2"),
+        unit_price_net=Decimal("150.00"),
+        vat_rate=VatRate.VAT_23,
+    )
+    .add_line(
+        name="Support package",
+        quantity=Decimal("1"),
+        unit_price_net=Decimal("50.00"),
+        vat_rate=VatRate.VAT_8,
+    )
+    .done()
+    .payment()
+    .via("bank_transfer")
+    .due_on(date(2026, 7, 8))
+    .bank_account("PL10101010101010101010101010")
+    .done()
+    .annotations()
+    .split_payment()
+    .done()
     .done()
 )
 ```
@@ -121,15 +121,26 @@ All selectors share body-wide methods such as `currency()`, `issue_date()`,
 `add_description()`, `mark_fp()`, `related_party_transaction()`, and
 `summary_overrides()`.
 
+For a non-PLN invoice, set `vat_currency_exchange_rate()` as well as
+`currency()`. `build()` raises a clear `ValueError` when a foreign currency has
+no VAT exchange rate.
+
 ## Add invoice rows
 
 Use `rows().add_line()` for normal application data. The builder calculates
 missing row totals from `quantity`, one unit price, and VAT classification.
 Provide either `unit_price_net` or `unit_price_gross`, not both.
 
+The builder rounds each row's net and VAT amounts to two decimal places before
+adding them to invoice totals. In the `10,000 × 1.5 × 10.01` example, this
+per-row calculation gives 150,200.00 net and 34,500.00 VAT. Calculating from
+the totals instead gives 150,150.00 net and 34,546.00 VAT. The builder follows
+the row-by-row amounts required by FA(3), so its totals can differ from a
+calculation that rounds only once at invoice level.
+
 ```python
 builder = (
-    FA3InvoiceBuilder()
+    InvoiceBuilder()
     .header(system_info="rows example")
     .seller(
         name="Demo Seller Sp. z o.o.",
@@ -162,10 +173,26 @@ Use `add_line_model()` or `replace_lines()` when another layer already created
 `InvoiceRow` models. Use `summary_overrides()` when a business case requires
 official FA(3) summary values that cannot be derived from row arithmetic.
 
+The builder calculates and rounds each row's amounts to two decimal places
+using `ROUND_HALF_UP`, then sums those rounded rows for invoice totals. This
+per-line rounding is the default; the builder has no total-based calculation
+mode.
+
+Amounts, quantities, prices, and exchange rates accept `Decimal`, `int`, `float`,
+and numeric strings. Pydantic converts floats to `Decimal` through their string
+representation, equivalent to `Decimal(str(value))`, before row calculations.
+Use `Decimal` or numeric strings when you need to preserve an exact decimal input.
+
 ## Add payments and annotations
 
 The payment builder supports a single payment form, due dates, partial payments,
 bank accounts, factor accounts, discounts, payment links, and IP KSeF data.
+
+When you add partial payments, call `partial_payment_status("partial")` for an
+invoice paid in part, or `partial_payment_status("final")` for an invoice fully
+paid in installments. These map to XSD flag values `1` and `2`. The builder
+requires an explicit choice at `done()` or `build()` because payment entries
+alone do not determine the status.
 
 ```python
 _ = (
@@ -173,6 +200,7 @@ _ = (
     .payment()
         .via("bank_transfer")
         .due_on(date(2026, 7, 8))
+        .partial_payment_status("partial")
         .add_partial_payment(
             amount=Decimal("50.00"),
             payment_date=date(2026, 6, 24),
@@ -207,10 +235,10 @@ invoice references.
 from datetime import date
 from decimal import Decimal
 
-from ksef2.fa3 import FA3InvoiceBuilder, InvoiceSummaryOverrides, VatRate
+from ksef2.fa3 import InvoiceBuilder, InvoiceSummaryOverrides, VatRate
 
 correction = (
-    FA3InvoiceBuilder()
+    InvoiceBuilder()
     .header(system_info="ksef2 correction guide")
     .seller(
         name="Demo Seller Sp. z o.o.",
@@ -225,33 +253,33 @@ correction = (
         address_line_1="Kwiatowa 2",
     )
     .correction()
-        .issue_date(date(2026, 7, 1))
-        .issue_place("Warszawa")
-        .invoice_number("FK/1/2026")
-        .summary_overrides(
-            InvoiceSummaryOverrides(
-                base_rate_net_total=Decimal("-100.00"),
-                base_rate_vat_total=Decimal("-23.00"),
-                total_gross=Decimal("-123.00"),
-            )
+    .issue_date(date(2026, 7, 1))
+    .issue_place("Warszawa")
+    .invoice_number("FK/1/2026")
+    .summary_overrides(
+        InvoiceSummaryOverrides(
+            base_rate_net_total=Decimal("-100.00"),
+            base_rate_vat_total=Decimal("-23.00"),
+            total_gross=Decimal("-123.00"),
         )
-        .rows()
-            .add_line(
-                name="Implementation service correction",
-                quantity=Decimal("1"),
-                unit_price_net=Decimal("-100.00"),
-                vat_rate=VatRate.VAT_23,
-            )
-        .done()
-        .correction()
-            .reason("Price correction")
-            .effect_type("other_date")
-            .add_corrected_invoice(
-                issue_date=date(2026, 6, 24),
-                invoice_number="FV/1/2026",
-                ksef_id="5261040828-20260624-ABCDEF-ABCDEF-FF",
-            )
-        .done()
+    )
+    .rows()
+    .add_line(
+        name="Implementation service correction",
+        quantity=Decimal("1"),
+        unit_price_net=Decimal("-100.00"),
+        vat_rate=VatRate.VAT_23,
+    )
+    .done()
+    .correction()
+    .reason("Price correction")
+    .effect_type("other_date")
+    .add_corrected_invoice(
+        issue_date=date(2026, 6, 24),
+        invoice_number="FV/1/2026",
+        ksef_id="5261040828-20260624-ABCDEFABCDEF-FF",
+    )
+    .done()
     .done()
     .build()
 )
@@ -261,6 +289,13 @@ The correction section also supports corrected invoice periods, corrected
 seller data, corrected buyers, and model-based input methods when you already
 hold public FA(3) models.
 
+A correction can express a delta directly, including a single negative row.
+When you want to show the before and after state, add both rows to
+`rows().add_line()`: set `before_correction=True` on the original row (FA(3)
+`StanPrzed`), then add the corrected row without that flag. The builder
+calculates the correction totals as the after values minus the before values.
+Add the corrected invoice reference in the nested `.correction()` section.
+
 ## Build advance and settlement invoices
 
 Advance invoices combine the body path with an order section, payment details,
@@ -269,7 +304,7 @@ advance invoices.
 
 ```python
 advance_xml = (
-    FA3InvoiceBuilder()
+    InvoiceBuilder()
     .header(system_info="advance guide")
     .seller(
         name="Demo Developer S.A.",
@@ -306,7 +341,7 @@ advance_xml = (
 
 ```python
 settlement_xml = (
-    FA3InvoiceBuilder()
+    InvoiceBuilder()
     .header(system_info="settlement guide")
     .seller(
         name="Demo Developer S.A.",
@@ -332,7 +367,7 @@ settlement_xml = (
             )
         .done()
         .advance()
-            .add_invoice_reference(ksef_id="5261040828-20260801-ABCDEF-ABCDEF-FF")
+            .add_invoice_reference(ksef_id="5261040828-20260801-ABCDEFABCDEF-FF")
         .done()
         .payment()
             .via("bank_transfer")
@@ -406,6 +441,11 @@ Path("invoice.xml").write_text(xml_text, encoding="utf-8")
 
 When sending through an online or batch session, pass XML bytes.
 
+Invoice building and PDF rendering have different costs. In one reported
+measurement, building 10,000 lines took 4.3 seconds and peaked at 63 MB; a
+2,000-line PDF took 24 seconds. These figures depend on the machine and invoice
+content, so benchmark representative invoices in your deployment.
+
 ```python
 from ksef2 import FormSchema
 
@@ -422,15 +462,15 @@ Persist incomplete builder state with `dump_state()` or `dump_state_json()`.
 Reload it later with `from_state()` or `from_state_json()`.
 
 ```python
-from ksef2.fa3 import FA3InvoiceBuilder, KsefInvoiceDraft
+from ksef2.fa3 import InvoiceBuilder, KsefInvoiceDraft
 
 draft_json = builder.dump_state_json(indent=2)
 draft = KsefInvoiceDraft.model_validate_json(draft_json)
-restored = FA3InvoiceBuilder.from_state(draft)
+restored = InvoiceBuilder.from_state(draft)
 ```
 
 If you already have a complete `KsefInvoice`, reopen it in the builder with
-`FA3InvoiceBuilder.from_invoice(invoice)`.
+`InvoiceBuilder.from_invoice(invoice)`.
 
 ## Troubleshoot builder errors
 
@@ -445,7 +485,7 @@ If you already have a complete `KsefInvoice`, reopen it in the builder with
 
 ## Recommended flow
 
-1. Create `FA3InvoiceBuilder()` and set header, seller, and buyer.
+1. Create `InvoiceBuilder()` and set header, seller, and buyer.
 
 2. Choose the body path with `standard()`, `correction()`, `advance()`, or the
    other invoice selector that matches the business document.
@@ -470,16 +510,18 @@ If you already have a complete `KsefInvoice`, reopen it in the builder with
 
 `parse_invoice_xml` accepts XML bytes and returns the public `KsefInvoice` model.
 No private schema or mapper imports are needed.
+Short filename-like strings raise `KSeFArgumentError`; read files with
+`Path(...).read_bytes()` before parsing.
 
 ```python
 from pathlib import Path
-from ksef2.fa3 import FA3InvoiceBuilder, parse_invoice_xml
+from ksef2.fa3 import InvoiceBuilder, parse_invoice_xml
 
 xml_bytes = Path("invoice.xml").read_bytes()
 invoice = parse_invoice_xml(xml_bytes)
 print(invoice.seller.tax_id, invoice.body.issue_date, invoice.total_gross)
 
-builder = FA3InvoiceBuilder.from_invoice(invoice)
+builder = InvoiceBuilder.from_invoice(invoice)
 rebuilt_xml = builder.to_xml()
 ```
 

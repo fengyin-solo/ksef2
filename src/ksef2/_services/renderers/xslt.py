@@ -3,6 +3,7 @@ from typing import final
 
 from lxml import etree
 
+from ksef2._core.paths import reject_path_like_content
 from ksef2._core.exceptions import KSeFInvoiceRenderingError
 from ksef2._core.xml import parse_xml_bytes, parse_xml_file
 from ksef2._infra.schema.fa3 import STYLESHEET_PATH as _DEFAULT_STYLESHEET_PATH
@@ -158,11 +159,13 @@ class InvoiceXSLTRenderer:
             The rendered HTML.
 
         Raises:
+            KSeFArgumentError: If a short string looks like a file path instead of XML content.
             KSeFInvoiceRenderingError: If the stylesheet or invoice XML cannot be
                 parsed, compiled, transformed, or serialized.
         """
         try:
             if isinstance(invoice_xml, str):
+                reject_path_like_content(invoice_xml, content_type="XML")
                 invoice_xml = invoice_xml.encode("utf-8")
 
             xml_doc = parse_xml_bytes(invoice_xml)

@@ -119,13 +119,14 @@ and key you get back.
 
 ```python
 import os
+from pathlib import Path
 
 from ksef2.xades import load_certificate_from_pem, load_private_key_from_pem
 
 password = os.environ.get("KSEF2_KEY_PASSWORD")
-cert = load_certificate_from_pem("company.pem")
+cert = load_certificate_from_pem(Path("company.pem"))
 private_key = load_private_key_from_pem(
-    "company.key",
+    Path("company.key"),
     password=password.encode() if password else None,
 )
 
@@ -167,12 +168,13 @@ The object form stays supported:
 
 ```python
 import os
+from pathlib import Path
 
 from ksef2.xades import load_certificate_and_key_from_p12
 
 password = os.environ.get("KSEF2_P12_PASSWORD")
 cert, private_key = load_certificate_and_key_from_p12(
-    "company.p12",
+    Path("company.p12"),
     password=password.encode() if password else None,
 )
 
@@ -264,10 +266,15 @@ store.save(
 Async clients use the same profile file and selection order:
 
 ```python
+import asyncio
+
 from ksef2 import AsyncClient, Environment
 
-async with AsyncClient(Environment.PRODUCTION) as client:
-    auth = await client.authentication.with_profile("prod-token")
+async def main() -> None:
+    async with AsyncClient(Environment.PRODUCTION) as client:
+        auth = await client.authentication.with_profile("prod-token")
+
+asyncio.run(main())
 ```
 
 **See also:**

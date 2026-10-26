@@ -6,6 +6,10 @@ description: Wyszukuj metadane faktur przez filtry, paginację i polling ksef2.
 Użyj `auth.invoices`, gdy potrzebujesz metadanych faktur poza sesją wysyłki.
 Przykłady poniżej zakładają, że masz już uwierzytelnionego klienta `auth`.
 
+`InvoiceMetadataParams.page_size` przyjmuje wartości od 10 do 250. Zakres dat
+metadanych może obejmować najwyżej 100 dni; dłuższe wyszukiwania podziel na
+kolejne zakresy.
+
 ## Zbuduj wąski filtr
 
 Zacznij od pytania biznesowego: jaka rola, jakie pole daty i jaki przedział
@@ -30,6 +34,10 @@ filters = InvoicesFilter.for_seller(
 mapowaniem requestu. Wartości z jawnym offsetem zachowują swój moment. Wartości
 bez strefy są interpretowane jako czas lokalny Europe/Warsaw; niejednoznaczne
 albo nieistniejące godziny zmiany czasu muszą zawierać jawny offset.
+
+KSeF przyjmuje zakresy zapytań o długości najwyżej 100 dni. Dłuższe zapytania
+historyczne podziel na krótsze przedziały. `InvoiceMetadataParams.page_size`
+musi wynosić od 10 do 250; domyślna wartość to 10.
 
 :::tip[Do synchronizacji użyj dat trwałego zapisu]
 `issue_date` jest zwykle właściwe dla okresów księgowych. Dla automatycznej
@@ -149,7 +157,7 @@ filters = InvoicesFilter.for_seller(
     date_type="permanent_storage",
     date_from=now - timedelta(days=30),
     date_to=now,
-    ksef_number="1234567890-20260625-...",
+    ksef_number="5261040828-20260625-ABCDEF012345-67",
 )
 
 page = auth.invoices.search(filters).first_page()
@@ -199,3 +207,6 @@ czekasz. Jeśli nic nie pojawi się na czas, rzuca `KSeFInvoiceQueryTimeoutError
 - [Pobierz faktury](download-invoices.md): Pobierz XML faktury bezpośrednio albo przez szyfrowaną paczkę eksportu.
 - [Wyślij faktury](send-invoices.md): Wyślij XML faktury przez sesję online albo wsadową przed wyszukiwaniem wyniku.
 - [Zapytania i eksporty](../concepts/querying-and-exports.md): Zrozum metadane, bezpośrednie pobieranie, paczki eksportu i synchronizację HWM.
+`InvoiceMetadataParams.page_size` przyjmuje wartości od 10 do 250. Zakres dat
+metadanych może obejmować najwyżej 100 dni; dłuższe wyszukiwania podziel na
+kolejne zakresy.

@@ -5,7 +5,8 @@ from enum import StrEnum
 
 from pydantic import Field, model_validator
 
-from ksef2._domain.models import KSeFBaseModel
+from ksef2._domain.models.base import KSeFBaseModel as KSeFBaseModel
+from ksef2._domain.models.fa3.base import Fa3Model
 
 
 class MarginProcedure(StrEnum):
@@ -17,7 +18,7 @@ class MarginProcedure(StrEnum):
     COLLECTIBLES_AND_ANTIQUES = "collectibles_and_antiques"
 
 
-class InvoiceTaxExemption(KSeFBaseModel):
+class InvoiceTaxExemption(Fa3Model):
     """FA(3) invoice tax-exemption annotation.
 
     References:
@@ -75,7 +76,7 @@ class InvoiceTaxExemption(KSeFBaseModel):
         return self
 
 
-class NewTransportMeansItem(KSeFBaseModel):
+class NewTransportMeansItem(Fa3Model):
     """FA(3) new means of transport annotation line.
 
     References:
@@ -161,7 +162,7 @@ class NewTransportMeansItem(KSeFBaseModel):
     """Serial number of an aircraft (``P_22D1``)."""
 
 
-class NewTransportSupply(KSeFBaseModel):
+class NewTransportSupply(Fa3Model):
     """FA(3) annotation for intra-Community supply of new means of transport.
 
     References:
@@ -185,7 +186,7 @@ class NewTransportSupply(KSeFBaseModel):
     """New means of transport supplied (1–10000)."""
 
 
-class InvoiceAnnotationsContext(KSeFBaseModel):
+class InvoiceAnnotationsContext(Fa3Model):
     """FA(3) invoice annotations stored in ``Fa/Adnotacje``.
 
     References:

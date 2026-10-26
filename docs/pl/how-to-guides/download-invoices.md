@@ -14,7 +14,7 @@ Jeśli masz numer KSeF, bezpośrednie pobranie to najkrótsza droga.
 ```python
 from pathlib import Path
 
-ksef_number = "1234567890-20260625-..."
+ksef_number = "5261040828-20260625-ABCDEF012345-67"
 
 xml_bytes = auth.invoices.download(ksef_number)
 Path("invoice.xml").write_bytes(xml_bytes)
@@ -60,6 +60,19 @@ w granicy, którą KSeF raportuje jako kompletną. Zapisz
 `export()` planuje eksport i zwraca `ExportJob`. Jego `wait()` odpytuje KSeF,
 aż paczka będzie gotowa, pobiera i odszyfrowuje części, łączy je i zwraca obiekt
 `ExportedInvoices`.
+
+Dla dużych paczek użyj `job.download(Path(...))`, aby zapisać połączone,
+odszyfrowane archiwum na dysku. Metoda zwraca `ExportedInvoices` korzystający z
+tego pliku. Każda część AES jest odszyfrowywana fragmentami i sprawdzana według
+rozmiaru oraz sumy SHA-256 otrzymanych z KSeF; dane trafiają do nowego pliku
+tymczasowego o unikalnej nazwie obok pliku docelowego, który atomowo zastępuje
+plik docelowy dopiero po poprawnym sprawdzeniu wszystkich części. W razie błędu
+plik tymczasowy jest usuwany, a istniejący plik docelowy pozostaje bez zmian. Obecny transport HTTP buforuje każdą zaszyfrowaną
+odpowiedź, więc pamięć zależy od rozmiaru pobranej części, a nie całego
+odszyfrowanego archiwum.
+
+Opcjonalny `compression_type` przyjmuje `"zip"` albo `"tar_gz"`. Gdy go
+pominięto, format paczki wybiera serwer.
 
 ```python
 job = auth.invoices.export(filters)
@@ -130,6 +143,11 @@ written = restored.save(Path("downloads"))
 Fabryka domyślnie używa `compression="zip"`. Dla eksportu TarGz zapisz bajty
 archiwum w pliku `.tar.gz` i podaj `compression="tar_gz"` przy odtwarzaniu.
 Użyj formatu kompresji oryginalnego eksportu; fabryka nie wykrywa go automatycznie.
+Jeśli archiwum jest już na dysku, użyj `ExportedInvoices.from_path(path,
+compression="zip")`, aby czytać wpisy bez wczytywania całego archiwum.
+Obie metody przyjmują `Path` lub dowolny inny obiekt `os.PathLike`; wartość
+`str` lub `bytes` zgłasza `KSeFArgumentError`, ponieważ SDK traktuje napisy jako
+treść, a nie nazwy plików.
 
 Utworzenie obiektu nie otwiera ani nie waliduje archiwum. `metadata` czyta
 `_metadata.json` przy pierwszym dostępie i zapamiętuje wynik: `None` oznacza brak
@@ -236,12 +254,15 @@ output = exporter.export_to_file(
 Podaj rzeczywisty numer KSeF nadany tej fakturze. `ksef_number` dodaje lokalnie
 wygenerowany kod QR w formacie SVG oraz numer pod kodem. Pominięcie tego argumentu
 zachowuje dotychczasowy PDF bez QR. Ten sam argument obsługują `export_from_path()`
-i `export_from_string()`. Domyślnym środowiskiem jest `Environment.PRODUCTION`;
-dla faktur testowych lub demo wybierz odpowiednio `TEST` lub `DEMO`.
+i `export_from_string()`. `verification_environment` jest wymagane; wybierz
+środowisko, w którym wystawiono fakturę.
 Kod zawiera NIP sprzedawcy, datę wystawienia oraz SHA-256 **oryginalnych bajtów XML**,
 zakodowany jako Base64URL bez dopełnienia, zgodnie z
 [specyfikacją kodów QR Ministerstwa Finansów](https://github.com/CIRFMF/ksef-docs/blob/main/kody-qr.md).
 Do `export_from_string()` przekazuj bajty; tekst jest kodowany jako UTF-8.
+Krótkie napisy wyglądające jak ścieżki przekazane do `export_from_string()` lub
+`InvoiceXSLTRenderer.render_from_string()` zgłaszają `KSeFArgumentError`.
+Do odczytu plików użyj metod `export_from_path()` lub `render_from_path()`.
 Ponowna serializacja faktury zmienia skrót. Eksport nie sprawdza przyjęcia faktury
 ani tego, czy podany numer KSeF należy do niej.
 

@@ -16,7 +16,11 @@ from ksef2._domain.models.fa3.body import (
     VatClassification,
     VatRate,
 )
-from ksef2._domain.models.fa3.body.tax import coerce_vat_classification
+from ksef2._domain.models.fa3.body.tax import (
+    VatRateInput,
+    coerce_vat_classification,
+)
+from ksef2._domain.models._enum import coerce_enum
 from ksef2._services.builders.fa3.metadata import builder_param
 
 
@@ -39,7 +43,7 @@ RowNameParam = Annotated[
     ),
 ]
 RowQuantityParam = Annotated[
-    Decimal,
+    Decimal | int | float | str,
     builder_param(
         "Quantity billed on this line.",
         examples=["1", "2.5"],
@@ -47,7 +51,7 @@ RowQuantityParam = Annotated[
     ),
 ]
 RowUnitPriceNetParam = Annotated[
-    Decimal | None,
+    Decimal | int | float | str | None,
     builder_param(
         "Net unit price for one item or one service unit. Provide either this or unit_price_gross.",
         examples=["100.00", "2499.99"],
@@ -55,7 +59,7 @@ RowUnitPriceNetParam = Annotated[
     ),
 ]
 RowUnitPriceGrossParam = Annotated[
-    Decimal | None,
+    Decimal | int | float | str | None,
     builder_param(
         "Gross unit price for one item or one service unit. Provide either this or unit_price_net.",
         examples=["123.00", "3074.99"],
@@ -63,7 +67,7 @@ RowUnitPriceGrossParam = Annotated[
     ),
 ]
 RowVatRateParam = Annotated[
-    VatRate | str | None,
+    VatRateInput | None,
     builder_param(
         "VAT rate used for the line when a standard VAT indicator is enough.",
         examples=["23", "8", "0", "zw"],
@@ -97,7 +101,7 @@ RowSupplyDateParam = Annotated[
     ),
 ]
 RowDiscountAmountParam = Annotated[
-    Decimal | None,
+    Decimal | int | float | str | None,
     builder_param(
         "Discount amount applied to the line.",
         examples=["0.00", "15.50"],
@@ -124,7 +128,7 @@ RowTaxRegimeParam = Annotated[
     ),
 ]
 RowOverrideAmountParam = Annotated[
-    Decimal | None,
+    Decimal | int | float | str | None,
     builder_param(
         "Explicit line amount. Usually computed automatically; set it only when you intentionally need to override the builder's calculation.",
         examples=["100.00", "123.00"],
@@ -133,7 +137,7 @@ RowOverrideAmountParam = Annotated[
     ),
 ]
 RowVatRateXiiParam = Annotated[
-    Decimal | None,
+    Decimal | int | float | str | None,
     builder_param(
         "VAT rate used for special Title XII scenarios.",
         examples=["8.50"],
@@ -150,7 +154,7 @@ RowAnnex15Param = Annotated[
     ),
 ]
 RowExciseAmountParam = Annotated[
-    Decimal | None,
+    Decimal | int | float | str | None,
     builder_param(
         "Excise amount linked to the line when required by the invoice scenario.",
         examples=["12.30"],
@@ -185,7 +189,7 @@ RowProcedureParam = Annotated[
     ),
 ]
 RowCurrencyExchangeRateParam = Annotated[
-    Decimal | None,
+    Decimal | int | float | str | None,
     builder_param(
         "Currency exchange rate used for this line when the line requires its own rate.",
         examples=["4.2512"],
@@ -210,7 +214,7 @@ def _default_state() -> RowsState:
 def _coerce_vat_rate(vat_rate: VatRate | str | None) -> VatRate | None:
     if vat_rate is None or isinstance(vat_rate, VatRate):
         return vat_rate
-    return VatRate(vat_rate)
+    return coerce_enum(VatRate, vat_rate)
 
 
 def _coerce_sale_category(
@@ -218,15 +222,11 @@ def _coerce_sale_category(
 ) -> SaleCategory | None:
     if sale_category is None:
         return None
-    if isinstance(sale_category, SaleCategory):
-        return sale_category
-    return SaleCategory(sale_category)
+    return coerce_enum(SaleCategory, sale_category)
 
 
 def _coerce_tax_regime(tax_regime: TaxRegime | str) -> TaxRegime:
-    if isinstance(tax_regime, TaxRegime):
-        return tax_regime
-    return TaxRegime(tax_regime)
+    return coerce_enum(TaxRegime, tax_regime)
 
 
 def _coerce_vat_classification(
@@ -236,13 +236,15 @@ def _coerce_vat_classification(
 
 
 def _validate_unit_price_choice(
-    unit_price_net: Decimal | None,
-    unit_price_gross: Decimal | None,
+    unit_price_net: Decimal | int | float | str | None,
+    unit_price_gross: Decimal | int | float | str | None,
 ) -> None:
     if unit_price_net is not None and unit_price_gross is not None:
-        raise ValueError("Provide either unit_price_net or unit_price_gross, not both.")
+        raise _validation_error(
+            "Provide either unit_price_net or unit_price_gross, not both."
+        )
     if unit_price_net is None and unit_price_gross is None:
-        raise ValueError("Provide unit_price_net or unit_price_gross.")
+        raise _validation_error("Provide unit_price_net or unit_price_gross.")
 
 
 class RowsBuilder[TParent]:
@@ -350,34 +352,38 @@ class RowsBuilder[TParent]:
         """
         _validate_unit_price_choice(unit_price_net, unit_price_gross)
         self._state["rows"].append(
-            InvoiceRow(
-                name=name,
-                quantity=quantity,
-                unit_price_net=unit_price_net,
-                vat_rate=_coerce_vat_rate(vat_rate),
-                vat_classification=_coerce_vat_classification(vat_classification),
-                unit_of_measure=unit_of_measure,
-                supply_date=supply_date,
-                discount_amount=discount_amount,
-                sale_category=_coerce_sale_category(sale_category),
-                tax_regime=_coerce_tax_regime(tax_regime),
-                net_amount=net_amount,
-                vat_amount=vat_amount,
-                gross_amount=gross_amount,
-                unit_price_gross=unit_price_gross,
-                vat_rate_xii=vat_rate_xii,
-                annex_15_marker=annex_15_marker,
-                excise_amount=excise_amount,
-                unique_id=unique_id,
-                sku=sku,
-                gtin=gtin,
-                pkwiu=pkwiu,
-                cn=cn,
-                pkob=pkob,
-                gtu_code=gtu_code,
-                procedure=procedure,
-                currency_exchange_rate=currency_exchange_rate,
-                before_correction=before_correction,
+            InvoiceRow.model_validate(
+                {
+                    "name": name,
+                    "quantity": quantity,
+                    "unit_price_net": unit_price_net,
+                    "vat_rate": _coerce_vat_rate(vat_rate),
+                    "vat_classification": _coerce_vat_classification(
+                        vat_classification
+                    ),
+                    "unit_of_measure": unit_of_measure,
+                    "supply_date": supply_date,
+                    "discount_amount": discount_amount,
+                    "sale_category": _coerce_sale_category(sale_category),
+                    "tax_regime": _coerce_tax_regime(tax_regime),
+                    "net_amount": net_amount,
+                    "vat_amount": vat_amount,
+                    "gross_amount": gross_amount,
+                    "unit_price_gross": unit_price_gross,
+                    "vat_rate_xii": vat_rate_xii,
+                    "annex_15_marker": annex_15_marker,
+                    "excise_amount": excise_amount,
+                    "unique_id": unique_id,
+                    "sku": sku,
+                    "gtin": gtin,
+                    "pkwiu": pkwiu,
+                    "cn": cn,
+                    "pkob": pkob,
+                    "gtu_code": gtu_code,
+                    "procedure": procedure,
+                    "currency_exchange_rate": currency_exchange_rate,
+                    "before_correction": before_correction,
+                }
             )
         )
         return self
@@ -547,7 +553,7 @@ class RowsBuilder[TParent]:
             ValueError: If no invoice rows have been added.
         """
         if self._is_empty():
-            raise ValueError("Invoice rows are empty. Add at least one line.")
+            raise _validation_error("Invoice rows are empty. Add at least one line.")
         self._on_done(self.build())
         return self._parent
 
@@ -567,3 +573,9 @@ class RowsBuilderMixin:
 
     def _set_rows(self, value: list[InvoiceRow]) -> None:
         self._rows = list(value)
+
+
+def _validation_error(message: str):
+    from ksef2._core.exceptions import KSeFValidationError
+
+    return KSeFValidationError(message)

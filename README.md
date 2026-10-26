@@ -93,6 +93,8 @@ pipx install ksef2-cli
 Use the authentication method that matches the environment you are working with.
 
 ```python
+from pathlib import Path
+
 from ksef2 import Client, Environment
 from ksef2.xades import (
     load_certificate_from_pem,
@@ -111,8 +113,8 @@ token = client.authentication.with_token(
 )
 
 # DEMO and PRODUCTION can authenticate with an MCU-issued XAdES certificate.
-cert = load_certificate_from_pem("company.pem")
-key = load_private_key_from_pem("company.key")
+cert = load_certificate_from_pem(Path("company.pem"))
+key = load_private_key_from_pem(Path("company.key"))
 
 xades = Client(Environment.DEMO).authentication.with_xades(
     nip="5261040828",

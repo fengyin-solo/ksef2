@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 
 from pydantic import Field, TypeAdapter
 
-from ksef2._domain.models.base import KSeFBaseModel, KSeFResumeState
+from ksef2._domain.models.base import KSeFBaseModel, KSeFResumeState, validation_errors
 
 type IdentifierType = Literal["nip", "pesel", "fingerprint"]
 type RevocationReason = Literal["unspecified", "superseded", "key_compromise"]
@@ -16,7 +16,7 @@ type CertificateSerialNumber = Annotated[
     str, Field(max_length=16, min_length=16, pattern="^[0-9A-F]{16}$")
 ]
 
-_CERTIFICATE_SERIAL_NUMBER_ADAPTER = TypeAdapter(CertificateSerialNumber)
+_CERTIFICATE_SERIAL_NUMBER_ADAPTER = TypeAdapter[str](CertificateSerialNumber)
 
 
 def validate_certificate_serial_number(value: str) -> CertificateSerialNumber:
@@ -29,9 +29,10 @@ def validate_certificate_serial_number(value: str) -> CertificateSerialNumber:
         The validated serial number.
 
     Raises:
-        pydantic.ValidationError: If ``value`` is not a valid certificate serial number.
+        KSeFValidationError: If ``value`` is not a valid certificate serial number.
     """
-    return _CERTIFICATE_SERIAL_NUMBER_ADAPTER.validate_python(value)
+    with validation_errors("certificate_serial_number"):
+        return _CERTIFICATE_SERIAL_NUMBER_ADAPTER.validate_python(value)
 
 
 class CertificateTypeEnum(StrEnum):

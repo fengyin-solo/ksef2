@@ -16,7 +16,7 @@ They are the paths intended to remain stable through the 1.x line.
 | `ksef2.fa3` | `InvoiceBuilder` is the canonical FA(3) builder. `FA3InvoiceBuilder` remains a deprecated alias through 1.x; draft snapshots and FA(3) domain models are also exported here. |
 | `ksef2.logging` | `configure_logging()` to opt in to structured SDK logging. |
 | `ksef2.xades` | Certificate loading, TEST certificate generation, local XAdES signing helpers, `LocalSigner`, and the `XAdESCredentials` holder accepted by `with_xades()`. |
-| `ksef2.certificate_stores` | Signing-certificate store protocols (`SigningCertificateStoreProtocol`, `AsyncSigningCertificateStoreProtocol`), the `SigningCertificate` record types, and in-memory reference adapters. Not the KSeF encryption-certificate cache. |
+| `ksef2.certificate_stores` | Signing-certificate store protocols (`SigningCertificateStoreProtocol`, `AsyncSigningCertificateStoreProtocol`), the `SigningCertificate` record types, and in-memory and encrypted filesystem reference adapters. Not the KSeF encryption-certificate cache. |
 | `ksef2.testdata` | TEST-only helpers that generate valid NIP and PESEL numbers (`generate_nip`, `generate_pesel`). |
 | `ksef2.profiles` | Local `ksef2-cli` compatible profile config helpers. |
 | `ksef2.renderers` | Local XSLT rendering; PDF rendering also requires the `[pdf]` extra. `InvoicePDFExporter` reports a clear install error when first used without it. |

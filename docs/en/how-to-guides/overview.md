@@ -34,6 +34,7 @@ guides separate the decisions you usually make in production code.
 - [Query PEPPOL providers](query-peppol-providers.md): Query public PEPPOL provider data from the root client.
 - [Use TEST data](use-test-data.md): Create sandbox subjects, permissions, attachment flags, and temporal cleanup fixtures.
 - [Use XAdES helpers](use-xades-helpers.md): Load certificate material, generate TEST certificates, and sign XML.
+- [Store signing certificates](store-signing-certificates.md): Keep signing pairs in memory or in password-encrypted files, and pick them by reference.
 - [Write a signing-certificate store](write-signing-certificate-store.md): Keep your own signing certificate and key in a keychain, database, or secret manager.
 - [Low-level API](../reference/low-level/overview.md): Drop to schema-native endpoint wrappers for custom signing, encryption custody, or payload debugging.
 

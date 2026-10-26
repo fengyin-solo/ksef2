@@ -1,9 +1,32 @@
-## Unreleased
+## v1.1.0 (unreleased)
+
+### Added
+
+- Add `ksef2.certificate_stores` with sync and async signing-certificate store
+  protocols, `SigningCertificate` records and in-memory adapters, plus
+  `KSeFCertificateStore*` errors. Additive and optional; existing XAdES, profile and
+  encryption-certificate store APIs are unchanged.
+- Add `authentication.with_stored_certificate()` on sync and async clients to authenticate with a certificate loaded from a signing-certificate store, rejecting wrong-environment, Offline and mismatched records before contacting KSeF. Document storing issued certificates and writing custom store adapters.
+- Add `FilesystemSigningCertificateStore` and `AsyncFilesystemSigningCertificateStore`:
+  one password-encrypted record per certificate, atomic publication, owner-only
+  files on POSIX, and metadata listing without unlocking keys.
+
+## v1.0.1 (unreleased)
 
 ### Fixed
 
 - Correct the certificate enrollment guide: `enroll(csr=...)` takes a Base64-encoded
   DER CSR, not PEM text.
+- Resolve XSLT code descriptions offline with bundled official country, tax-office,
+  tax-office ex-WUS, tax-office-head, and currency lists when
+  `enable_code_lookups=True`. Keep network access and writes blocked, and include
+  unresolved URIs in `KSeFInvoiceRenderingError` messages and details (#324).
+- Preserve the Base64 certificate text returned by `auth.certificates.retrieve()`
+  instead of decoding DER bytes as UTF-8 (#323). Generate all OpenAPI byte fields
+  as strings so certificates, hashes, and encrypted data retain their wire values.
+- Include offending field paths and validation messages in
+  `KSeFResponseValidationError.details` for individual and list responses, and
+  preserve the original Pydantic validation error.
 
 ## v1.0.0 (2026-10-26)
 

@@ -11,6 +11,12 @@ Use the default in-memory store for scripts and workers that can refresh
 certificates from KSeF. Provide a custom store when certificates must be shared
 across processes or persisted in application storage.
 
+:::note[This is the public encryption-certificate cache]
+This page is about the cache of KSeF's public encryption certificates. To store
+your own signing certificate and private key, see
+[Certificates](../concepts/certificates.md).
+:::
+
 ## Use the default store
 
 `Client` and `AsyncClient` create `CertificateStore` automatically. The default

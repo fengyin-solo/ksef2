@@ -1,7 +1,8 @@
 """Regenerate or verify schema-derived source and packaged definition files.
 
-``schemas/FA3`` owns the shared XSD and XML definitions. The packaged XSL files
-are runtime-only assets and are intentionally left untouched.
+``schemas/FA3`` owns the shared XSD and XML definitions and code-list provenance
+manifest. The packaged XSL files are runtime-only assets and are intentionally
+left untouched.
 """
 
 import argparse
@@ -63,6 +64,10 @@ def generate_openapi_models(output: Path) -> None:
             "openapi",
             "--output-model-type",
             "pydantic_v2.BaseModel",
+            # OpenAPI byte strings carry Base64 text for binary data. Pydantic's
+            # Base64Str decodes it as UTF-8, rejecting DER and changing wire values.
+            "--type-mappings",
+            "string+byte=string",
             "--use-annotated",
             "--field-constraints",
             "--use-standard-collections",
@@ -82,6 +87,13 @@ def generate_openapi_models(output: Path) -> None:
         ]
     )
     format_python(output)
+    # Match the repository's trailing-whitespace commit hook for spec docstrings.
+    source = output.read_text(encoding="utf-8")
+    _ = output.write_text(
+        "\n".join(line.rstrip() for line in source.splitlines()) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
 
 
 def add_generated_pyright_ignores(path: Path) -> None:
@@ -190,12 +202,12 @@ def sync_fa3(*, check: bool, temporary_root: Path) -> bool:
     expected_definition_names = {
         path.name
         for path in FA3_SOURCE.iterdir()
-        if path.is_file() and path.suffix in {".xml", ".xsd"}
+        if path.is_file() and path.suffix in {".xml", ".xsd", ".json"}
     }
     actual_definition_names = {
         path.name
         for path in FA3_DEFINITIONS_TARGET.glob("*")
-        if path.is_file() and path.suffix in {".xml", ".xsd"}
+        if path.is_file() and path.suffix in {".xml", ".xsd", ".json"}
     }
 
     for name in sorted(expected_definition_names):

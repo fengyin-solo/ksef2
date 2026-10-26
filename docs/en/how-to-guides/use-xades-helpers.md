@@ -147,6 +147,29 @@ xml = build_auth_token_request_xml(
 signed_xml = sign_xades(xml, cert, private_key)
 ```
 
+## Sign with a stored certificate
+
+A signing-certificate store hands back a loaded record, so its certificate and
+key go straight into `LocalSigner`. The private key is the object the store
+returned: it is reused for signing, never exported, re-encrypted or reparsed.
+The snippets below assume `store` is a store that holds the record and
+`reference` is that record's reference.
+
+```python
+from ksef2.xades import LocalSigner
+
+record = store.load(reference)
+signer = LocalSigner(
+    cert=record.credentials.certificate,
+    private_key=record.credentials.private_key,
+)
+
+signed_xml = signer.sign(xml)
+```
+
+Keep `record` secret while it is alive: it holds the private key. Use
+`with_stored_certificate()` instead when the signing is for authentication.
+
 :::caution[Protect private keys]
 Keep private-key files and passwords outside source control. Load passwords from
 environment variables or a secret manager. `XAdESCredentials` keeps the loaded

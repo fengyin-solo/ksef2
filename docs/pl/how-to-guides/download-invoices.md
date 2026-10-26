@@ -231,6 +231,29 @@ opisuje [Operacje](../reference/operations.md).
 - [Sprawdź certyfikaty szyfrowania](inspect-encryption-certificates.md): Sprawdź publiczne certyfikaty KSeF używane przez szyfrowane przepływy.
 
 
+## Wyświetl opisy kodów offline
+
+`InvoiceXSLTRenderer` i `InvoicePDFExporter` przyjmują `enable_code_lookups=True`,
+aby dodać opisy z dołączonych oficjalnych słowników XSD krajów, walut, urzędów
+skarbowych, urzędów skarbowych bez WUS oraz naczelników urzędów skarbowych.
+Połączenie z siecią nie jest wymagane.
+
+```python
+from ksef2.renderers import InvoiceXSLTRenderer
+
+renderer = InvoiceXSLTRenderer(enable_code_lookups=True)
+html = renderer.render_from_path("invoice.xml")
+```
+
+Domyślnie opisy kodów są wyłączone, a funkcja XSLT `document()` nie może czytać
+plików ani korzystać z sieci. Włączenie opisów zezwala na odczyt plików lokalnych.
+Dostęp do sieci i zapis pozostają zablokowane. Używaj tej opcji tylko z zaufanymi
+arkuszami stylów i XML faktur: oba mogą skierować `document()` do innych plików
+lokalnych. Odwołania do zdalnych hostów pozostają zablokowane. Opcja nie ogranicza
+odczytu do dołączonych słowników. Jeśli nie można odczytać dokumentu spod danego
+URI, `KSeFInvoiceRenderingError` zawiera ten URI w komunikacie i w
+`context["details"]`.
+
 ## Eksportuj PDF z weryfikacyjnym kodem QR
 
 Zainstaluj opcjonalne zależności przez `pip install 'ksef2[pdf]'` oraz biblioteki

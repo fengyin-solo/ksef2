@@ -74,6 +74,28 @@ Rejestracja certyfikatu wymaga uwierzytelnienia XAdES, ponieważ KSeF używa
 tożsamości z certyfikatu podpisującego jako źródła danych podmiotu.
 :::
 
+## Magazyny certyfikatów podpisu a cache certyfikatów szyfrowania
+
+SDK ma dwie rzeczy nazwane magazynem i one się nie spotykają. Żadna z nich nie
+jest usługą KSeF: obie działają w Twojej aplikacji.
+
+| | `ksef2.certificate_stores` | Cache `certificate_store=` |
+| --- | --- | --- |
+| Co trzyma | Twój certyfikat podpisu i jego klucz prywatny. | Publiczne certyfikaty szyfrowania KSeF. |
+| Kto wkłada materiał | Twoja aplikacja przez `save()`. | SDK, pobierając z `client.encryption`. |
+| Do czego służy | Przekazanie pary do `with_stored_certificate()` albo do podpisującego. | Szyfrowanie materiału kluczy tokena, sesji i eksportu dla KSeF. |
+| Sekret? | Tak, trzyma klucz prywatny. | Nie, wszystko w nim jest publiczne. |
+
+Przekazanie magazynu certyfikatów podpisu jako `certificate_store=` albo
+oczekiwanie, że `with_stored_certificate()` przeczyta cache szyfrowania, miesza
+te role.
+
+Lokalny rekord mówi tylko to, co twierdzi sam certyfikat. Nie mówi, czy KSeF
+nadal uważa certyfikat za aktywny i nieunieważniony — zapytaj KSeF przez
+`auth.certificates.list()`. Obie strony tej różnicy mają znaczenie. Usunięcie
+lokalnego rekordu nie cofa niczego w KSeF, a unieważnienie certyfikatu w KSeF nie
+usuwa rekordu z Twojego magazynu.
+
 ## Relacja do XAdES i szyfrowania
 
 XAdES używa materiału certyfikatu do podpisania XML uwierzytelniającego.
@@ -89,6 +111,8 @@ deszyfrowania paczki eksportu, należy do modelu szyfrowania.
 ## Powiązane strony
 
 - [Zarządzaj certyfikatami](../how-to-guides/manage-certificates.md): Rejestruj, pobieraj, wyszukuj i unieważniaj certyfikaty KSeF z kodu uwierzytelnionego.
+- [Własny magazyn certyfikatów podpisu](../how-to-guides/write-signing-certificate-store.md): Zaimplementuj magazyn trzymający Twój certyfikat i klucz.
+- [Skonfiguruj magazyn certyfikatów](../how-to-guides/configure-certificate-store.md): Skonfiguruj cache publicznych certyfikatów szyfrowania KSeF.
 - [XAdES](xades.md): Zrozum podpis XML oparty o certyfikat podczas uwierzytelniania.
 - [Szyfrowanie](encryption.md): Zrozum publiczne certyfikaty szyfrowania KSeF i rotację kluczy.
 - [Uprawnienia](permissions.md): Zrozum, dlaczego tożsamość uwierzytelniania i uprawnienia operacji są osobne.

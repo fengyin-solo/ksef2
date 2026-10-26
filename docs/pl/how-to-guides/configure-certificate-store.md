@@ -11,6 +11,12 @@ Użyj domyślnego magazynu pamięciowego dla skryptów i workerów, które mogą
 odświeżać certyfikaty z KSeF. Przekaż własny magazyn, gdy certyfikaty muszą być
 współdzielone między procesami albo zapisane w magazynie aplikacji.
 
+:::note[To cache publicznych certyfikatów szyfrowania]
+Ta strona opisuje cache publicznych certyfikatów szyfrowania KSeF. Aby zapisać
+własny certyfikat podpisu i klucz prywatny, zobacz
+[Certyfikaty](../concepts/certificates.md).
+:::
+
 ## Użyj domyślnego magazynu
 
 `Client` i `AsyncClient` tworzą `CertificateStore` automatycznie. Domyślny

@@ -12,10 +12,11 @@ stabilne w linii 1.x.
 | --- | --- |
 | `ksef2` | Klienci root, konfiguracja środowiska i transportu, `FormSchema`, `__version__` oraz publiczne wyjątki. |
 | `ksef2.clients` | Konkretne klasy klientów sync/async, stabilne typy workflow `InvoicesService` / `BatchService` oraz typy uchwytów, stronicowania i wyniku eksportu (`InvoiceSubmission`, `ExportJob`, `GeneratedToken`, `PermissionOperation`, `CertificateEnrollment`, `ExportedInvoices`, `Pager`, `OperationHandle`) wraz z odpowiednikami async, do adnotacji typów. |
-| `ksef2.models` | Modele żądań, odpowiedzi, filtrów, paginacji (w tym `Page`), tokenów, uprawnień, sesji, batchy, eksportu i stanów wznowienia (`ExportResumeState`, `GeneratedTokenResumeState`, `CertificateEnrollmentResumeState`, `PermissionOperationResumeState`, `InvoiceSubmissionResumeState`) oraz obiekt poświadczeń XAdES (`XAdESCredentials`). |
+| `ksef2.models` | Modele żądań, odpowiedzi, filtrów, paginacji (w tym `Page`), tokenów, uprawnień, sesji, batchy, eksportu i stanów wznowienia (`ExportResumeState`, `GeneratedTokenResumeState`, `CertificateEnrollmentResumeState`, `PermissionOperationResumeState`, `InvoiceSubmissionResumeState`) oraz obiekt poświadczeń XAdES (`XAdESCredentials`) i rekordy certyfikatów podpisujących (`SigningCertificate`, `SigningCertificateInfo`, `SigningCertificateRef`). |
 | `ksef2.fa3` | `InvoiceBuilder` jest kanonicznym builderem FA(3). `FA3InvoiceBuilder` pozostaje wycofywanym aliasem przez 1.x; moduł eksportuje też drafty i typy modeli FA(3). |
 | `ksef2.logging` | `configure_logging()` do jawnego włączenia logowania strukturalnego SDK. |
 | `ksef2.xades` | Ładowanie certyfikatów, generowanie certyfikatów TEST, lokalne podpisy XAdES, `LocalSigner` oraz obiekt poświadczeń `XAdESCredentials` przyjmowany przez `with_xades()`. |
+| `ksef2.certificate_stores` | Protokoły magazynu certyfikatów podpisujących (`SigningCertificateStoreProtocol`, `AsyncSigningCertificateStoreProtocol`), typy rekordów `SigningCertificate` oraz wbudowane adaptery w pamięci i w plikach szyfrowanych hasłem. To nie jest cache certyfikatów szyfrujących KSeF. |
 | `ksef2.testdata` | Pomocniki tylko dla TEST, które generują poprawne numery NIP i PESEL (`generate_nip`, `generate_pesel`). |
 | `ksef2.profiles` | Helpery konfiguracji profili zgodnych z `ksef2-cli`. |
 | `ksef2.renderers` | Lokalne renderowanie XSLT; renderowanie PDF wymaga również dodatku `[pdf]`. Przy pierwszym użyciu bez niego `InvoicePDFExporter` zwraca czytelny błąd instalacji. |
@@ -125,6 +126,12 @@ Stan zapisuj i odtwarzaj jawnymi metodami:
 cryptography, dostępne przez `certificate` i `private_key`. Nie zachowuje hasła ani
 bajtów wejściowych, ukrywa oba obiekty w `repr()` i nie ma schematu Pydantic ani
 API serializacji JSON.
+
+`SigningCertificate` przechowuje obiekt `XAdESCredentials` obok metadanych odczytanych z
+certyfikatu. Ukrywa go w `repr()`, odmawia `pickle`, `copy.copy()` i `copy.deepcopy()` i
+nie ma `model_dump()` ani API JSON: zapisujesz go wyłącznie przez `save()` magazynu.
+`SigningCertificateInfo` i `SigningCertificateRef` to metadane bez materiału klucza,
+które można serializować i logować.
 
 Wynik tych metod traktuj jak poświadczenie: przechowuj go zaszyfrowany, nigdy
 nie loguj i nie commituj.

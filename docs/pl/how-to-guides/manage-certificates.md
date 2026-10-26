@@ -145,6 +145,90 @@ auth.certificates.revoke(
 )
 ```
 
+## Zapisz wydany certyfikat
+
+KSeF przechowuje certyfikat. Twoja aplikacja przechowuje parę, którą faktycznie
+podpisuje — w magazynie certyfikatów podpisu z `ksef2.certificate_stores`.
+
+1. Wygeneruj klucz prywatny i CSR swoimi narzędziami certyfikatowymi.
+2. Zabezpiecz trwale oczekujący klucz prywatny *przed* wywołaniem `enroll()` i
+   zapisz, do którego CSR on należy. Od tej chwili tylko ten klucz użyje
+   certyfikatu, który KSeF ma wydać.
+3. Wyślij CSR jako Base64 z DER i zapisz `enrollment.resume_state()` obok tego
+   klucza.
+4. Poczekaj na wydanie, a potem pobierz certyfikat po numerze seryjnym zwróconym
+   przez KSeF.
+5. Zdekoduj DER, zbuduj `XAdESCredentials` z certyfikatu i oczekującego klucza
+   (to sprawdza, że do siebie pasują), owiń je w `SigningCertificate` dla tego
+   środowiska i tego typu certyfikatu KSeF, a następnie zapisz rekord przez
+   `save()`.
+6. Wycofaj oczekujący klucz zgodnie z własną polityką kluczy dopiero wtedy, gdy
+   `save()` się zwróci.
+
+Poniższy przykład zakłada, że `store` to jeden z magazynów certyfikatów podpisu z
+`ksef2.certificate_stores`, a `csr_base64_der` to Base64 z DER tego CSR, który
+wytworzyły Twoje narzędzia.
+
+```python
+import base64
+
+from cryptography.x509 import load_der_x509_certificate
+
+from ksef2 import Environment
+from ksef2.certificate_stores import SigningCertificate
+from ksef2.xades import XAdESCredentials
+
+# `pending_key` to klucz wygenerowany dla tego CSR i już zabezpieczony przez
+# Twoje narzędzia. Poniższy kod zakłada, że aplikacja zapisała stan wznowienia
+# obok tego klucza.
+enrollment = auth.certificates.enroll(
+    certificate_name="billing-service",
+    certificate_type="authentication",
+    csr=csr_base64_der,
+)
+saved_state = enrollment.resume_state().to_json()
+
+status = enrollment.wait(timeout=120.0, poll_interval=2.0)
+issued = auth.certificates.retrieve(
+    certificate_serial_numbers=[status.certificate_serial_number],
+)
+certificate = issued.certificates[0]
+
+credentials = XAdESCredentials(
+    load_der_x509_certificate(
+        base64.b64decode(certificate.base64_encoded_certificate)
+    ),
+    pending_key,
+)
+info = store.save(
+    SigningCertificate(
+        credentials,
+        environment=Environment.PRODUCTION,
+        certificate_type="authentication",
+        ksef_serial_number=certificate.serial_number,
+    )
+)
+
+# Para jest teraz dostępna przez `info.reference`. Klucz `pending_key` wycofaj
+# dopiero tutaj.
+```
+
+### Gdy coś się nie uda
+
+Gdy pobranie albo zapis certyfikatu nie wyjdzie, wznow to samo zgłoszenie ze
+zapisanego stanu przez `auth.certificates.enrollment(state)`, ponów pobranie i
+zapisz certyfikat na *oryginalnym* kluczu. Nie generuj nowego klucza i nie
+rejstruj ponownie: KSeF już przyjął tamto zgłoszenie. Nieudane `save()` to
+problem lokalny i nie może wywołać `revoke()`.
+
+Jeśli proces umrze po przyjęciu `enroll()` przez KSeF, ale przed zapisem stanu
+wznowienia, SDK nie odzyska tego zgłoszenia, ponieważ rejestracja w KSeF nie jest
+idempotentna i żądania nie da się powtórzyć.
+
+Uwierzytelnij się zapisaną parą przez
+[`with_stored_certificate()`](authenticate.md), a żeby trzymać rekord na własnym
+backendzie, zobacz [Własny magazyn certyfikatów podpisu](write-signing-certificate-store.md).
+
 ## Zalecany przepływ
 
 1. Sprawdź limity certyfikatów i rejestracji.

@@ -74,6 +74,27 @@ Certificate enrollment requires XAdES-based authentication because KSeF uses
 the signing certificate identity as the source of enrollment subject data.
 :::
 
+## Signing-certificate stores and the encryption-certificate cache
+
+The SDK has two things called a store and they do not meet. Neither is a KSeF
+service: both live inside your application.
+
+| | `ksef2.certificate_stores` | The `certificate_store=` cache |
+| --- | --- | --- |
+| What it holds | Your signing certificate and its private key. | KSeF's public encryption certificates. |
+| Who puts material in it | Your application, through `save()`. | The SDK, from `client.encryption`. |
+| What it is for | Handing the pair to `with_stored_certificate()` or a signer. | Encrypting token, session and export key material for KSeF. |
+| Secret? | Yes, it holds a private key. | No, everything in it is public. |
+
+Passing a signing-certificate store to `certificate_store=`, or expecting
+`with_stored_certificate()` to read the encryption cache, mixes the two roles.
+
+A local record says only what the certificate itself claims. It does not say
+whether KSeF still treats the certificate as active or unrevoked: ask KSeF with
+`auth.certificates.list()`. The two directions of that gap both matter. Deleting
+a local record does not revoke anything in KSeF, and revoking a certificate in
+KSeF does not remove the record your store holds.
+
 ## Relationship to XAdES and encryption
 
 XAdES uses certificate material to sign authentication XML. Certificate
@@ -89,6 +110,8 @@ decryption, it belongs in the encryption model.
 ## Related pages
 
 - [Manage certificates](../how-to-guides/manage-certificates.md): Enroll, retrieve, query, and revoke KSeF certificates from authenticated code.
+- [Write a signing-certificate store](../how-to-guides/write-signing-certificate-store.md): Implement the store that holds your own certificate and key.
+- [Configure a certificate store](../how-to-guides/configure-certificate-store.md): Configure the cache of KSeF public encryption certificates.
 - [XAdES](xades.md): Understand certificate-backed XML signing during authentication.
 - [Encryption](encryption.md): Understand KSeF public encryption certificates and key rotation.
 - [Permissions](permissions.md): Understand why authentication identity and operation permissions are separate.

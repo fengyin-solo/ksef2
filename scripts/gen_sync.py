@@ -114,6 +114,19 @@ GENERATED_PAIRS: tuple[GeneratedPair, ...] = (
         Path("src/ksef2/_core/async_external_transfer.py"),
         Path("src/ksef2/_core/external_transfer.py"),
     ),
+    # certificate_stores/
+    GeneratedPair(
+        Path("src/ksef2/_certificate_stores/async_protocols.py"),
+        Path("src/ksef2/_certificate_stores/protocols.py"),
+    ),
+    GeneratedPair(
+        Path("src/ksef2/_certificate_stores/async_memory.py"),
+        Path("src/ksef2/_certificate_stores/memory.py"),
+    ),
+    GeneratedPair(
+        Path("src/ksef2/_certificate_stores/async_filesystem.py"),
+        Path("src/ksef2/_certificate_stores/filesystem.py"),
+    ),
     # clients/
     GeneratedPair(
         Path("src/ksef2/_clients/_async_handles.py"),
@@ -227,6 +240,7 @@ NAME_MAP = {
     "AsyncSleep": "Sleep",
     "StopAsyncIteration": "StopIteration",
     "async_poll_until": "poll_until",
+    "require_async_store": "require_sync_store",
     "aclose": "close",
     "__aenter__": "__enter__",
     "__aexit__": "__exit__",
@@ -235,6 +249,7 @@ NAME_MAP = {
 }
 
 DOCSTRING_REPLACEMENTS = (
+    ("AsyncInMemorySigningCertificateStore", "InMemorySigningCertificateStore"),
     ("AsyncClient", "Client"),
     ("Async context manager", "Context manager"),
     ("Async high-level", "High-level"),

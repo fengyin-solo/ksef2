@@ -44,10 +44,10 @@ def _public_key_fingerprint(certificate: Certificate) -> str:
 def _needs_credentials_error() -> Exception:
     """Return the error for a value that is not a credentials holder.
 
-    ``ksef2._core.exceptions`` names this module's records in its own annotations and
-    this module raises one of its errors, so the exception class is resolved on first
-    use rather than imported here. The raised class, message and hint do not depend on
-    when the module is read.
+    This module raises an exception the SDK declares in ``ksef2._core.exceptions``, and
+    that module cannot import these records without closing an import cycle through
+    ``xades``, so the exception class is resolved on first use rather than imported
+    here. The raised class, message and hint do not depend on when the module is read.
 
     Returns:
         The exception for the caller to raise.

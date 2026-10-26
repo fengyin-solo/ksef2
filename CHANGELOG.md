@@ -1,3 +1,14 @@
+## v1.0.1 (unreleased)
+
+### Fixed
+
+- Preserve the Base64 certificate text returned by `auth.certificates.retrieve()`
+  instead of decoding DER bytes as UTF-8 (#323). Generate all OpenAPI byte fields
+  as strings so certificates, hashes, and encrypted data retain their wire values.
+- Include offending field paths and validation messages in
+  `KSeFResponseValidationError.details` for individual and list responses, and
+  preserve the original Pydantic validation error.
+
 ## v1.0.0 (2026-10-26)
 
 ### Fixed

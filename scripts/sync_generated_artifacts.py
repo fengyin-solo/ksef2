@@ -63,6 +63,10 @@ def generate_openapi_models(output: Path) -> None:
             "openapi",
             "--output-model-type",
             "pydantic_v2.BaseModel",
+            # OpenAPI byte strings carry Base64 text for binary data. Pydantic's
+            # Base64Str decodes it as UTF-8, rejecting DER and changing wire values.
+            "--type-mappings",
+            "string+byte=string",
             "--use-annotated",
             "--field-constraints",
             "--use-standard-collections",
@@ -82,6 +86,13 @@ def generate_openapi_models(output: Path) -> None:
         ]
     )
     format_python(output)
+    # Match the repository's trailing-whitespace commit hook for spec docstrings.
+    source = output.read_text(encoding="utf-8")
+    _ = output.write_text(
+        "\n".join(line.rstrip() for line in source.splitlines()) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
 
 
 def add_generated_pyright_ignores(path: Path) -> None:

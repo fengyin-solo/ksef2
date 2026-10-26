@@ -1,3 +1,10 @@
+## Unreleased
+
+### Fixed
+
+- Correct the certificate enrollment guide: `enroll(csr=...)` takes a Base64-encoded
+  DER CSR, not PEM text.
+
 ## v1.0.0 (2026-10-26)
 
 ### Fixed

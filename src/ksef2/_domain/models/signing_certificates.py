@@ -1,14 +1,22 @@
 """Records for persisting XAdES signing certificates and their private keys."""
 
 import hashlib
-from typing import Annotated, NoReturn, Self, SupportsIndex, override
+from importlib import import_module
+from typing import (
+    Annotated,
+    Callable,
+    NoReturn,
+    Self,
+    SupportsIndex,
+    cast,
+    override,
+)
 
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from cryptography.x509 import Certificate
 from pydantic import AwareDatetime, ConfigDict, Field, model_validator
 
 from ksef2._config import Environment
-from ksef2._core import exceptions
 from ksef2._domain.models.base import KSeFBaseModel, validation_errors
 from ksef2._domain.models.certificates import (
     CertificateSerialNumber,
@@ -31,6 +39,26 @@ def _public_key_fingerprint(certificate: Certificate) -> str:
             Encoding.DER, PublicFormat.SubjectPublicKeyInfo
         )
     ).hexdigest()
+
+
+def _needs_credentials_error() -> Exception:
+    """Return the error for a value that is not a credentials holder.
+
+    ``ksef2._core.exceptions`` names this module's records in its own annotations and
+    this module raises one of its errors, so the exception class is resolved on first
+    use rather than imported here. The raised class, message and hint do not depend on
+    when the module is read.
+
+    Returns:
+        The exception for the caller to raise.
+    """
+    module = import_module("ksef2._core.exceptions")
+    error_type = cast("Callable[..., Exception]", getattr(module, "KSeFArgumentError"))
+    return error_type(
+        "SigningCertificate needs an XAdESCredentials holder.",
+        hint="Load the pair with XAdESCredentials.from_pem(), from_der() "
+        "or from_pkcs12().",
+    )
 
 
 class SigningCertificateRef(KSeFBaseModel):
@@ -135,12 +163,12 @@ class SigningCertificate:
         certificate_type: CertificateTypeValue | None = None,
         ksef_serial_number: str | None = None,
     ) -> None:
-        if not isinstance(credentials, XAdESCredentials):
-            raise exceptions.KSeFArgumentError(
-                "SigningCertificate needs an XAdESCredentials holder.",
-                hint="Load the pair with XAdESCredentials.from_pem(), from_der() "
-                "or from_pkcs12().",
-            )
+        # The guard is for callers that run without runtime type checking; the
+        # annotation above is what type checkers see.
+        if not isinstance(  # pyright: ignore[reportUnnecessaryIsInstance]
+            credentials, XAdESCredentials
+        ):
+            raise _needs_credentials_error()  # pyright: ignore[reportUnreachable]
         self._credentials = credentials
         certificate = credentials.certificate
         with validation_errors("signing_certificate"):

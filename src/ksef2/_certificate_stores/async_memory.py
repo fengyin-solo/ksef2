@@ -1,6 +1,7 @@
 """In-memory signing-certificate store, kept for tests and short-lived processes."""
 
 import threading
+from typing import override
 
 from ksef2._config import Environment
 from ksef2._core import exceptions
@@ -47,8 +48,12 @@ class AsyncInMemorySigningCertificateStore:
             KSeFCertificateStoreConflictError: If a different record is already stored
                 under this reference.
         """
-        if not isinstance(certificate, SigningCertificate):
-            raise exceptions.KSeFArgumentError(
+        # The guard is for callers without runtime type checking; the annotation
+        # above is what type checkers see.
+        if not isinstance(  # pyright: ignore[reportUnnecessaryIsInstance]
+            certificate, SigningCertificate
+        ):
+            raise exceptions.KSeFArgumentError(  # pyright: ignore[reportUnreachable]
                 "save() needs a SigningCertificate.",
                 hint="Wrap the XAdESCredentials in SigningCertificate(credentials, "
                 "environment=...).",
@@ -136,6 +141,7 @@ class AsyncInMemorySigningCertificateStore:
         with self._lock:
             return self._records.pop(reference, None) is not None
 
+    @override
     def __repr__(self) -> str:
         with self._lock:
             return f"{type(self).__name__}(records={len(self._records)})"

@@ -1,10 +1,12 @@
 """Signing-certificate records: identity, metadata derived from the certificate, secrecy."""
 
 import copy
+from collections.abc import Callable
 import datetime
 import hashlib
 import os
 import pickle
+from typing import cast
 
 from cryptography import x509
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
@@ -14,6 +16,7 @@ import pytest
 
 from ksef2._config import Environment
 from ksef2._core.exceptions import KSeFArgumentError, KSeFValidationError
+from ksef2._domain.models.certificates import CertificateTypeValue
 from ksef2._domain.models.signing_certificates import (
     SigningCertificate,
     SigningCertificateInfo,
@@ -151,7 +154,7 @@ class TestInfoDerivedFromTheCertificate:
         record = SigningCertificate(
             XAdESCredentials(certificate, rsa_key),
             environment=Environment.PRODUCTION,
-            certificate_type=certificate_type,  # type: ignore[arg-type]
+            certificate_type=cast("CertificateTypeValue | None", certificate_type),
             ksef_serial_number="0123456789ABCDEF",
         )
 
@@ -168,7 +171,7 @@ class TestInfoDerivedFromTheCertificate:
             SigningCertificate(
                 XAdESCredentials(material.self_signed(rsa_key), rsa_key),
                 environment=Environment.TEST,
-                certificate_type=certificate_type,  # type: ignore[arg-type]
+                certificate_type=certificate_type,  # pyright: ignore[reportArgumentType]
             )
 
     @pytest.mark.parametrize("ksef_serial_number", ["0123456789abcdef", "123", ""])
@@ -185,8 +188,9 @@ class TestInfoDerivedFromTheCertificate:
     @requires_unchecked_types
     def test_the_holder_must_be_credentials(self) -> None:
         with pytest.raises(KSeFArgumentError, match="XAdESCredentials holder"):
-            SigningCertificate(  # type: ignore[arg-type]
-                "cert-and-key", environment=Environment.TEST
+            SigningCertificate(
+                "cert-and-key",  # pyright: ignore[reportArgumentType]
+                environment=Environment.TEST,
             )
 
 
@@ -208,7 +212,9 @@ class TestReference:
                 environment=Environment.TEST, fingerprint_sha256=fingerprint
             )
         )
-        assert {reference: "record"}[
+        # A frozen Pydantic model is hashable, but its base declares no __hash__ for
+        # the checker to find, so the dict key needs this acknowledged.
+        assert {reference: "record"}[  # pyright: ignore[reportUnhashable]
             SigningCertificateRef(
                 environment=Environment.TEST, fingerprint_sha256=fingerprint
             )
@@ -241,7 +247,7 @@ class TestReference:
             SigningCertificateRef(
                 environment=Environment.TEST,
                 fingerprint_sha256="a" * 64,
-                nip="5265877635",  # type: ignore[call-arg]
+                nip="5265877635",  # pyright: ignore[reportCallIssue]
             )
 
 
@@ -329,10 +335,12 @@ class TestSecrecy:
 
     @pytest.mark.parametrize("copier", [pickle.dumps, copy.copy, copy.deepcopy])
     def test_the_pair_refuses_to_be_pickled_or_copied(
-        self, record: SigningCertificate, copier: object
+        self,
+        record: SigningCertificate,
+        copier: Callable[[SigningCertificate], object],
     ) -> None:
         with pytest.raises(TypeError, match="cannot be pickled or copied"):
-            copier(record)  # type: ignore[operator]
+            copier(record)
 
     def test_the_metadata_is_the_part_that_can_be_serialized(
         self, record: SigningCertificate

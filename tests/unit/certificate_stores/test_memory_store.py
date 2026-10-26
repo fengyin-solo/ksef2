@@ -49,7 +49,7 @@ class TestInMemorySigningCertificateStore(SyncSigningStoreContract):
     @requires_unchecked_types
     def test_save_needs_a_record(self) -> None:
         with pytest.raises(KSeFArgumentError, match="needs a SigningCertificate"):
-            self.make_store().save("not a record")  # type: ignore[arg-type]
+            self.make_store().save("not a record")  # pyright: ignore[reportArgumentType]
 
     def test_two_stores_hold_their_own_records(self) -> None:
         key, certificate = pair("rsa")
@@ -95,7 +95,7 @@ class TestAsyncInMemorySigningCertificateStore(AsyncSigningStoreContract):
     @requires_unchecked_types
     async def test_save_needs_a_record(self) -> None:
         with pytest.raises(KSeFArgumentError, match="needs a SigningCertificate"):
-            await self.make_store().save("not a record")  # type: ignore[arg-type]
+            await self.make_store().save("not a record")  # pyright: ignore[reportArgumentType]
 
     async def test_two_stores_hold_their_own_records(self) -> None:
         key, certificate = pair("rsa")

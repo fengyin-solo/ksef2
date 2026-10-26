@@ -3,7 +3,7 @@
 from typing import Any, Callable, Literal, cast, override
 from pydantic import BaseModel, ValidationError
 from urllib.parse import urlsplit
-from enum import IntEnum
+from enum import Enum, IntEnum
 
 from ksef2._core import routes
 from ksef2._domain.models.batch import PreparedBatch
@@ -11,7 +11,6 @@ from ksef2._domain.models.session import (
     SessionInvoiceStatusResponse,
     SessionStatusResponse,
 )
-from ksef2._domain.models.signing_certificates import SigningCertificateRef
 
 
 class ExceptionCode(IntEnum):
@@ -1253,6 +1252,26 @@ class KSeFCertificateEnrollmentTimeoutError(KSeFPollingTimeoutError):
         )
 
 
+def _reference_label(reference: object) -> str:
+    """Return a store reference as ``"<environment>:<fingerprint>"`` for ``context``.
+
+    A record reference is the only thing a store hands an error besides text, and the
+    record types read this module, so the reference is described by the two attributes
+    every reference exposes rather than by its class.
+
+    Args:
+        reference: The reference the store was asked about.
+
+    Returns:
+        The environment name in lower case, a colon, and the certificate fingerprint.
+    """
+    environment = cast("Enum | None", getattr(reference, "environment", None))
+    fingerprint = cast("str | None", getattr(reference, "fingerprint_sha256", None))
+    if environment is None or fingerprint is None:
+        return repr(reference)
+    return f"{environment.name.lower()}:{fingerprint}"
+
+
 class KSeFCertificateStoreError(KSeFException):
     """Base error for reading or writing a stored signing certificate and key.
 
@@ -1264,14 +1283,16 @@ class KSeFCertificateStoreError(KSeFException):
         message: Human-readable error message.
         operation: Store method that failed: ``"save"``, ``"load"``, ``"list"`` or
             ``"delete"``. The SDK does not enforce the set of values.
-        reference: Record the store was asked about, when one applies.
+        reference: ``SigningCertificateRef`` for the record the store was asked about,
+            when one applies. Typed as ``object`` because the record types read this
+            module; stores pass a reference and nothing else.
         outcome_ambiguous: Whether the store may have applied the operation even
             though it failed. Stored in ``context`` in every case.
         hint: Next step for this occurrence; overrides the class default.
 
     Attributes:
         operation: Store method that failed, or ``None`` when the store did not say.
-        reference: Record the store was asked about, or ``None``.
+        reference: The ``SigningCertificateRef`` the store was asked about, or ``None``.
         outcome_ambiguous: Whether the caller has to check whether the operation took
             effect before retrying it.
     """
@@ -1284,7 +1305,7 @@ class KSeFCertificateStoreError(KSeFException):
         message: str,
         *,
         operation: str | None = None,
-        reference: "SigningCertificateRef | None" = None,
+        reference: object | None = None,
         outcome_ambiguous: bool = False,
         hint: str | None = None,
     ) -> None:
@@ -1295,9 +1316,7 @@ class KSeFCertificateStoreError(KSeFException):
         if operation is not None:
             context["operation"] = operation
         if reference is not None:
-            context["reference"] = (
-                f"{reference.environment.name.lower()}:{reference.fingerprint_sha256}"
-            )
+            context["reference"] = _reference_label(reference)
         context["outcome_ambiguous"] = outcome_ambiguous
         super().__init__(message, hint=hint, **context)
 

@@ -5,9 +5,8 @@ adapter gets the contract by subclassing ``SyncSigningStoreContract`` or
 ``AsyncSigningStoreContract`` and supplying ``make_store()``.
 """
 
-import abc
 import datetime
-from typing import Any
+from typing import cast
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
@@ -15,11 +14,16 @@ from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
 from cryptography.hazmat.primitives.serialization import Encoding
 import pytest
 
+from ksef2._certificate_stores.async_protocols import (
+    AsyncSigningCertificateStoreProtocol,
+)
+from ksef2._certificate_stores.protocols import SigningCertificateStoreProtocol
 from ksef2._config import Environment
 from ksef2._core.exceptions import (
     KSeFCertificateStoreConflictError,
     KSeFCertificateStoreNotFoundError,
 )
+from ksef2._domain.models.certificates import CertificateTypeValue
 from ksef2._domain.models.signing_certificates import (
     SigningCertificate,
     SigningCertificateInfo,
@@ -52,10 +56,14 @@ def make_record(
     key: TestKey,
     certificate: x509.Certificate,
     environment: Environment,
-    **metadata: object,
+    certificate_type: CertificateTypeValue | None = None,
+    ksef_serial_number: str | None = None,
 ) -> SigningCertificate:
     return SigningCertificate(
-        XAdESCredentials(certificate, key), environment=environment, **metadata
+        XAdESCredentials(certificate, key),
+        environment=environment,
+        certificate_type=certificate_type,
+        ksef_serial_number=ksef_serial_number,
     )
 
 
@@ -124,17 +132,17 @@ def _assert_loaded_pair_matches(
 
     payload = b"signing store contract"
     private_key = loaded.credentials.private_key
+    issued_with = loaded.credentials.certificate.public_key()
+
     if isinstance(private_key, rsa.RSAPrivateKey):
+        public_key = cast("rsa.RSAPublicKey", issued_with)
         signature = private_key.sign(payload, padding.PKCS1v15(), hashes.SHA256())
-        loaded.credentials.certificate.public_key().verify(
-            signature, payload, padding.PKCS1v15(), hashes.SHA256()
-        )
+        public_key.verify(signature, payload, padding.PKCS1v15(), hashes.SHA256())
         return
 
+    public_key = cast("ec.EllipticCurvePublicKey", issued_with)
     signature = private_key.sign(payload, ec.ECDSA(hashes.SHA256()))
-    loaded.credentials.certificate.public_key().verify(
-        signature, payload, ec.ECDSA(hashes.SHA256())
-    )
+    public_key.verify(signature, payload, ec.ECDSA(hashes.SHA256()))
 
 
 def _assert_listing(
@@ -151,15 +159,21 @@ def _assert_listing(
     )
 
 
-class _StoreContract(abc.ABC):
-    """The one hook both flavours need: an empty store."""
+class SyncSigningStoreContract:
+    """Every case a sync signing-certificate store has to pass.
 
-    @abc.abstractmethod
-    def make_store(self) -> Any:  # pyright: ignore[reportExplicitAny]
-        """Return an empty store to run one case against."""
+    A subject supplies ``make_store()``; the cases themselves are shared with
+    :class:`AsyncSigningStoreContract`.
+    """
 
+    def make_store(self) -> SigningCertificateStoreProtocol:
+        """Return an empty store to run one case against.
 
-class SyncSigningStoreContract(_StoreContract):
+        Raises:
+            NotImplementedError: In the contract itself; a subject store supplies it.
+        """
+        raise NotImplementedError
+
     def test_save_then_load_returns_the_samepair(self) -> None:
         for kind in ("rsa", "ec"):
             key, certificate = pair(kind)
@@ -269,7 +283,21 @@ class SyncSigningStoreContract(_StoreContract):
         )
 
 
-class AsyncSigningStoreContract(_StoreContract):
+class AsyncSigningStoreContract:
+    """Every case an async signing-certificate store has to pass.
+
+    A subject supplies ``make_store()``; the cases mirror
+    :class:`SyncSigningStoreContract` one for one.
+    """
+
+    def make_store(self) -> AsyncSigningCertificateStoreProtocol:
+        """Return an empty store to run one case against.
+
+        Raises:
+            NotImplementedError: In the contract itself; a subject store supplies it.
+        """
+        raise NotImplementedError
+
     async def test_save_then_load_returns_the_samepair(self) -> None:
         for kind in ("rsa", "ec"):
             key, certificate = pair(kind)

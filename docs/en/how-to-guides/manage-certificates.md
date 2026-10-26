@@ -38,9 +38,15 @@ Use the enrollment data when building the CSR in your certificate tooling.
 Submit a CSR and persist the returned enrollment reference.
 
 ```python
-csr = """-----BEGIN CERTIFICATE REQUEST-----
-...
------END CERTIFICATE REQUEST-----"""
+import base64
+from pathlib import Path
+
+from cryptography import x509
+from cryptography.hazmat.primitives.serialization import Encoding
+
+csr_pem = Path("request.csr").read_bytes()
+csr_der = x509.load_pem_x509_csr(csr_pem).public_bytes(Encoding.DER)
+csr = base64.b64encode(csr_der).decode("ascii")
 
 enrollment = auth.certificates.enroll(
     certificate_name="billing-service",
@@ -54,6 +60,9 @@ enrollment = auth.certificates.enroll(
 #   "timestamp": "2026-06-25T10:00:00Z"
 # }
 ```
+
+The `csr` argument must be the DER-encoded CSR in Base64, not PEM text with
+`-----BEGIN` lines.
 
 `enroll()` returns a `CertificateEnrollment` handle. Wait for KSeF to issue the
 certificate:

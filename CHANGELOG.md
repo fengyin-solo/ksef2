@@ -15,6 +15,8 @@
 
 ### Fixed
 
+- Correct the certificate enrollment guide: `enroll(csr=...)` takes a Base64-encoded
+  DER CSR, not PEM text.
 - Resolve XSLT code descriptions offline with bundled official country, tax-office,
   tax-office ex-WUS, tax-office-head, and currency lists when
   `enable_code_lookups=True`. Keep network access and writes blocked, and include

@@ -39,9 +39,15 @@ Użyj danych rejestracji podczas budowania CSR w narzędziach certyfikatowych.
 Wyślij CSR i zapisz zwróconą referencję rejestracji.
 
 ```python
-csr = """-----BEGIN CERTIFICATE REQUEST-----
-...
------END CERTIFICATE REQUEST-----"""
+import base64
+from pathlib import Path
+
+from cryptography import x509
+from cryptography.hazmat.primitives.serialization import Encoding
+
+csr_pem = Path("request.csr").read_bytes()
+csr_der = x509.load_pem_x509_csr(csr_pem).public_bytes(Encoding.DER)
+csr = base64.b64encode(csr_der).decode("ascii")
 
 enrollment = auth.certificates.enroll(
     certificate_name="billing-service",
@@ -55,6 +61,9 @@ enrollment = auth.certificates.enroll(
 #   "timestamp": "2026-06-25T10:00:00Z"
 # }
 ```
+
+Parametr `csr` to żądanie CSR zakodowane w DER, a następnie w Base64 —
+nie tekst PEM z liniami `-----BEGIN`.
 
 `enroll()` zwraca uchwyt `CertificateEnrollment`. Poczekaj, aż KSeF wyda
 certyfikat:

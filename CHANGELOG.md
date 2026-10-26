@@ -1,3 +1,12 @@
+## v1.1.0 (unreleased)
+
+### Added
+
+- Add `ksef2.certificate_stores` with sync and async signing-certificate store
+  protocols, `SigningCertificate` records and in-memory adapters, plus
+  `KSeFCertificateStore*` errors. Additive and optional; existing XAdES, profile and
+  encryption-certificate store APIs are unchanged.
+
 ## v1.0.1 (unreleased)
 
 ### Fixed

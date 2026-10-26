@@ -195,7 +195,7 @@ kontroli, ponieważ surowa diagnostyka HTTP może zawierać podpisany URL.
 | `trace_id` | `str | None` | Identyfikator śledzenia żądania w KSeF, gdy KSeF go zwrócił. |
 | `details` | `list[str]` | Komunikaty szczegółowe dołączone przez KSeF; pusta lista, gdy ich brak. |
 | `hint` | `str | None` | Co zrobić dalej, gdy SDK zna przyczynę. |
-| `response` | `BaseModel | None` | Sparsowany payload błędu KSeF, gdy parsowanie się udało. |
+| `response` | `BaseModel | None` | Sparsowana treść błędu KSeF, gdy parsowanie się udało. |
 
 Te same wartości są dostępne w `context`: `status_code`, `ksef_code`,
 `trace_id`, `details` oraz `hint` (jeśli jest).
@@ -207,7 +207,7 @@ strukturalnych diagnostyk, gdy `response` nie jest `None`.
 
 Każdy błąd API KSeF ma ten sam format, niezależnie od postaci odpowiedzi (`application/problem+json`, starsza treść `exception`, inne JSON-y, tekst albo pusta odpowiedź). SDK wybiera parser po nagłówku `Content-Type` odpowiedzi:
 `application/problem+json` jest czytany jako Problem Details, `application/json`
-jako starszy payload (poza 401, który KSeF wysyła jako Problem Details oznaczony
+jako starsza treść (poza 401, który KSeF wysyła jako Problem Details oznaczony
 `application/json`), a wszystko inne staje się krótkim fragmentem:
 
 ```text
@@ -272,67 +272,64 @@ angielsku. Linia `Trace ID` pojawia się, gdy KSeF zwrócił identyfikator
 tylko wtedy, gdy SDK zna przyczynę, każda wymieniona w niej metoda jest aktualna,
 a dla jednego wystąpienia można ją zastąpić, przekazując `hint=...` do wyjątku.
 
-Wskazówki do błędów API zależą najpierw od kodu KSeF, potem od statusu HTTP.
-Kod z własną wskazówką zachowuje ją także przy 401 albo 403. HTTP 401 zgłasza
-`KSeFAuthError`, a HTTP 403 zgłasza `KSeFPermissionDeniedError`:
+Wskazówki do błędów API zależą najpierw od kodu KSeF, potem od statusu HTTP. Kod z własną wskazówką zachowuje ją także przy 401 albo 403. HTTP 401 zgłasza `KSeFAuthError`, a HTTP 403 zgłasza `KSeFPermissionDeniedError`. SDK wstawia tekst wskazówki po angielsku. W tabeli jest jego polskie znaczenie. Nazwy klas, kody i metody zostają bez zmian.
 
 | Status HTTP | Kod KSeF | Klasa | Wskazówka |
 | --- | --- | --- | --- |
-| inny | 21155 | `KSeFApiError` | The session has reached its invoice limit. Close it with `close()` and send the remaining invoices in a new session from `online_session()`. |
-| inny | 21157 | `KSeFApiError` | Build the encrypted package with `auth.batch.prepare()`, which splits parts within KSeF size and count limits. |
-| inny | 21161 | `KSeFApiError` | Build the encrypted package with `auth.batch.prepare()`, which splits parts within KSeF size and count limits. |
-| inny | 21165 | `KSeFNotReadyError` | KSeF has processed the invoice but has not made it available yet. Call `download()` with a `timeout` so the SDK keeps polling until it is. |
-| inny | 21178 | `KSeFNotReadyError` | KSeF has no UPO for this yet. Call `wait()` on the invoice submission or the session first, then call `download_upo()` or `download_invoice_upo()` again. If `wait()` raises `KSeFInvoiceRejectedError`, KSeF rejected the invoice and will never issue a UPO for it. |
-| inny | 21180 | `KSeFApiError` | The session is already closed or in a state that does not allow this operation. Check its state with `get_status()`, or open a new session with `online_session()` or `batch_session()`. |
-| inny | 21182 | `KSeFApiError` | KSeF limits how many exports can run at once. Wait for a running export to finish with `wait()`, then call `export()` again. |
-| inny | 21183 | `KSeFApiError` | The date range reaches outside the data KSeF keeps. Narrow the date range in the filters passed to `search()`. |
-| inny | 21184 | `KSeFServerError` | KSeF cannot accept invoices in this session at the moment. Retry later, or send the invoice in a new session from `online_session()`. |
-| inny | 21205 | `KSeFApiError` | Upload every declared batch part with `upload_parts()` before closing the session, or send the batch with `submit()`. |
-| inny | 21208 | `KSeFApiError` | KSeF cancelled the batch session because the parts were not uploaded or the session was not closed in time. Send the package again in a new session from `batch_session()`. |
-| inny | 21418 | `KSeFApiError` | Continuation tokens come from KSeF and are only valid as returned. Iterate the pager the SDK returns, or use its `pages()`, instead of building or reusing a token yourself. |
-| inny | 21470 | `KSeFApiError` | KSeF does not know the public key the request was encrypted with, or has retired it. The SDK keeps KSeF certificates for 24 hours; create a new client so it loads the current ones. |
-| inny | 25001 | `KSeFApiError` | Certificate enrollment requires XAdES authentication. Authenticate with `client.authentication.with_xades()` instead of `client.authentication.with_token()`. |
-| inny | 25002 | `KSeFApiError` | Certificate enrollment requires XAdES authentication. Authenticate with `client.authentication.with_xades()` instead of `client.authentication.with_token()`. |
-| inny | 25003 | `KSeFApiError` | Fetch the subject data KSeF expects with `get_enrollment_data()` and build a new CSR before calling `enroll()`. |
-| inny | 25006 | `KSeFApiError` | KSeF allows only a limited number of certificate enrollments. `get_limits()` shows how many are still allowed. |
-| inny | 25007 | `KSeFApiError` | You hold the maximum number of KSeF certificates. Revoke one you no longer use with `revoke()`, and check `get_limits()` for the limit. |
-| inny | 26001 | `KSeFApiError` | A token can only get permissions the authenticated identity holds. Request fewer permissions in `generate()`. |
-| inny | 26002 | `KSeFApiError` | KSeF tokens cannot be generated in this context type. Authenticate in a supported context before calling `generate()`. |
-| inny | 30001 | `KSeFApiError` | The subject or person already exists on KSeF TEST. Reuse it, or remove it first with `delete_subject()` or `delete_person()`. |
-| 401 | inny | `KSeFAuthError` | KSeF rejected the credentials or the access token. Authenticate again with `client.authentication.with_token()` or `client.authentication.with_xades()`, and check that the token or certificate is valid for this context. |
-| 403 | inny | `KSeFPermissionDeniedError` | The authenticated identity is not allowed to do this in the current context. Check the reason in `details`, and grant the missing permission with the permissions client, for example `grant_person()`. |
+| inny | 21155 | `KSeFApiError` | Sesja osiągnęła limit faktur. Zamknij ją przez `close()` i wyślij pozostałe faktury w nowej sesji z `online_session()`. |
+| inny | 21157 | `KSeFApiError` | Zbuduj zaszyfrowaną paczkę przez `auth.batch.prepare()`. Ta metoda dzieli części według limitów rozmiaru i liczby w KSeF. |
+| inny | 21161 | `KSeFApiError` | Zbuduj zaszyfrowaną paczkę przez `auth.batch.prepare()`. Ta metoda dzieli części według limitów rozmiaru i liczby w KSeF. |
+| inny | 21165 | `KSeFNotReadyError` | KSeF przetworzył fakturę, ale jeszcze jej nie udostępnił. Wywołaj `download()` z `timeout`, żeby SDK sprawdzało dostępność, aż faktura się pojawi. |
+| inny | 21178 | `KSeFNotReadyError` | KSeF nie ma jeszcze UPO. Najpierw wywołaj `wait()` na wysyłce faktury albo na sesji, a potem ponownie `download_upo()` albo `download_invoice_upo()`. Jeśli `wait()` zgłosi `KSeFInvoiceRejectedError`, KSeF odrzucił fakturę i nie wystawi dla niej UPO. |
+| inny | 21180 | `KSeFApiError` | Sesja jest już zamknięta albo jest w stanie, który nie pozwala na tę operację. Sprawdź stan przez `get_status()` albo otwórz nową sesję przez `online_session()` albo `batch_session()`. |
+| inny | 21182 | `KSeFApiError` | KSeF ogranicza liczbę eksportów naraz. Poczekaj, aż trwający eksport skończy się przez `wait()`, a potem wywołaj `export()` ponownie. |
+| inny | 21183 | `KSeFApiError` | Zakres dat wychodzi poza dane, które KSeF przechowuje. Zawęź zakres dat w filtrach przekazanych do `search()`. |
+| inny | 21184 | `KSeFServerError` | KSeF nie może teraz przyjąć faktur w tej sesji. Spróbuj później albo wyślij fakturę w nowej sesji z `online_session()`. |
+| inny | 21205 | `KSeFApiError` | Prześlij każdą zadeklarowaną część paczki przez `upload_parts()`, zanim zamkniesz sesję, albo wyślij paczkę przez `submit()`. |
+| inny | 21208 | `KSeFApiError` | KSeF anulował sesję wsadową, bo części nie zostały przesłane albo sesja nie została zamknięta na czas. Wyślij paczkę ponownie w nowej sesji z `batch_session()`. |
+| inny | 21418 | `KSeFApiError` | Tokeny kontynuacji pochodzą z KSeF i są ważne tylko w otrzymanej postaci. Iteruj po stronach, które zwraca SDK, albo użyj `pages()`, zamiast budować albo ponownie używać tokenu samodzielnie. |
+| inny | 21470 | `KSeFApiError` | KSeF nie zna klucza publicznego, którym zaszyfrowano żądanie, albo ten klucz został wycofany. SDK trzyma certyfikaty KSeF przez 24 godziny. Utwórz nowego klienta, żeby wczytał aktualne. |
+| inny | 25001 | `KSeFApiError` | Rejestracja certyfikatu wymaga uwierzytelnienia XAdES. Uwierzytelnij się przez `client.authentication.with_xades()`, a nie przez `client.authentication.with_token()`. |
+| inny | 25002 | `KSeFApiError` | Rejestracja certyfikatu wymaga uwierzytelnienia XAdES. Uwierzytelnij się przez `client.authentication.with_xades()`, a nie przez `client.authentication.with_token()`. |
+| inny | 25003 | `KSeFApiError` | Pobierz dane podmiotu, których oczekuje KSeF, przez `get_enrollment_data()` i zbuduj nowy CSR, zanim wywołasz `enroll()`. |
+| inny | 25006 | `KSeFApiError` | KSeF pozwala na ograniczoną liczbę rejestracji certyfikatów. `get_limits()` pokazuje, ile jeszcze można złożyć. |
+| inny | 25007 | `KSeFApiError` | Masz maksymalną liczbę certyfikatów KSeF. Unieważnij nieużywany przez `revoke()` i sprawdź limit w `get_limits()`. |
+| inny | 26001 | `KSeFApiError` | Token może dostać tylko uprawnienia, które ma uwierzytelniony podmiot. Poproś o mniej uprawnień w `generate()`. |
+| inny | 26002 | `KSeFApiError` | W tym typie kontekstu nie da się wygenerować tokenu KSeF. Uwierzytelnij się w obsługiwanym kontekście, zanim wywołasz `generate()`. |
+| inny | 30001 | `KSeFApiError` | Podmiot albo osoba już istnieje w środowisku testowym KSeF. Użyj istniejącego albo usuń go najpierw przez `delete_subject()` albo `delete_person()`. |
+| 401 | inny | `KSeFAuthError` | KSeF odrzucił dane uwierzytelniające albo token dostępu. Uwierzytelnij się ponownie przez `client.authentication.with_token()` albo `client.authentication.with_xades()` i sprawdź, czy token albo certyfikat jest ważny w tym kontekście. |
+| 403 | inny | `KSeFPermissionDeniedError` | Uwierzytelniony podmiot nie może tego zrobić w bieżącym kontekście. Sprawdź powód w `details` i nadaj brakujące uprawnienie klientem uprawnień, na przykład `grant_person()`. |
 
-`KSeFRateLimitError` buduje wskazówkę z `retry_after`, na przykład
-`Wait 17 seconds before retrying.`
+`KSeFRateLimitError` buduje wskazówkę z `retry_after`. SDK wstawia ją po angielsku, na przykład `Wait 17 seconds before retrying.` (poczekaj 17 sekund przed ponowieniem).
 
 Wskazówki do pozostałych błędów SDK:
 
 | Klasa | Wskazówka |
 | --- | --- |
-| `KSeFArgumentError` | Pass exactly one of the mutually exclusive arguments named in the message. |
-| `KSeFAuthPollingTimeoutError` | KSeF has not finished authenticating yet. Authenticate again with a larger `timeout` in `client.authentication.with_xades()` or `client.authentication.with_token()`. |
-| `KSeFAuthenticationExpiredError` | Authenticate again with `client.authentication.with_token()` or `client.authentication.with_xades()`, or restore tokens that are still valid with `client.authentication.resume()`. |
-| `KSeFBatchSessionTimeoutError` | KSeF may still be processing the batch. Call `wait()` on the batch session again with a larger `timeout`. After a restart, rebuild the session from the state saved with `resume_state()` using `batch_session(state=...)`. |
-| `KSeFCertificateEnrollmentFailedError` | Read `description` and `details` for the reason, then submit a corrected request with `enroll()`. `get_limits()` shows how many enrollments and certificates are still allowed. |
-| `KSeFCertificateEnrollmentTimeoutError` | KSeF may still issue the certificate. Call `wait()` on the enrollment again with a larger `timeout`, or check it with `get_enrollment_status()`. After a restart, get the handle back with `auth.certificates.enrollment(state)` using the state saved from `resume_state()`. |
-| `KSeFCertificateStoreAccessError` | Check the store's access credentials or password source, and its permissions. |
-| `KSeFCertificateStoreConflictError` | A different record is already stored under this reference. Load and inspect it, or delete() it first if it should be replaced. |
-| `KSeFCertificateStoreMaterialError` | The stored record is corrupt, uses an unsupported format, cannot be decrypted, or does not match its reference. Check the password source, or restore an intact copy of the record. |
-| `KSeFCertificateStoreNotFoundError` | Call list() to see the stored references, or save() the certificate first. |
-| `KSeFCertificateStoreUnavailableError` | Check that the storage backend is reachable and has free space, then retry. When outcome_ambiguous is true, call load() or list() first to see whether the operation took effect. |
-| `KSeFExportFailedError` | Read `description` and `details` for the reason, then start a new export with `export()`. |
-| `KSeFExportTimeoutError` | The export may still finish. Call `wait()` on the export again with a larger `timeout`. After a restart, get the job back with `export(state=...)` using the state saved from `resume_state()`. |
-| `KSeFInvoiceDownloadTimeoutError` | KSeF has not made the invoice available yet. Call `download()` again with a larger `timeout`. |
-| `KSeFInvoiceProcessingTimeoutError` | KSeF may still accept the invoice. Keep waiting with `submission(reference_number).wait()` on the session, with a larger `timeout`. After a restart, rebuild the session from the state saved with `resume_state()` using `online_session(state=...)`. `submission(state=...)` also takes the state saved on the submission itself, which keeps the invoice and session references together. |
-| `KSeFInvoiceQueryTimeoutError` | No invoice matched before the deadline. Call `wait()` again with a larger `timeout`, or check the filters passed to `search()`. |
-| `KSeFInvoiceRejectedError` | Read `description` and `details` for the reason, fix the invoice and send it again with `send_invoice()`. |
-| `KSeFNotReadyError` | KSeF has not finished preparing this resource. Wait and request it again. |
-| `KSeFOnlineSessionTimeoutError` | KSeF may still be processing the session. Call `wait()` on the session again with a larger `timeout`. After a restart, rebuild the session from the state saved with `resume_state()` using `online_session(state=...)`. |
-| `KSeFPermissionOperationFailedError` | Read `description` for the reason, fix the request and grant or revoke again. `get_operation_status()` shows the operation's final state. |
-| `KSeFPermissionOperationTimeoutError` | The operation may still be applied. Call `wait()` on the operation again with a larger `timeout`, or check it with `get_operation_status()`. After a restart, get the handle back with `auth.permissions.operation(state)` using the state saved from `resume_state()`. |
-| `KSeFSessionFailedError` | See why invoices failed with `list_failed_invoices()`. |
-| `KSeFTokenActivationFailedError` | Generate a new token with `generate()`, or inspect the token status with `get_status()`. |
-| `KSeFTokenStatusTimeoutError` | KSeF may still be activating the token. Call `wait()` on the token again with a larger `timeout`, or check it with `get_status()`. After a restart, get the handle back with `auth.tokens.generation(state)` using the state saved from `resume_state()`; that state never holds the one-time token. |
+| `KSeFArgumentError` | Przekaż dokładnie jeden z wykluczających się argumentów nazwanych w komunikacie. |
+| `KSeFAuthPollingTimeoutError` | KSeF jeszcze nie skończył uwierzytelniania. Uwierzytelnij się ponownie z większym `timeout` w `client.authentication.with_xades()` albo `client.authentication.with_token()`. |
+| `KSeFAuthenticationExpiredError` | Uwierzytelnij się ponownie przez `client.authentication.with_token()` albo `client.authentication.with_xades()`, albo przywróć nadal ważne tokeny przez `client.authentication.resume()`. |
+| `KSeFBatchSessionTimeoutError` | KSeF może nadal przetwarzać sesję wsadową. Wywołaj `wait()` na sesji wsadowej ponownie z większym `timeout`. Po restarcie odbuduj sesję ze stanu zapisanego przez `resume_state()`, używając `batch_session(state=...)`. |
+| `KSeFCertificateEnrollmentFailedError` | Przeczytaj powód w `description` i `details`, a potem złóż poprawione żądanie przez `enroll()`. `get_limits()` pokazuje, ile rejestracji i certyfikatów jeszcze można złożyć. |
+| `KSeFCertificateEnrollmentTimeoutError` | KSeF może nadal wydać certyfikat. Wywołaj `wait()` na rejestracji ponownie z większym `timeout` albo sprawdź ją przez `get_enrollment_status()`. Po restarcie odzyskaj obiekt przez `auth.certificates.enrollment(state)`, używając stanu zapisanego z `resume_state()`. |
+| `KSeFCertificateStoreAccessError` | Sprawdź dane dostępowe magazynu albo źródło hasła oraz jego uprawnienia. |
+| `KSeFCertificateStoreConflictError` | Pod tym wskazaniem jest już inny rekord. Wczytaj go i obejrzyj albo najpierw wywołaj `delete()`, jeśli ma zostać zastąpiony. |
+| `KSeFCertificateStoreMaterialError` | Zapisany rekord jest uszkodzony, używa nieobsługiwanego formatu, nie da się go odszyfrować albo nie zgadza się ze wskazaniem. Sprawdź źródło hasła albo przywróć nienaruszoną kopię rekordu. |
+| `KSeFCertificateStoreNotFoundError` | Wywołaj `list()`, żeby zobaczyć zapisane wskazania, albo najpierw zapisz certyfikat przez `save()`. |
+| `KSeFCertificateStoreUnavailableError` | Sprawdź, czy backend magazynu jest osiągalny i ma wolne miejsce, a potem ponów. Gdy `outcome_ambiguous` jest prawdziwe, najpierw wywołaj `load()` albo `list()`, żeby sprawdzić, czy operacja się wykonała. |
+| `KSeFExportFailedError` | Przeczytaj powód w `description` i `details`, a potem zacznij nowy eksport przez `export()`. |
+| `KSeFExportTimeoutError` | Eksport może jeszcze się skończyć. Wywołaj `wait()` na eksporcie ponownie z większym `timeout`. Po restarcie odzyskaj obiekt przez `export(state=...)`, używając stanu zapisanego z `resume_state()`. |
+| `KSeFInvoiceDownloadTimeoutError` | KSeF jeszcze nie udostępnił faktury. Wywołaj `download()` ponownie z większym `timeout`. |
+| `KSeFInvoiceProcessingTimeoutError` | KSeF może jeszcze przyjąć fakturę. Czekaj dalej przez `submission(reference_number).wait()` na sesji, z większym `timeout`. Po restarcie odbuduj sesję ze stanu zapisanego przez `resume_state()`, używając `online_session(state=...)`. `submission(state=...)` przyjmuje też stan zapisany na samej wysyłce, który trzyma razem numer referencyjny faktury i sesji. |
+| `KSeFInvoiceQueryTimeoutError` | Żadna faktura nie pasowała przed upływem czasu. Wywołaj `wait()` ponownie z większym `timeout` albo sprawdź filtry przekazane do `search()`. |
+| `KSeFInvoiceRejectedError` | Przeczytaj powód w `description` i `details`, popraw fakturę i wyślij ją ponownie przez `send_invoice()`. |
+| `KSeFNotReadyError` | KSeF nie skończył jeszcze przygotowywać tego zasobu. Poczekaj i poproś o niego ponownie. |
+| `KSeFOnlineSessionTimeoutError` | KSeF może nadal przetwarzać sesję. Wywołaj `wait()` na sesji ponownie z większym `timeout`. Po restarcie odbuduj sesję ze stanu zapisanego przez `resume_state()`, używając `online_session(state=...)`. |
+| `KSeFPermissionOperationFailedError` | Przeczytaj powód w `description`, popraw żądanie i nadaj albo cofnij uprawnienie ponownie. `get_operation_status()` pokazuje końcowy stan operacji. |
+| `KSeFPermissionOperationTimeoutError` | Operacja może jeszcze zostać zastosowana. Wywołaj `wait()` na operacji ponownie z większym `timeout` albo sprawdź ją przez `get_operation_status()`. Po restarcie odzyskaj obiekt przez `auth.permissions.operation(state)`, używając stanu zapisanego z `resume_state()`. |
+| `KSeFSessionFailedError` | Zobacz, czemu faktury się nie udały, przez `list_failed_invoices()`. |
+| `KSeFTokenActivationFailedError` | Wygeneruj nowy token przez `generate()` albo sprawdź status tokenu przez `get_status()`. |
+| `KSeFTokenStatusTimeoutError` | KSeF może nadal aktywować token. Wywołaj `wait()` na tokenie ponownie z większym `timeout` albo sprawdź go przez `get_status()`. Po restarcie odzyskaj obiekt przez `auth.tokens.generation(state)`, używając stanu zapisanego z `resume_state()`. Ten stan nigdy nie zawiera jednorazowego tokenu. |
 
 `KSeFSessionError` nie ma wskazówki na poziomie klasy. SDK ustawia ją tam, gdzie
 zna przyczynę: oczekiwanie na sesję, która jest nadal otwarta (najpierw ją
@@ -457,7 +454,7 @@ Zapisz właściwy numer referencyjny albo stan zwracany przez `resume_state()`, 
 | `retry_after` | `int | None` | Całkowite sekundy z `Retry-After` KSeF, podane jako sekundy albo data HTTP; `None`, gdy nagłówka brak lub nie da się go odczytać. |
 | `status_code` | `int` | Zawsze `429`. |
 | `response` | `BaseModel | None` | Sparsowana treść błędu KSeF, gdy jest dostępna. |
-| `hint` | `str` | `Wait <retry_after> seconds before retrying.` |
+| `hint` | `str` | Tekst wstawiany przez SDK po angielsku: `Wait <retry_after> seconds before retrying.` (poczekaj podaną liczbę sekund przed ponowieniem). |
 
 ## Atrybuty odrzucenia faktury
 

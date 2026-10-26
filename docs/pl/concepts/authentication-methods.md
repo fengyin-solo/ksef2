@@ -59,7 +59,7 @@ Profil zapisuje sposób uwierzytelnienia: środowisko, NIP, metodę, ścieżki c
 
 ## Podmiot i kontekst przy XAdES
 
-Przy uwierzytelnianiu XAdES SDK buduje i podpisuje żądanie XML dla kontekstu NIP przekazanego do `with_xades()`. KSeF odczytuje podmiot uwierzytelniający z certyfikatu użytego do podpisu. Może to być pieczęć firmowa, certyfikat osoby z NIP-em albo PESEL-em, certyfikat KSeF typu Authentication albo certyfikat dopuszczony przez uprawnienia nadane na odcisk palca certyfikatu.
+Przy uwierzytelnianiu XAdES SDK buduje i podpisuje żądanie XML dla kontekstu NIP przekazanego do `with_xades()`. KSeF odczytuje podmiot uwierzytelniający z certyfikatu użytego do podpisu. Może to być pieczęć firmowa, certyfikat osoby z NIP-em albo PESEL-em, certyfikat KSeF typu `Authentication` albo certyfikat dopuszczony przez uprawnienia nadane na odcisk palca certyfikatu.
 
 `nip` jest więc identyfikatorem kontekstu logowania, a nie zawsze identyfikatorem wpisanym w certyfikat podpisujący. Osoba może uwierzytelnić się w kontekście firmy, jeśli KSeF widzi aktywne uprawnienia tej osoby albo certyfikatu.
 
@@ -98,7 +98,7 @@ Kolejność wyboru profilu jest taka sama w SDK i CLI:
 Twórz i wybieraj profile przez `ksef2-cli`, gdy te same osoby obsługują ten sam kontekst logowania z terminala. Użyj `ProfileStore`, gdy narzędzie w Pythonie ma samo tworzyć albo aktualizować wspólny plik profili.
 :::
 
-Środowisko klienta głównego musi zgadzać się ze środowiskiem wybranego profilu. Profil `test` używaj z `Client(Environment.TEST)`, profil `demo` z `Client(Environment.DEMO)`, a profil `production` z `Client(Environment.PRODUCTION)`.
+Środowisko klienta głównego musi zgadzać się ze środowiskiem wybranego profilu. Profilu `test` używaj z `Client(Environment.TEST)`, profilu `demo` z `Client(Environment.DEMO)`, a profilu `production` z `Client(Environment.PRODUCTION)`.
 
 ## Przebieg uwierzytelniania
 

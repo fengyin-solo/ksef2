@@ -8,7 +8,7 @@ KSeF używa słowa „certyfikat” w kilku różnych miejscach. Wszystkie opier
 | Rola certyfikatu | Kto go ma | Moduł SDK | Cel |
 | --- | --- | --- | --- |
 | Materiał podpisu uwierzytelniania | Aplikacja, użytkownik, HSM, magazyn certyfikatów albo metoda pomocnicza środowiska testowego. | `client.authentication.with_xades()` i `ksef2.xades` | Podpisuje `AuthTokenRequest` używany do uwierzytelnienia. |
-| Certyfikat wydany przez KSeF | KSeF wydaje go po wniosku. Przechowujesz go razem z kluczem prywatnym. | `auth.certificates` | Daje podmiotowi uwierzytelniającemu certyfikat KSeF typu Authentication albo Offline. |
+| Certyfikat wydany przez KSeF | KSeF wydaje go po wniosku. Przechowujesz go razem z kluczem prywatnym. | `auth.certificates` | Daje podmiotowi uwierzytelniającemu certyfikat KSeF typu `Authentication` albo `Offline`. |
 | Publiczny certyfikat szyfrowania | Publikuje go KSeF. SDK go odczytuje. | `client.encryption` i przepływy wysokiego poziomu | Szyfruje dla KSeF dane uwierzytelniania tokenem, klucze sesji i klucze eksportu. |
 
 Rozdzielenie tych ról chroni przed dwoma częstymi błędami: traktowaniem certyfikatu tak, jakby niósł uprawnienia KSeF, oraz traktowaniem rejestracji tak, jakby KSeF miał dostać klucz prywatny.
@@ -29,8 +29,8 @@ Certyfikat wydany przez KSeF ma jeden typ. Nie da się połączyć obu ról w je
 
 | Wartość SDK | Znaczenie |
 | --- | --- |
-| `authentication` | Certyfikat KSeF typu Authentication. Służy do uwierzytelniania w KSeF. |
-| `offline` | Certyfikat KSeF typu Offline. Potwierdza autentyczność wystawcy i integralność faktury w trybie offline. Nie służy do uwierzytelniania. |
+| `authentication` | Certyfikat KSeF typu `Authentication`. Służy do uwierzytelniania w KSeF. |
+| `offline` | Certyfikat KSeF typu `Offline`. Potwierdza autentyczność wystawcy i integralność faktury w trybie offline. Nie służy do uwierzytelniania. |
 
 Wniosek składaj o typ, którego potrzebuje dany przepływ.
 
@@ -78,7 +78,7 @@ Lokalny rekord mówi tylko to, co twierdzi sam certyfikat. Nie mówi, czy KSeF n
 
 XAdES używa certyfikatu do podpisania XML uwierzytelniania. Rejestracja dotyczy certyfikatów wydawanych przez KSeF. Publiczne certyfikaty szyfrowania to jeszcze coś innego: publiczne klucze KSeF, którymi SDK szyfruje klucze przesyłanych danych.
 
-Jeśli problem dotyczy kluczy prywatnych, CSR, numerów seryjnych wydanych certyfikatów albo certyfikatu typu Offline, należy do zarządzania certyfikatami. Jeśli dotyczy `public_key_id`, szyfrowania tokena, szyfrowania sesji albo odszyfrowania paczki eksportu, należy do szyfrowania.
+Jeśli problem dotyczy kluczy prywatnych, CSR, numerów seryjnych wydanych certyfikatów albo certyfikatu typu `Offline`, należy do zarządzania certyfikatami. Jeśli dotyczy `public_key_id`, szyfrowania tokena, szyfrowania sesji albo odszyfrowania paczki eksportu, należy do szyfrowania.
 
 ## Powiązane strony
 

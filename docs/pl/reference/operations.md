@@ -39,7 +39,7 @@ TransportConfig(
 | --- | --- | --- | --- |
 | `timeouts` | `TimeoutConfig` | `TimeoutConfig()` | `httpx.Timeout` |
 | `pool` | `ConnectionPoolConfig` | `ConnectionPoolConfig()` | `httpx.Limits` |
-| `retry` | `RetryConfig` | `RetryConfig()` | Middleware retry SDK |
+| `retry` | `RetryConfig` | `RetryConfig()` | Warstwa ponowień SDK |
 | `tls` | `TlsConfig` | `TlsConfig()` | Weryfikacja TLS w `httpx` |
 | `proxy_url` | `str | None` | `None` | Proxy `httpx` |
 | `trust_env` | `bool` | `True` | Obsługa zmiennych środowiskowych przez `httpx` |

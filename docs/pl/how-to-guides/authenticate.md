@@ -208,7 +208,7 @@ Przed pierwszym żądaniem do KSeF klient sprawdza, że:
 1. magazyn jest tego samego rodzaju co klient, bo klient synchroniczny nie może czekać na magazyn asynchroniczny, a klient asynchroniczny nie odczyta magazynu synchronicznego;
 2. wskazanie zapisano dla środowiska tego klienta;
 3. rekord zwrócony przez magazyn jest tym, o który go zapytano;
-4. certyfikat nie jest certyfikatem KSeF typu Offline (`offline`). Certyfikat o nieznanej funkcji w KSeF, na przykład zewnętrzny albo wygenerowany w środowisku testowym, jest akceptowany;
+4. certyfikat nie jest certyfikatem KSeF typu `Offline` (`offline`). Certyfikat o nieznanej funkcji w KSeF, na przykład zewnętrzny albo wygenerowany w środowisku testowym, jest akceptowany;
 5. certyfikat mieści się w swoim okresie ważności.
 
 Klient asynchroniczny czeka na to samo wywołanie:

@@ -63,7 +63,7 @@ Polski numer identyfikacji podatkowej. Często służy jako identyfikator podatn
 
 ## Numer KSeF
 
-Identyfikator nadany przez KSeF po przyjęciu i przetworzeniu faktury. Zapisuj go, gdy pobierasz fakturę, uzgadniasz dokumenty, obsługujesz zgłoszenia albo pobierasz UPO.
+Identyfikator nadany przez KSeF po przyjęciu i przetworzeniu faktury. Zapisuj go, gdy pobierasz fakturę, uzgadniasz dokumenty, obsługujesz zgłoszenia albo pobierasz UPO. Nie myl go z numerem faktury, który nadaje sprzedawca.
 
 ## Numer referencyjny
 

@@ -13,7 +13,7 @@ Przy uwierzytelnianiu XAdES KSeF sprawdza podpisany dokument XML i certyfikat os
 
 - kwalifikowany certyfikat osoby fizycznej zawierający PESEL albo NIP;
 - kwalifikowana pieczęć organizacji zawierająca NIP;
-- certyfikat KSeF typu Authentication;
+- certyfikat KSeF typu `Authentication`;
 - certyfikat rozpoznawany przez uprawnienia nadane na odcisk palca certyfikatu (`fingerprint`);
 - certyfikat samopodpisany, wyłącznie w środowisku testowym.
 

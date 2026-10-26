@@ -41,7 +41,10 @@ just changelog-seed    # commity od poprzedniego tagu, po jednym punkcie w linii
    Gdy wydanie jest gotowe, wpisz rzeczywistą datę jako `## vX.Y.Z (YYYY-MM-DD)`.
    `scripts/verify_release.py` odrzuca nagłówek bez daty, nieprawidłową datę
    kalendarzową lub nagłówek innej wersji przed publikacją.
-2. Uruchom `just release-check`.
+2. Uruchom `just release-check`. Polecenie sprawdza sumy kontrolne dołączonych
+   słowników kodów oraz ich dokładne bajty i manifest pochodzenia w wheel i sdist.
+   `scripts/verify_release.py --artifacts-only` powtarza te kontrole paczek bez
+   wymagania gotowego nagłówka wydania ani tagu.
 3. Utwórz PR do `main`. Wydanie zmienia `pyproject.toml`, `uv.lock` i
    `CHANGELOG.md`. Przejrzyj PR jak każdy inny i scal.
 

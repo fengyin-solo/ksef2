@@ -1,3 +1,12 @@
+## v1.0.1 (unreleased)
+
+### Fixed
+
+- Resolve XSLT code descriptions offline with bundled official country, tax-office,
+  tax-office ex-WUS, tax-office-head, and currency lists when
+  `enable_code_lookups=True`. Keep network access and writes blocked, and include
+  unresolved URIs in `KSeFInvoiceRenderingError` messages and details (#324).
+
 ## v1.0.0 (2026-10-26)
 
 ### Fixed

@@ -1,144 +1,90 @@
 ---
 title: Własny magazyn certyfikatów podpisu
-description: Zaimplementuj protokół magazynu certyfikatów podpisu na keychainie, managerze sekretów, bazie danych albo innym backendzie trzymającym Twój certyfikat i klucz prywatny.
+description: Własna implementacja magazynu certyfikatów podpisu na pęku kluczy, w menedżerze sekretów, w bazie danych albo w innym miejscu, które trzyma certyfikat i klucz prywatny.
 ---
 
-Magazyn certyfikatów podpisu trzyma Twój własny certyfikat podpisu XAdES razem z
-jego kluczem prywatnym i oddaje parę jako jeden zwalidowany rekord. SDK ma
-adaptery pamięciowe; napisz własny, gdy para musi przetrwać poza proces.
+Magazyn certyfikatów podpisu trzyma Twój certyfikat podpisu XAdES razem z kluczem prywatnym i oddaje parę jako jeden sprawdzony rekord. SDK ma adaptery pamięciowe. Napisz własny, gdy para ma przetrwać poza procesem.
 
-To nie jest `CertificateStoreProtocol`, czyli cache publicznych certyfikatów
-szyfrowania KSeF, który klient główny trzyma jako `certificate_store=`. Te dwie
-rzeczy nie mają ze sobą wspólnego: ten magazyn trzyma klucz prywatny, tamten
-tylko materiał publiczny. Różnicę opisuje strona
-[Certyfikaty](../concepts/certificates.md).
+To nie jest `CertificateStoreProtocol`, czyli pamięć podręczna publicznych certyfikatów szyfrowania KSeF, którą klient główny trzyma jako `certificate_store=`. Te dwa magazyny nie mają ze sobą nic wspólnego. Ten trzyma klucz prywatny, tamten tylko materiał publiczny. Różnicę opisuje strona [Certyfikaty](../concepts/certificates.md).
 
 ## Kiedy pisać własny
 
-Napisz adapter, gdy Twój klucz faktycznie żyje w jednym z tych miejsc:
+Napisz adapter, gdy klucz naprawdę leży w jednym z tych miejsc:
 
-- wpisie w keychainie albo keyringu systemu operacyjnego,
-- managerze sekretów, na przykład Vault albo chmurowym magazynie sekretów,
-- wierszu w bazie danych, najlepiej z kluczem zaszyfrowanym kluczem, którego ten
-  wiersz nie potrafi odczytać,
-- blobie zaszyfrowanym przez KMS — o ile klucz KMS da się zaimportować do
-  procesu.
+- we wpisie pęku kluczy albo keyringu systemu operacyjnego,
+- w menedżerze sekretów, na przykład w Vault albo w chmurowym magazynie sekretów,
+- w wierszu bazy danych, najlepiej z kluczem zaszyfrowanym kluczem, którego ten wiersz nie potrafi odczytać,
+- w zaszyfrowanym obiekcie binarnym z KMS, o ile klucz KMS da się wczytać do procesu.
 
-Klucze, których urządzenie odmawia wyeksportować, są poza tym protokołem. Klucz
-HSM albo KMS, który nigdy nie opuszcza sprzętu, nie może trafić do rekordu
-`SigningCertificate`, bo rekord to certyfikat i klucz prywatny trzymane przez
-proces. Podpisuj takimi kluczami poza SDK.
+Klucz, którego urządzenie nie pozwala wyeksportować, jest poza tym protokołem. Klucz HSM albo KMS, który nigdy nie opuszcza sprzętu, nie może trafić do rekordu `SigningCertificate`, bo rekord to certyfikat i klucz prywatny trzymane przez proces. Takim kluczem podpisuj poza SDK.
 
 ## Cztery metody
 
-Zaimplementuj `SigningCertificateStoreProtocol` albo
-`AsyncSigningCertificateStoreProtocol` dla klientów asynchronicznych i przekaż
-obiekt do `client.authentication.with_stored_certificate()`. Adapter spełnia
-protokół strukturalnie — nie dziedzicz po nim.
+Zaimplementuj `SigningCertificateStoreProtocol` albo `AsyncSigningCertificateStoreProtocol` dla klientów asynchronicznych i przekaż obiekt do `client.authentication.with_stored_certificate()`. Adapter spełnia protokół strukturalnie. Nie dziedzicz po nim.
 
 | Metoda | Kontrakt |
 | --- | --- |
-| `save(certificate)` | Zapisz parę atomowo, tak żeby rekord był kompletny albo nie było go wcale. Zapis rekordu o takich samych metadanych jak zapisany nic nie zmienia i zwraca metadane zapisane. Rekord o innych metadanych pod zapisaną referencją to konflikt. |
-| `load(reference)` | Zwróć dokładnie rekord zapisany pod `reference`. Nigdy nie wybieraj „najnowszego” ani „najlepszego” certyfikatu, a przedawniony zwracaj tak, jak został zapisany. |
-| `list(*, environment, certificate_type=None)` | Zwróć metadane każdego rekordu jednego środowiska, posortowane po `valid_from`, a następnie po `fingerprint_sha256`. Odczyt metadanych nigdy nie odsłania klucza prywatnego ani nie kontaktuje się z KSeF; przedawnione rekordy są w wyniku. |
+| `save(certificate)` | Zapisz parę atomowo, tak żeby rekord był kompletny albo nie było go wcale. Zapis rekordu o takich samych metadanych jak zapisany nic nie zmienia i zwraca metadane już zapisane. Rekord o innych metadanych pod zapisanym wskazaniem to konflikt. |
+| `load(reference)` | Zwróć dokładnie rekord zapisany pod `reference`. Nigdy nie wybieraj „najnowszego” ani „najlepszego” certyfikatu. Rekord po terminie ważności zwróć taki, jaki został zapisany. |
+| `list(*, environment, certificate_type=None)` | Zwróć metadane każdego rekordu jednego środowiska, posortowane po `valid_from`, a potem po `fingerprint_sha256`. Odczyt metadanych nigdy nie odsłania klucza prywatnego i nie kontaktuje się z KSeF. Rekordy po terminie ważności są w wyniku. |
 | `delete(reference)` | Usuń lokalny rekord i zwróć, czy jakiś był. Certyfikat pozostaje ważny w KSeF, dopóki nie zostanie tam unieważniony. |
 
 ## Odbuduj rekord przy load()
 
-Nie próbuj zapisywać obiektu `SigningCertificate`. Zapisz to, co potrzebne do jego
-odbudowy — klucz, certyfikat i zapisane metadane — i odbudowuj rekord przy każdym
-`load()`:
+Nie próbuj zapisywać obiektu `SigningCertificate`. Zapisz to, co potrzebne do jego odbudowy: klucz, certyfikat i zapisane metadane. Rekord składaj przy każdym `load()`:
 
 1. Przeczytaj i odszyfruj zapisany materiał klucza.
-2. Zbuduj `XAdESCredentials(certificate, private_key)`. To sprawdza, że klucz
-   prywatny należy do certyfikatu, więc rekord zapisany w złej parze psuje się
-   przy odczycie, a nie przy uwierzytelnianiu.
-3. Zbuduj `SigningCertificate(credentials, environment=..., certificate_type=...,
-   ksef_serial_number=...)`. Rekord wyprowadza własną referencję, numer seryjny
-   X.509, odcisk klucza publicznego i okres ważności z certyfikatu.
-4. Porównaj `info` odbudowanego rekordu z metadanymi, które zapisałeś. Jeśli się
-   różnią, backend zwrócił cudzy materiał: podnieś
-   `KSeFCertificateStoreMaterialError` dla tej `reference` zamiast oddawać rekord.
+2. Zbuduj `XAdESCredentials(certificate, private_key)`. To sprawdza, że klucz prywatny należy do certyfikatu, więc zła para psuje się przy odczycie, a nie przy uwierzytelnianiu.
+3. Zbuduj `SigningCertificate(credentials, environment=..., certificate_type=..., ksef_serial_number=...)`. Rekord sam wyprowadza wskazanie (środowisko i odcisk palca certyfikatu), numer seryjny X.509, odcisk palca klucza publicznego i okres ważności z certyfikatu.
+4. Porównaj `info` odbudowanego rekordu z metadanymi, które zapisałeś. Jeśli się różnią, backend zwrócił cudzy materiał. Zgłoś `KSeFCertificateStoreMaterialError` dla tego `reference`, zamiast oddawać rekord.
 
-## Który błąd podnieść
+## Który błąd zgłosić
 
-Podnoś błędy opisane w protokole, żeby odbiorca mógł sobie poradzić bez czytania
-Twojego adaptera:
+Zgłaszaj błędy opisane w protokole, żeby odbiorca mógł sobie poradzić bez czytania Twojego adaptera:
 
-| Błąd | Podnieś go, gdy |
+| Błąd | Zgłoś go, gdy |
 | --- | --- |
-| `KSeFCertificateStoreNotFoundError` | Pod tą referencją nic nie jest zapisane. |
-| `KSeFCertificateStoreConflictError` | `save()` znalazło pod tą referencją inny rekord, o innych metadanych. |
-| `KSeFCertificateStoreAccessError` | Backend odrzucił poświadczenia albo uprawnienia wołającego. |
+| `KSeFCertificateStoreNotFoundError` | Pod tym wskazaniem nic nie jest zapisane. |
+| `KSeFCertificateStoreConflictError` | `save()` znalazło pod tym wskazaniem inny rekord, o innych metadanych. |
+| `KSeFCertificateStoreAccessError` | Backend odrzucił dane uwierzytelniające albo uprawnienia wywołującego. |
 | `KSeFCertificateStoreUnavailableError` | Backend był nieosiągalny albo nie przyjął rekordu. |
-| `KSeFCertificateStoreMaterialError` | Zapisany rekord jest uszkodzony, używa formatu, którego nie umiesz odczytać, nie da się odszyfrować albo nie pasuje do swojej referencji. |
+| `KSeFCertificateStoreMaterialError` | Zapisany rekord jest uszkodzony, używa formatu, którego nie umiesz odczytać, nie da się go odszyfrować albo nie pasuje do swojego wskazania. |
 
-Przekaż `operation=` metodę, która nie wyszła, oraz `reference=` rekord, którego
-dotyczyła, żeby komunikat nazywał jedno i drugie. Ustaw `outcome_ambiguous=True`,
-gdy zapis mógł wejść i wołający nie pozna tego po błędzie — to normalna sytuacja
-przy zapisie, którego odpowiedź przepadła: wołający odczytuje wtedy rekord przed
-powtórzeniem zapisu.
+Przekaż `operation=` jako metodę, która nie wyszła, oraz `reference=` jako rekord, którego dotyczyła, żeby komunikat nazywał jedno i drugie. Ustaw `outcome_ambiguous=True`, gdy zapis mógł wejść, a wywołujący nie pozna tego po błędzie. To zwykła sytuacja przy zapisie, którego odpowiedź przepadła. Wywołujący odczytuje wtedy rekord przed powtórzeniem zapisu.
 
-Sam błąd trzymaj bez sekretów. Komunikat nie może zawierać materiału klucza,
-hasła, odpowiedzi backendu ani URL-a połączenia z poświadczeniami. Jeśli błąd
-backendu mógł zawierać któreś z nich, podnieś własny błąd z `from None` zamiast
-łączyć go z oryginalnym wyjątkiem.
+Sam błąd trzymaj bez sekretów. Komunikat nie może zawierać materiału klucza, hasła, odpowiedzi backendu ani adresu URL połączenia z danymi uwierzytelniającymi. Jeśli błąd backendu mógł zawierać któreś z nich, zgłoś własny błąd z `from None`, zamiast łączyć go z oryginalnym wyjątkiem.
 
-Nie zamieniaj błędu w kodzie na `KSeFCertificateStoreUnavailableError`. Zły
-argument, zapytanie zbudowane ze złego schematu albo brakująca metoda mają wyjść
-jako zwykłe wyjątki Pythona, żeby nikt nie pomylił ich z backendem, w który
-warto ponowić.
+Nie zamieniaj błędu w kodzie na `KSeFCertificateStoreUnavailableError`. Zły argument, zapytanie zbudowane ze złego schematu albo brakująca metoda mają wyjść jako zwykłe wyjątki Pythona, żeby nikt nie pomylił ich z backendem, w który warto ponowić żądanie.
 
 ## Reprezentacja
 
-`SigningCertificate` jest sekretem, dopóki żyje w pamięci: ukrywa poświadczenia w
-`repr()`, odmawia picklowania i kopiowania oraz nie ma API serializacji. Twój
-adapter dziedziczy tę dyscyplinę:
+`SigningCertificate` jest sekretem, dopóki żyje w pamięci. Ukrywa parę w `repr()`, nie daje się zapisać przez pickle ani skopiować i nie ma API serializacji. Twój adapter trzyma tę samą zasadę:
 
-- `repr()` magazynu i wszystkiego, co zwraca, pokazuje wyłącznie liczby albo
-  metadane — nigdy certyfikatu, odcisku, klucza ani wiersza, który je zawiera.
-- Nie serializuj rekordu samodzielnie. Żadnego `pickle`, żadnego `model_dump`,
-  żadnego JSON-a z `SigningCertificate` i żadnej linii logu z nim w środku.
-- Pobieraj hasła kluczy, gdy ich potrzebujesz, i usuwaj je zaraz po użyciu. Nie
-  trzymaj hasła na adapterze.
+- `repr()` magazynu i wszystkiego, co zwraca, pokazuje wyłącznie liczby albo metadane. Nigdy certyfikatu, odcisku palca, klucza ani wiersza, który je zawiera.
+- Nie serializuj rekordu samodzielnie. Żadnego `pickle`, żadnego `model_dump`, żadnego JSON-a z `SigningCertificate` i żadnej linii logu z nim w środku.
+- Pobieraj hasła kluczy, gdy ich potrzebujesz, i usuwaj je zaraz po użyciu. Nie trzymaj hasła na adapterze.
 
 ## Własność zasobów
 
-Aplikacja tworzy połączenie z backendem i je zamyka. Klient SDK nigdy nie zamyka
-magazynu: zamknięcie klienta zostawia magazyn używalny, a ten sam magazyn może
-obsłużyć kilku klientów. Jeśli adapter potrzebuje połączenia na wywołanie,
-otwieraj i zamykaj je w środku wywołania; jeśli potrzebuje puli, niech aplikacja
-będzie właścicielem puli.
+Aplikacja tworzy połączenie z backendem i je zamyka. Klient SDK nigdy nie zamyka magazynu. Zamknięcie klienta zostawia magazyn używalny, a ten sam magazyn może obsłużyć kilku klientów. Jeśli adapter potrzebuje połączenia na wywołanie, otwieraj i zamykaj je wewnątrz wywołania. Jeśli potrzebuje puli, właścicielem puli jest aplikacja.
 
-Opcjonalne biblioteki zewnętrzne importuj wewnątrz adaptera — w `__init__` albo w
-metodzie, która ich potrzebuje — a nie przy imporcie modułu. Magazyn
-potrzebujący klienta keychaina nie może przez to obciążać SDK dla wszystkich
-innych.
+Opcjonalne biblioteki zewnętrzne importuj wewnątrz adaptera, w `__init__` albo w metodzie, która ich potrzebuje, a nie przy imporcie modułu. Magazyn, który potrzebuje klienta pęku kluczy, nie może przez to obciążać SDK dla wszystkich innych.
 
 ## Testy adaptera
 
 Przepuść każdy adapter, synchroniczny i asynchroniczny, przez ten sam kontrakt:
 
-1. `save()` a potem `load()` zwraca tę samą parę. Podpisz coś załadowanym kluczem
-   i zweryfikuj załadowanym certyfikatem: rundka porównująca tylko metadane może
-   przejść, choć materiał klucza jest zepsuty.
-2. Dwukrotny zapis takiego samego rekordu zostawia jeden rekord i zwraca te same
-   metadane.
-3. Zapis innego rekordu pod zapisaną referencją podnosi
-   `KSeFCertificateStoreConflictError` i zostawia zapisany rekord czytalny.
-4. Odczyt referencji, której nigdy nie zapisano, podnosi
-   `KSeFCertificateStoreNotFoundError`.
-5. `list()` zwraca tylko rekordy żądanego środowiska, filtruje po
-   `certificate_type`, gdy podano ten typ, sortuje po `valid_from`, a następnie po
-   `fingerprint_sha256`, i zawiera rekord przedawniony.
-6. `delete()` zwraca `True` dla rekordu, który był, i `False` dla takiego, którego
-   nie było, a rekord potem znika.
+1. `save()`, a potem `load()`, zwraca tę samą parę. Podpisz coś załadowanym kluczem i zweryfikuj załadowanym certyfikatem. Test, który porównuje tylko metadane, może przejść, choć materiał klucza jest zepsuty.
+2. Dwukrotny zapis takiego samego rekordu zostawia jeden rekord i zwraca te same metadane.
+3. Zapis innego rekordu pod zapisanym wskazaniem zgłasza `KSeFCertificateStoreConflictError` i zostawia zapisany rekord do odczytu.
+4. Odczyt wskazania, którego nigdy nie zapisano, zgłasza `KSeFCertificateStoreNotFoundError`.
+5. `list()` zwraca tylko rekordy żądanego środowiska, filtruje po `certificate_type`, gdy podano ten typ, sortuje po `valid_from`, a następnie po `fingerprint_sha256`, i zawiera rekord po terminie ważności.
+6. `delete()` zwraca `True` dla rekordu, który był, i `False` dla takiego, którego nie było. Potem rekord znika.
 7. Jeden certyfikat zapisany w dwóch środowiskach to dwa niezależne rekordy.
 
 ## Minimalny szkic
 
-Poniższy kształt to najmniej, co spełnia protokół synchroniczny. Backend to dict
-bajtów, więc ciekawa jest część, którą `load()` musi odbudować.
+Poniżej jest najmniej, co spełnia protokół synchroniczny. Backend to słownik bajtów, więc istotna jest część, którą `load()` musi odbudować.
 
 ```python
 from ksef2 import Environment
@@ -197,13 +143,11 @@ class BytesStore:
         # innych backendów to KSeFCertificateStoreError.
 ```
 
-Dla klienta asynchronicznego uczyń każdą z czterech metod funkcją korutynową.
-Podanie magazynu synchronicznego klientowi asynchronicznemu albo odwrotnie
-podnosi `KSeFArgumentError`, zanim klient go dotknie.
+Dla klienta asynchronicznego zrób z każdej z czterech metod funkcję korutynową. Podanie magazynu synchronicznego klientowi asynchronicznemu albo odwrotnie zgłasza `KSeFArgumentError`, zanim klient go dotknie.
 
 ## Powiązane strony
 
-- [Uwierzytelnij się](authenticate.md): Uwierzytelnij się certyfikatem z magazynu.
-- [Zarządzaj certyfikatami](manage-certificates.md): Zapisz certyfikat wydany przez KSeF obok jego klucza.
-- [Certyfikaty](../concepts/certificates.md): Nie myl magazynu certyfikatów podpisu z cache'em certyfikatów szyfrowania.
-- [Skonfiguruj magazyn certyfikatów](configure-certificate-store.md): Skonfiguruj cache publicznych certyfikatów szyfrowania KSeF.
+- [Uwierzytelnianie](authenticate.md): Uwierzytelnij się certyfikatem z magazynu.
+- [Zarządzanie certyfikatami](manage-certificates.md): Zapisz certyfikat wydany przez KSeF obok jego klucza.
+- [Certyfikaty](../concepts/certificates.md): Nie myl magazynu certyfikatów podpisu z pamięcią podręczną certyfikatów szyfrowania.
+- [Konfiguracja magazynu certyfikatów](configure-certificate-store.md): Skonfiguruj pamięć podręczną publicznych certyfikatów szyfrowania KSeF.

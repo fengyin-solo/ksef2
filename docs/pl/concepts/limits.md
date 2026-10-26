@@ -1,23 +1,19 @@
 ---
 title: Limity i ponawianie żądań
-description: Limity kontekstu KSeF, limity podmiotu, rate limity API, terminy pollingu i granice ponawiania.
+description: Limity kontekstu logowania, limity podmiotu, limity liczby żądań oraz terminy sprawdzania statusu i ponowień.
 ---
 
-Limity KSeF są częścią projektu integracji. Wpływają na liczbę faktur w sesji,
-częstotliwość pollingu workerów, wybór eksportu zamiast bezpośrednich pobrań i
-agresywność retry po throttlingu.
+Limity KSeF są częścią projektu integracji. Od nich zależy, ile faktur zmieści się w sesji, jak często proces roboczy może sprawdzać status, czy lepiej pobrać paczkę eksportu niż pojedyncze faktury i jak ostrożnie ponawiać żądania po ograniczeniu liczby wywołań.
 
-SDK udostępnia odczyt limitów i administracyjne nadpisania przez `auth.limits`,
-ale większość aplikacji powinna traktować limity jako wejście do harmonogramu,
-a nie wartości zmieniane podczas zwykłych przepływów biznesowych.
+SDK pozwala odczytać limity i administracyjnie je nadpisać przez `auth.limits`. Większość aplikacji powinna traktować limity jako dane do harmonogramu, a nie jako wartości zmieniane w zwykłym przepływie biznesowym.
 
-## Rodziny limitów
+## Rodzaje limitów
 
-| Rodzina limitów | Model SDK | Na co wpływa |
+| Rodzaj | Model SDK | Na co wpływa |
 | --- | --- | --- |
-| Limity kontekstu | `ContextLimits` | Liczba faktur i rozmiary payloadów w sesjach online oraz batch. |
-| Limity podmiotu | `SubjectLimits` | Limity rejestracji i wydawania certyfikatów dla uwierzytelnionego podmiotu. |
-| Rate limity API | `ApiRateLimits` | Wolumen żądań per sekunda, minuta i godzina dla rodzin endpointów. |
+| Limity kontekstu logowania | `ContextLimits` | Liczba faktur i rozmiar danych w sesji interaktywnej oraz wsadowej. |
+| Limity podmiotu | `SubjectLimits` | Rejestracja i wydawanie certyfikatów dla uwierzytelnionego podmiotu. |
+| Limity liczby żądań | `ApiRateLimits` | Liczba żądań na sekundę, minutę i godzinę dla grup operacji API. |
 
 ```python
 context = auth.limits.get_context_limits()
@@ -28,51 +24,31 @@ rate = auth.limits.get_api_rate_limits()
 print(rate.invoice_send.per_minute)
 ```
 
-## Jak limity kształtują przepływy
+## Jak limity wpływają na przepływ
 
-Używaj wysyłki online dla niskiego wolumenu albo natychmiastowej wysyłki
-faktur. Używaj wysyłki batch, gdy faktury mogą zostać przygotowane jako paczka.
-Używaj eksportów, gdy potrzebujesz większego zestawu pobrań; powtarzane
-bezpośrednie pobrania i bardzo częste zapytania przyrostowe zwykle są złą
-architekturą dla produkcyjnego synchronizatora.
+Sesji interaktywnej używaj przy małej liczbie faktur albo gdy faktura ma wyjść od razu. Sesji wsadowej używaj, gdy faktury można zebrać w paczkę. Eksportu używaj, gdy potrzebujesz większego zestawu do pobrania. Powtarzane pobieranie pojedynczych faktur i bardzo częste zapytania przyrostowe zwykle źle się sprawdzają w produkcyjnej synchronizacji.
 
-Dla aplikacji produkcyjnych traktuj KSeF jak zdalny system zapisu, z którego
-synchronizujesz dane w kontrolowanych interwałach. Zapisuj metadane i treści
-faktur lokalnie, a ekrany użytkownika obsługuj z lokalnego magazynu.
+W aplikacji produkcyjnej traktuj KSeF jak zdalny zapis, z którego synchronizujesz dane w kontrolowanych odstępach. Metadane i treść faktur trzymaj lokalnie, a ekrany użytkownika obsługuj z lokalnego magazynu.
 
-:::caution[Limity są wejściem do integracji]
-Rozmiary batchy, użycie eksportów, rytm pollingu i strategia retry powinny
-wynikać z limitów KSeF oraz Twoich wymagań operacyjnych. Nie ukrywaj
-nadpisań limitów w zwykłym kodzie przetwarzania faktur.
+:::caution[Limity są danymi wejściowymi integracji]
+Rozmiar paczki, decyzja o eksporcie, rytm sprawdzania statusu i sposób ponawiania żądań powinny wynikać z limitów KSeF oraz z wymagań operacyjnych. Nie ukrywaj nadpisań limitów w zwykłym kodzie przetwarzania faktur.
 :::
 
-## Deadline pollingu
+## Limit czasu sprawdzania statusu
 
-Wiele przepływów KSeF jest asynchronicznych. SDK udostępnia helpery takie jak
-`.wait()` na wysyłkach faktur, sesjach, zadaniach eksportu i wynikach `search()`,
-`download(..., timeout=...)` oraz polling aktywacji tokenu.
+Wiele przepływów KSeF jest asynchronicznych. SDK ma metody takie jak `.wait()` na wysyłce faktury, sesji i zadaniu eksportu, a także `download(..., timeout=...)` i oczekiwanie na aktywację tokena.
 
-Timeouty tych helperów są limitami oczekiwania na przepływ. Nie są tym samym co
-timeouty socketów HTTP. Timeout pollingu oznacza, że oczekiwany stan KSeF nie
-został osiągnięty przed lokalnym deadline; nie zawsze oznacza to błąd zdalnej
-operacji.
+Limit czasu tych metod dotyczy całego przepływu. To nie jest limit czasu pojedynczego połączenia HTTP. Jeśli limit minie, oczekiwany stan KSeF nie pojawił się na czas. Nie zawsze oznacza to, że operacja po stronie KSeF się nie udała.
 
-## Granice retry
+## Kiedy ponawiać żądanie
 
-Transport klienta bazowego może ponawiać błędy transportu i odpowiedzi KSeF
-nadające się do retry. To nie znaczy, że każdą operację można bezpiecznie
-powtarzać w ciemno. Wysyłka faktury, nadanie uprawnień, rejestracja certyfikatu,
-generowanie tokenu i otwarcie sesji powinny być ponawiane na granicy aplikacji,
-z zapisanymi referencjami i zasadami idempotencji właściwymi dla przepływu.
+Transport klienta głównego może ponowić błędy połączenia i te odpowiedzi KSeF, które nadają się do ponowienia. Nie każdą operację można jednak bezpiecznie powtórzyć w ciemno. Wysyłkę faktury, nadanie uprawnienia, rejestrację certyfikatu, wygenerowanie tokena i otwarcie sesji ponawiaj w kodzie aplikacji, z zapisanym numerem referencyjnym i zasadami właściwymi dla tego przepływu.
 
-Gdy KSeF throttluje żądanie, respektuj zwrócone wskazówki retry i zwolnij
-harmonogram workera. Jeśli przepływ ma już numer referencyjny KSeF, preferuj
-sprawdzenie statusu albo wznowienie z tej referencji zamiast tworzyć operację od
-nowa.
+Gdy KSeF ogranicza liczbę żądań, uwzględnij zwróconą wskazówkę i zwolnij harmonogram procesu roboczego. Jeśli przepływ ma już numer referencyjny, sprawdź status albo wznów pracę od tego numeru, zamiast zakładać operację od nowa.
 
 ## Powiązane strony
 
-- [Zarządzaj limitami](../how-to-guides/manage-limits.md): Odczytaj limity kontekstu, podmiotu i rate limity API w kodzie SDK.
-- [Operacje](../reference/operations.md): Przejrzyj timeouty, retry, polling i idempotencję.
-- [Wysyłanie faktur](invoice-lifecycle.md): Wybierz wysyłkę online albo batch na podstawie przepływu i wolumenu.
-- [Zapytania i eksporty](querying-and-exports.md): Używaj eksportów i pobierania przyrostowego z uwzględnieniem limitów KSeF.
+- [Zarządzanie limitami](../how-to-guides/manage-limits.md): odczyt limitów kontekstu logowania, podmiotu i liczby żądań.
+- [Operacje](../reference/operations.md): limity czasu, ponowienia, sprawdzanie statusu i bezpieczne powtórzenie.
+- [Faktura w KSeF](invoice-lifecycle.md): wybór sesji interaktywnej albo wsadowej według przepływu i liczby faktur.
+- [Wyszukiwanie i eksport paczek](querying-and-exports.md): eksport i pobieranie przyrostowe z uwzględnieniem limitów KSeF.

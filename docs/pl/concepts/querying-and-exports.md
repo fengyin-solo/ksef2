@@ -1,34 +1,21 @@
 ---
 title: Wyszukiwanie i eksport paczek
-description: Metadane faktur, pobieranie pojedynczych dokumentów, eksporty paczek i synchronizacja przyrostowa.
+description: Metadane faktur, pobieranie pojedynczych dokumentów, paczki eksportu i synchronizacja przyrostowa.
 ---
 
 Pobieranie faktur w KSeF to trzy różne zadania:
 
-- metadane odpowiadają na pytanie „jakie faktury pasują do filtra?”;
-- pobieranie pojedyncze zwraca przetworzony XML dla podanego numeru KSeF;
+- metadane odpowiadają na pytanie, jakie faktury pasują do filtra;
+- pobranie pojedynczej faktury zwraca przetworzony XML dla podanego numeru KSeF;
 - eksport przygotowuje paczkę do pobrania dla większego zestawu faktur.
 
-KSeF najlepiej traktować jako system wymiany i źródło oficjalnych zapisów
-faktur, a nie jako bazę danych pod każdym ekranem aplikacji. W większości
-integracji stabilny wzorzec to odpytać albo wyeksportować dane z KSeF, zapisać
-wynik lokalnie i zasilać widoki operacyjne z własnego magazynu.
+KSeF najlepiej traktować jako system wymiany i miejsce oficjalnego zapisu faktur, a nie jako bazę pod każdym ekranem aplikacji. W większości integracji stabilny układ jest taki: odpytaj KSeF albo wyeksportuj dane, zapisz wynik lokalnie i zasilaj widoki z własnego magazynu.
 
 ## Metadane znajdują faktury
 
-`auth.invoices.search()` zwraca `InvoiceSearchPager` po wierszach
-`InvoiceMetadata`. Iteruj go albo użyj `pages()`, `first_page()`, `page(cursor)`
-i `wait()`. Te operacje zachowują kontrakty ogólnego `Pager`. `page(cursor)`
-pobiera jedną stronę i zwraca `next_cursor`, który pozwala wznowić to samo
-wyszukiwanie później, nawet w innym procesie. Tylko `next_cursor` równe `None`
-kończy wyszukiwanie: strona może być pusta i nadal wskazywać stronę następną.
-Użyj `responses()` dla pełnych,
-typowanych stron albo `first_response()` dla jednej `QueryInvoicesMetadataResponse`
-z flagami paginacji i `permanent_storage_hwm_date`.
+`auth.invoices.search()` zwraca `InvoiceSearchPager` po wierszach `InvoiceMetadata`. Iteruj go albo użyj `pages()`, `first_page()`, `page(cursor)` i `wait()`. Te operacje zachowują kontrakt ogólnego `Pager`. `page(cursor)` pobiera jedną stronę i zwraca `next_cursor`, który pozwala wznowić to samo wyszukiwanie później, nawet w innym procesie. Tylko `next_cursor` równe `None` kończy wyszukiwanie: strona może być pusta i nadal wskazywać następną. Użyj `responses()` dla pełnych, typowanych stron albo `first_response()` dla jednej `QueryInvoicesMetadataResponse` z flagami stronicowania i `permanent_storage_hwm_date`.
 
-Metadane są przydatne do list, uzgodnień, pollingu po wysyłce i decyzji, co
-pobrać później. Wiersz metadanych może zawierać identyfikatory, daty, dane
-stron, kwoty, pola schematu, hashe, flagi załączników i tryb fakturowania.
+Metadane przydają się do list, uzgodnień, sprawdzania statusu po wysyłce i decyzji, co pobrać później. Wiersz metadanych może zawierać identyfikatory, daty, dane stron, kwoty, pola schematu, skróty, flagi załączników i tryb fakturowania.
 
 Filtr opisuje widok, który KSeF ma przeszukać:
 
@@ -39,27 +26,18 @@ Filtr opisuje widok, który KSeF ma przeszukać:
 - opcjonalne dane faktury, takie jak `invoice_types`, `invoice_schema`, `has_attachment` i `invoicing_mode`.
 
 :::tip[Typ kwoty należy do zakresu kwot]
-Ustaw `amount_type` tylko wtedy, gdy używasz `amount_min` albo `amount_max`.
-SDK waliduje, że filtry zakresu wskazują pole kwoty KSeF, którego dotyczą.
+Ustaw `amount_type` tylko wtedy, gdy używasz `amount_min` albo `amount_max`. SDK sprawdza, że filtr zakresu wskazuje pole kwoty KSeF, którego dotyczy.
 :::
 
 ## Bezpośrednie pobieranie zwraca jeden XML
 
-`auth.invoices.download()` pobiera jeden przetworzony dokument XML po
-`ksef_number`.
+`auth.invoices.download()` pobiera jeden przetworzony dokument XML po `ksef_number`.
 
-Ta ścieżka jest celowo wąska. Użyj jej, gdy masz już numer KSeF z wyniku sesji,
-zapytania o metadane, przepływu UPO albo własnej bazy. Jeśli faktura została
-właśnie zaakceptowana, ale KSeF jeszcze nie udostępnił XML-a,
-`auth.invoices.download(ksef_number, timeout=...)` polluje do gotowości
-dokumentu albo do lokalnego timeoutu.
+Ta ścieżka jest celowo wąska. Użyj jej, gdy masz już numer KSeF z wyniku sesji, zapytania o metadane, przepływu UPO albo własnej bazy. Jeśli KSeF nadał już numer, ale jeszcze nie udostępnił XML-a, `auth.invoices.download(ksef_number, timeout=...)` sprawdza gotowość dokumentu aż do lokalnego limitu czasu.
 
-## Eksporty tworzą szyfrowane paczki
+## Eksport tworzy zaszyfrowaną paczkę
 
-Eksport jest asynchroniczny. `auth.invoices.export()` przyjmuje ten sam kształt
-`InvoicesFilter`, którego używają zapytania o metadane, i zwraca `ExportJob`.
-Jego `wait()` odpytuje KSeF, aż paczka będzie gotowa, pobiera i odszyfrowuje
-części, łączy je i zwraca obiekt `ExportedInvoices`.
+Eksport jest asynchroniczny. `auth.invoices.export()` przyjmuje ten sam `InvoicesFilter`, którego używają zapytania o metadane, i zwraca `ExportJob`. Jego `wait()` sprawdza KSeF, aż paczka będzie gotowa, pobiera i odszyfrowuje części, łączy je i zwraca obiekt `ExportedInvoices`.
 
 ```text
 InvoicesFilter
@@ -69,20 +47,15 @@ InvoicesFilter
         -> ExportedInvoices: invoices(), metadata, archive, save()
 ```
 
-:::caution[Traktuj uchwyty eksportu jak dane wrażliwe]
-`ExportJob` trzyma lokalny materiał klucza AES potrzebny do odszyfrowania
-paczki. Aby przetrwać restart, zapisz `job.resume_state().to_json()` jak
-poświadczenie i przekaż do `auth.invoices.export(state=...)`; nigdy go nie loguj.
+:::caution[Obiekt eksportu trzymaj jak dane wrażliwe]
+`ExportJob` trzyma lokalny klucz AES potrzebny do odszyfrowania paczki. Aby przetrwać restart, zapisz `job.resume_state().to_json()` jak sekret i przekaż go do `auth.invoices.export(state=...)`. Nigdy go nie loguj.
 :::
 
-## Każdy asynchroniczny uchwyt zapisuje swój stan
+## Każdy asynchroniczny obiekt zapisuje swój stan
 
-Eksport to nie jedyna operacja, która przeżywa wywołanie, które ją zaczęło.
-Uchwyty wygenerowanego tokenu, zgłoszenia certyfikatu, operacji uprawnień i
-wysłanej faktury zapisują i wznawiają pracę tak samo: `resume_state()` zwraca
-stan, `to_json()` go zapisuje, a jedna metoda klienta czyta go z powrotem.
+Eksport nie jest jedyną operacją, która żyje dłużej niż wywołanie, które ją zaczęło. Obiekty wygenerowanego tokena, wniosku o certyfikat, operacji na uprawnieniach i wysłanej faktury zapisują i wznawiają pracę tak samo: `resume_state()` zwraca stan, `to_json()` go zapisuje, a jedna metoda klienta czyta go z powrotem.
 
-| Uchwyt | Zapisz przez | Wznów przez |
+| Obiekt | Zapisz przez | Wznów przez |
 | --- | --- | --- |
 | `ExportJob` | `job.resume_state()` | `auth.invoices.export(state=...)` |
 | `GeneratedToken` | `token.resume_state()` | `auth.tokens.generation(state)` |
@@ -90,23 +63,15 @@ stan, `to_json()` go zapisuje, a jedna metoda klienta czyta go z powrotem.
 | `PermissionOperation` | `operation.resume_state()` | `auth.permissions.operation(state)` |
 | `InvoiceSubmission` | `submission.resume_state()` | `session.submission(state=...)` |
 
-Tylko `ExportResumeState` zawiera sekrety. Pozostałe cztery stany trzymają numer
-referencyjny KSeF, a stan wysłania faktury dodatkowo wskazuje sesję, do której
-faktura trafiła, dlatego ich `to_dict()` i `to_json()` to zwykłe dane, a nie
-poświadczenie. W szczególności `GeneratedTokenResumeState` nigdy nie zawiera
-tokenu jednorazowego: to poświadczenie zapisuj osobno, jak wyżej.
+Tylko `ExportResumeState` zawiera sekrety. Pozostałe cztery stany trzymają numer referencyjny KSeF, a stan wysłania faktury dodatkowo wskazuje sesję, do której faktura trafiła. Dlatego ich `to_dict()` i `to_json()` to zwykłe dane, a nie sekret. W szczególności `GeneratedTokenResumeState` nigdy nie zawiera jednorazowej wartości tokena. Ten sekret zapisuj osobno, tak jak przy generowaniu tokena.
 
-Wznowiony uchwyt odpytuje ten sam numer referencyjny co oryginalny. Nie wymyśla
-danych, których nie zapisano, więc wznowiony token nie ma `token`, a wznowione
-zgłoszenie certyfikatu nie ma `timestamp`.
+Wznowiony obiekt sprawdza ten sam numer referencyjny co oryginalny. Nie wymyśla danych, których nie zapisano, więc wznowiony token nie ma `token`, a wznowiony wniosek o certyfikat nie ma `timestamp`.
 
-## HWM jest granicą synchronizacji
+## HWM wyznacza synchronizację
 
-Dla automatycznej synchronizacji kluczowym pojęciem jest HWM: High Water Mark.
-Gdy KSeF zwraca `permanent_storage_hwm_date`, informuje, że dane faktur w
-trwałym zapisie są kompletne do tej granicy.
+Przy automatycznej synchronizacji kluczowy jest znacznik HWM (High Water Mark). Gdy KSeF zwraca `permanent_storage_hwm_date`, informuje, że dane faktur w trwałym zapisie są kompletne do tej daty.
 
-Niezawodny kształt synchronizacji wygląda tak:
+Niezawodna synchronizacja wygląda tak:
 
 ```text
 ostatni zapisany permanent_storage_date
@@ -115,14 +80,9 @@ ostatni zapisany permanent_storage_date
       -> zapis permanent_storage_hwm_date jako początku następnego okna
 ```
 
-Użyj `date_type="permanent_storage"`, gdy celem jest synchronizacja
-przyrostowa. Użyj `restrict_to_permanent_storage_hwm_date=True`, żeby KSeF
-ograniczył wynik do bezpiecznej, zakończonej granicy.
+Użyj `date_type="permanent_storage"`, gdy celem jest synchronizacja przyrostowa. Użyj `restrict_to_permanent_storage_hwm_date=True`, żeby KSeF ograniczył wynik do bezpiecznej, domkniętej daty.
 
-Przykład zakłada uwierzytelnionego klienta `auth`, zapisany `last_synced_at` oraz
-Twoje funkcje zapisu `persist_metadata(invoice)` i `save_checkpoint(datetime)`.
-Zapisuj metadane trwale i deduplikuj po `ksef_number`. Zapisz granicę dopiero
-po pomyślnym odczytaniu i zapisaniu wszystkich stron.
+Przykład zakłada uwierzytelnionego klienta `auth`, zapisany `last_synced_at` oraz Twoje funkcje zapisu `persist_metadata(invoice)` i `save_checkpoint(datetime)`. Zapisuj metadane trwale i usuwaj duplikaty po `ksef_number`. Zapisz granicę dopiero po pomyślnym odczytaniu i zapisaniu wszystkich stron.
 
 ```python
 from datetime import timedelta
@@ -149,23 +109,15 @@ if next_checkpoint is not None:
     save_checkpoint(next_checkpoint)
 ```
 
-Pusta, zakończona odpowiedź również może zawierać granicę synchronizacji.
-Jeśli KSeF nie zwróci HWM albo ostatnia odpowiedź jest ucięta, zachowaj poprzednią
-granicę. W kodzie async użyj `async for page in pager.responses()`,
-`page = await pager.first_response()` oraz
-`page = await pager.page(cursor)`, aby odczytać jedną stronę wraz z kursorem.
+Pusta, zakończona odpowiedź również może zawierać datę synchronizacji. Jeśli KSeF nie zwróci znacznika HWM albo ostatnia odpowiedź jest ucięta, zostaw poprzednią datę. W kodzie asynchronicznym użyj `async for page in pager.responses()`, `page = await pager.first_response()` oraz `page = await pager.page(cursor)`, aby odczytać jedną stronę razem z kursorem.
 
-`responses()` automatycznie obsługuje granice stron i uciętych wyników metadanych.
-Dla uciętej paczki eksportu kontynuuj od jej `last_permanent_storage_date`,
-zamiast zakładać, że pokryto całe żądane okno. Przy nakładających się oknach
-deduplikuj zapisane rekordy po `ksef_number`.
+`responses()` samo przechodzi przez granice stron i ucięte wyniki metadanych. Dla uciętej paczki eksportu kontynuuj od jej `last_permanent_storage_date`, zamiast zakładać, że pokryto całe żądane okno. Przy nakładających się oknach usuwaj duplikaty po `ksef_number`.
 
-Paczki eksportu mogą też zawierać `_metadata.json`, co pomaga uzgodnić pobraną
-zawartość XML z wierszami metadanych przechowywanymi lokalnie.
+Paczka eksportu może też zawierać `_metadata.json`. Pomaga to uzgodnić pobrany XML z wierszami metadanych trzymanymi lokalnie.
 
 ## Powiązane strony
 
-- [Wyszukaj faktury](../how-to-guides/query-invoices.md): Szukaj metadanych faktur filtrami, paginacją i pollingiem.
-- [Pobierz faktury](../how-to-guides/download-invoices.md): Pobierz jeden dokument XML albo większą paczkę eksportu.
-- [Cykl życia faktury](invoice-lifecycle.md): Zobacz, jak łączą się wysyłka, przetwarzanie, zapis i pobieranie faktur.
-- [Szyfrowanie](encryption.md): Zrozum, jak publiczne certyfikaty KSeF chronią klucze sesji i eksportów.
+- [Wyszukiwanie faktur](../how-to-guides/query-invoices.md): filtry metadanych, strony wyników i oczekiwanie, aż nowe faktury będą widoczne.
+- [Pobieranie faktur](../how-to-guides/download-invoices.md): jeden dokument XML albo większa paczka eksportu.
+- [Faktura w KSeF](invoice-lifecycle.md): jak łączą się wysyłka, przetwarzanie, zapis i pobieranie.
+- [Szyfrowanie](encryption.md): jak publiczne certyfikaty KSeF chronią klucze sesji i eksportów.

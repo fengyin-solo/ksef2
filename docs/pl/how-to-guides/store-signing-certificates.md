@@ -1,29 +1,17 @@
 ---
 title: Przechowywanie certyfikatów podpisu
-description: Trzymanie certyfikatów XAdES i ich kluczy prywatnych w magazynie certyfikatów podpisu w pamięci albo w plikach szyfrowanych hasłem.
+description: Certyfikat XAdES i klucz prywatny w pamięci albo w plikach szyfrowanych hasłem.
 ---
 
-Magazyn certyfikatów podpisu przechowuje pary certyfikat i klucz, którymi
-podpisujesz żądania do KSeF. Przyjmuje rekord `SigningCertificate`, oddaje tę
-samą parę, gdy poprosisz o nią po wskazaniu referencji, i pozwala wypisać to, co
-przechowujesz, bez odszyfrowywania żadnego klucza. Podpisuje nadal
-`client.authentication.with_xades()` — magazyn decyduje tylko o tym, gdzie para
-czeka na kolejne wywołanie.
+Magazyn certyfikatów podpisu trzyma pary certyfikat i klucz, którymi podpisujesz żądania do KSeF. Przyjmuje rekord `SigningCertificate`, oddaje tę samą parę po wskazaniu `SigningCertificateRef` i pozwala wypisać zapisane rekordy bez odszyfrowywania klucza. Podpisuje nadal `client.authentication.with_xades()`. Magazyn decyduje tylko o tym, gdzie para czeka na kolejne wywołanie.
 
-To **nie jest** magazyn przekazywany klientowi jako `certificate_store=`. Ten,
-`ksef2.CertificateStore`, trzyma pobrane od KSeF publiczne certyfikaty
-*szyfrujące*, którymi SDK otacza danymi klucze do faktur i eksportów, i nigdy
-nie trzyma klucza prywatnego. Magazyny z tej strony mieszkają w
-`ksef2.certificate_stores` i przechowują Twoje własne klucze podpisu.
+To nie jest magazyn przekazywany klientowi jako `certificate_store=`. Tamten, `ksef2.CertificateStore`, trzyma pobrane z KSeF publiczne certyfikaty szyfrowania. SDK otacza nimi klucze do faktur i eksportów i nigdy nie trzyma tam klucza prywatnego. Magazyny z tej strony są w `ksef2.certificate_stores` i przechowują Twoje klucze podpisu.
 
-Klucze, których urządzenie nie pozwala wyeksportować, na przykład z HSM albo KMS,
-są poza zakresem: te magazyny wymieniają pary, których klucz prywatny proces może
-trzymać w pamięci.
+Klucz, którego urządzenie nie pozwala wyeksportować, na przykład z HSM albo KMS, jest poza tym zakresem. Te magazyny wymieniają pary, których klucz prywatny proces może trzymać w pamięci.
 
-## Owij parę w rekord
+## Złóż parę w rekord
 
-`SigningCertificate` wiąże wczytane `XAdESCredentials` ze środowiskiem, w którym
-podpisujesz, i wywodzi metadane rekordu z samego certyfikatu.
+`SigningCertificate` łączy wczytane `XAdESCredentials` ze środowiskiem, w którym podpisujesz, i wyprowadza metadane rekordu z samego certyfikatu.
 
 ```python
 from pathlib import Path
@@ -48,17 +36,11 @@ print(record.info.reference)
 print(record.info.valid_to)
 ```
 
-`certificate_type` i `ksef_serial_number` są opcjonalne: pomiń je dla
-certyfikatu, o którym KSeF nic nie wie, albo dla wygenerowanego samodzielnie.
-Rekord ukrywa poświadczenia w `repr()`, odmawia pickle'owania i kopiowania oraz
-nie ma serializacji do JSON-u, więc jedyną obsługiwaną postacią zapisu jest
-`save()`.
+`certificate_type` i `ksef_serial_number` są opcjonalne. Pomiń je dla certyfikatu, o którym KSeF nic nie wie, albo dla certyfikatu wygenerowanego samodzielnie. Rekord ukrywa dane pary w `repr()`, nie daje się zapisać przez pickle ani skopiować i nie ma zapisu do JSON. Jedyną obsługiwaną postacią zapisu jest `save()`.
 
 ## Trzymaj rekordy w pamięci
 
-`InMemorySigningCertificateStore` i `AsyncInMemorySigningCertificateStore`
-przechowują rekordy tak długo, jak żyje proces. Nic nie przeżywa restartu, co
-w testach jest dokładnie tym, czego chcesz, a na produkcji znacznie rzadziej.
+`InMemorySigningCertificateStore` i `AsyncInMemorySigningCertificateStore` trzymają rekordy tak długo, jak żyje proces. Nic nie zostaje po restarcie. W testach zwykle o to chodzi, na produkcji rzadziej.
 
 ```python
 from ksef2 import Environment
@@ -76,13 +58,9 @@ loaded = store.load(held[0].reference)
 
 ## Trzymaj rekordy na dysku
 
-`FilesystemSigningCertificateStore` zapisuje jeden rekord JSON na certyfikat w
-`<root>/<environment>/<fingerprint>.json`. Rekord zawiera certyfikat i jego
-klucz prywatny jako PKCS#8 zaszyfrowany podanym hasłem. Tryb jawny nie istnieje.
+`FilesystemSigningCertificateStore` zapisuje jeden plik JSON na certyfikat, w `<root>/<environment>/<fingerprint>.json`. W rekordzie są certyfikat i klucz prywatny jako PKCS#8 zaszyfrowany podanym hasłem. Zapisu bez szyfrowania nie ma.
 
-Dostarczyciel hasła to zwykła funkcja od referencji do bajtów hasła. Jest
-wywoływany przy każdym `load()` i przy każdym `save()`, które zapisuje nowy
-rekord, a magazyn nie trzyma ani hasła, ani rekordu.
+Dostawca hasła to zwykła funkcja: ze wskazania rekordu zwraca bajty hasła. Magazyn woła ją przy każdym `load()` i przy każdym `save()`, które zapisuje nowy rekord. Hasła ani rekordu nie trzyma.
 
 ```python
 import os
@@ -104,9 +82,7 @@ for held in store.list(environment=Environment.DEMO):
 record = store.load(info.reference)
 ```
 
-`list()` czyta wyłącznie certyfikat, więc nigdy nie prosi o hasło. Dlatego
-sprawdzenie startowe albo ekran administracyjny jest tani: możesz pokazać, co
-trzymasz, i zostawić operatorowi decyzję, zanim cokolwiek zostanie odszyfrowane.
+`list()` czyta wyłącznie certyfikat, więc nigdy nie prosi o hasło. Sprawdzenie przy starcie albo ekran administracyjny może pokazać, co trzymasz, zanim cokolwiek zostanie odszyfrowane.
 
 Usunięcie rekordu zabiera tylko lokalny plik:
 
@@ -114,8 +90,7 @@ Usunięcie rekordu zabiera tylko lokalny plik:
 removed = store.delete(info.reference)
 ```
 
-Adapter asynchroniczny ma te same cztery operacje z `await`; pracę na plikach i
-kluczach, razem z Twoją funkcją hasła, wykonuje w wątku roboczym:
+Adapter asynchroniczny ma te same cztery operacje z `await`. Praca na plikach i kluczach, razem z Twoją funkcją hasła, idzie w wątku:
 
 ```python
 from ksef2.certificate_stores import AsyncFilesystemSigningCertificateStore
@@ -130,19 +105,13 @@ held = await store.list(environment=Environment.DEMO)
 record = await store.load(info.reference)
 ```
 
-Anulowane `await store.save(...)` mogło mimo to zapisać rekord: zapis albo trafia
-na dysk w całości, albo nie ma go wcale, a powtórzenie tego samego `save()` jest
-bezpieczne i zwraca zapisane metadane.
+Anulowane `await store.save(...)` mogło mimo to zapisać rekord. Zapis albo trafia na dysk w całości, albo nie ma go wcale. Powtórzenie tego samego `save()` jest bezpieczne i zwraca zapisane metadane.
 
-## Wskazuj certyfikat referencją
+## Wskazuj certyfikat przez SigningCertificateRef
 
-Magazyn nigdy nie wybiera certyfikatu „najnowszego” albo „najlepszego”: `load()`
-zwraca dokładnie wskazaną referencję, także gdy rekord wygasł. To celowe —
-cicha wymiana klucza podpisu to usterka, którą najgorzej diagnozuje się o 2 w
-nocy.
+Magazyn nigdy nie wybiera certyfikatu „najnowszego” albo „najlepszego”. `load()` zwraca dokładnie wskazany rekord, także gdy wygasł. To celowe. Cicha wymiana klucza podpisu to usterka, którą najtrudniej złapać w nocy.
 
-Zapisz więc referencję we własnej konfiguracji, obok NIP-u i środowiska, które i
-tak już tam trzymasz:
+Zapisz więc wskazanie we własnej konfiguracji, obok NIP-u i środowiska, które i tak już tam trzymasz:
 
 ```python
 from ksef2 import Client, Environment
@@ -161,17 +130,11 @@ with Client(Environment.PRODUCTION) as client:
     )
 ```
 
-`info.reference` to dwa krótkie napisy bez materiału kluczowego, więc można go
-logować, wpisać do pliku konfiguracyjnego i porównywać. Odnowienie certyfikatu
-daje nowy odcisk, czyli nową referencję: sprawdź nową parę, a potem przełącz
-konfigurację. Oba rekordy mogą leżeć w magazynie jednocześnie — tak właśnie
-zostawia się stary klucz dostępny do momentu przełączenia.
+`info.reference` to dwa krótkie napisy bez materiału klucza. Można je logować, wpisać do pliku konfiguracyjnego i porównywać. Odnowienie certyfikatu daje nowy odcisk palca certyfikatu, czyli nowe wskazanie. Sprawdź nową parę, a potem przełącz konfigurację. Oba rekordy mogą leżeć w magazynie jednocześnie. Tak zostawia się stary klucz dostępny do momentu przełączenia.
 
-## Zapisz wygenerowany certyfikat TEST
+## Zapisz wygenerowany certyfikat testowy
 
-`generate_test_certificate()` buduje samopodpisaną parę RSA dla środowiska TEST.
-Zwraca obiekty cryptography i nic nie przechowuje, więc wygenerowana para znika
-razem z procesem, chyba że włożysz ją do magazynu:
+`generate_test_certificate()` buduje samopodpisaną parę RSA dla środowiska testowego. Zwraca obiekty cryptography i nic nie zapisuje, więc para znika razem z procesem, chyba że włożysz ją do magazynu:
 
 ```python
 from ksef2 import Environment
@@ -188,42 +151,27 @@ store.save(
 )
 ```
 
-Rekord jest teraz dostępny po restarcie, a `list(environment=Environment.TEST)`
-pokazuje go bez hasła.
+Rekord jest wtedy dostępny po restarcie, a `list(environment=Environment.TEST)` pokazuje go bez hasła.
 
 ## Uwagi o bezpieczeństwie
 
-- Na POSIX rekordy są tworzone jako `0600`, a katalogi jako `0700`; istniejący
-  `root` zachowuje uprawnienia, które mu nadałeś. Na Windows plik dziedziczy
-  listę ACL katalogu, więc ogranicz `root` sam, zanim cokolwiek do niego
-  zapiszesz.
-- Hasło jest pytane przy każdym `load()` i przy każdym `save()`, które zapisuje
-  nowy rekord, i nigdy nie jest przetrzymywane: ani na magazynie, ani w repr, ani między wywołaniami. `list()`
-  nie potrzebuje hasła w ogóle.
-- Wczytany klucz prywatny to zwykły obiekt w pamięci. Magazyn nic nie
-  buforuje, ale też nie obiecuje wyzerowania pamięci, którą klucz zajmował.
-  Traktuj zwrócony `SigningCertificate` jak sekret i pozbywaj się go po
-  wykorzystaniu.
-- Magazyn odmawia przejścia za dowiązanie symboliczne stojące w miejscu rekordu
-  i nie przepisuje rekordu, którego nie może odczytać,
-  więc rekord w nieobsługiwanej wersji zostaje na dysku nietknięty.
-- Usunięcie rekordu nie unieważnia niczego w KSeF. Certyfikat pozostaje tam
-  ważny, dopóki go nie odwołasz, a para już wczytana do pamięci podpisuje dalej.
+- Na POSIX nowe rekordy mają tryb `0600`, a katalogi `0700`. Istniejący `root` zachowuje uprawnienia, które mu nadałeś. Na Windows plik dziedziczy listę ACL katalogu, więc ogranicz `root`, zanim cokolwiek do niego zapiszesz.
+- Hasło jest pytane przy każdym `load()` i przy każdym `save()`, które zapisuje nowy rekord. Nie jest trzymane na magazynie, w `repr` ani między wywołaniami. `list()` hasła nie potrzebuje.
+- Wczytany klucz prywatny to zwykły obiekt w pamięci. Magazyn nic nie buforuje i nie obiecuje wyzerowania pamięci, którą klucz zajmował. Traktuj zwrócony `SigningCertificate` jak sekret i pozbądź się go po użyciu.
+- Magazyn nie przechodzi za dowiązanie symboliczne stojące w miejscu rekordu i nie przepisuje rekordu, którego nie może odczytać. Rekord w nieobsługiwanej wersji zostaje na dysku bez zmian.
+- Usunięcie rekordu nie unieważnia niczego w KSeF. Certyfikat pozostaje tam ważny, dopóki go nie unieważnisz, a para już wczytana do pamięci nadal podpisuje.
 
 ## Błędy
 
-Każda awaria jest `KSeFCertificateStoreError` i mówi, która operacja się nie
-udała oraz którego rekordu dotyczyła. Całą hierarchię opisuje
-[Error Reference](../reference/errors.md).
+Każda awaria to `KSeFCertificateStoreError`. Mówi, która operacja się nie udała i którego rekordu dotyczyła. Całą hierarchię opisuje [Obsługa błędów](../reference/errors.md).
 
 | Błąd | Kiedy zgłasza go magazyn w plikach |
 | --- | --- |
-| `KSeFArgumentError` | `root` nie był `Path`, dostarczyciel hasła nie był wywoływalny albo wartość potrzebna metodzie miała zły typ. |
-| `KSeFCertificateStoreNotFoundError` | `load()` poproszono o referencję, pod którą nic nie leży. |
-| `KSeFCertificateStoreConflictError` | `save()` dostał rekord o metadanych innych niż już zapisane pod tą referencją. |
-| `KSeFCertificateStoreAccessError` | Pliki nie są do odczytu dla tego procesu, w drodze stoi dowiązanie symboliczne albo dostarczyciel hasła zwrócił puste hasło. |
-| `KSeFCertificateStoreMaterialError` | Rekord jest uszkodzony, ma nieobsługiwaną postać, nie da się go odszyfrować albo nie zgadza się z referencją, pod którą leży. |
+| `KSeFArgumentError` | `root` nie był `Path`, dostawca hasła nie był wywoływalny albo wartość przekazana metodzie miała zły typ. |
+| `KSeFCertificateStoreNotFoundError` | `load()` dostał wskazanie, pod którym nic nie leży. |
+| `KSeFCertificateStoreConflictError` | `save()` dostał rekord o metadanych innych niż już zapisane pod tym wskazaniem. |
+| `KSeFCertificateStoreAccessError` | Pliki nie są do odczytu dla tego procesu, w drodze stoi dowiązanie symboliczne albo dostawca hasła zwrócił puste hasło. |
+| `KSeFCertificateStoreMaterialError` | Rekord jest uszkodzony, ma nieobsługiwaną postać, nie da się go odszyfrować albo nie zgadza się ze wskazaniem, pod którym leży. |
 | `KSeFCertificateStoreUnavailableError` | Magazyn nie mógł przyjąć zapisu ani odczytu, na przykład przez pełny dysk. |
 
-Cokolwiek zgłosi Twoja własna funkcja hasła, wraca bez zmian: dostarczyciel,
-który nie sięga po sekret, to usterka wdrożenia, a nie uszkodzony rekord.
+Cokolwiek zgłosi Twoja funkcja hasła, wraca bez zmian. Dostawca, który nie sięga po sekret, to usterka wdrożenia, a nie uszkodzony rekord.

@@ -1,10 +1,9 @@
 ---
-title: Builder FA(3)
-description: Buduj XML faktury FA(3) typowanymi pomocnikami SDK.
+title: Budowanie XML FA(3)
+description: Buduj XML faktury FA(3) typowanymi metodami SDK.
 ---
 
-Użyj `ksef2.fa3`, gdy chcesz budować XML FA(3) w Pythonie zamiast pisać XML
-ręcznie.
+Użyj `ksef2.fa3`, gdy chcesz budować XML FA(3) w Pythonie, zamiast pisać go ręcznie.
 
 ```python
 from datetime import date
@@ -40,15 +39,14 @@ builder = (
 xml_text = builder.to_xml()
 ```
 
-`to_xml()` domyślnie używa zwartego formatu. Przekaż `pretty_print=True`, aby
-zastosować wcięcia ułatwiające przeglądanie XML.
+`to_xml()` domyślnie zwraca zwarty zapis. Przekaż `pretty_print=True`, żeby dostać wcięcia ułatwiające czytanie XML.
 
-## Przepływ
+## Przebieg
 
 1. Utwórz `InvoiceBuilder`.
 2. Uzupełnij `header(...)`, `seller(...)` i `buyer(...)`.
-3. Wybierz typ faktury, np. `standard()` albo `correction()`.
-4. Dodaj sekcje, np. `rows()`, `payment()` albo `annotations()`.
+3. Wybierz typ faktury, na przykład `standard()` albo `correction()`.
+4. Dodaj sekcje, na przykład `rows()`, `payment()` albo `annotations()`.
 5. Zakończ przez `build()`, `to_spec()` albo `to_xml()`.
 
 ## Wyślij XML
@@ -62,7 +60,7 @@ with auth.online_session(form_code=FormSchema.FA3) as session:
     print(status.ksef_number)
 ```
 
-## Referencja
+## Opis API
 
-- [FA(3) API reference](../reference/api/fa3.md)
+- [Opis API FA(3)](../reference/api/fa3.md)
 - [Faktury](invoices.md)

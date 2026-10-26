@@ -1,11 +1,9 @@
 ---
 title: Synchronizacja kodu sync/async
-description: Utrzymuj wygenerowane moduły sync na podstawie źródeł async.
+description: Utrzymuj wygenerowane moduły synchroniczne na podstawie źródeł asynchronicznych.
 ---
 
-Moduły async są źródłem prawdy dla większości implementacji endpointów,
-klientów, middleware i serwisów. Moduły sync wymienione w `scripts/gen_sync.py`
-powstają automatycznie z tych źródeł async.
+Moduły asynchroniczne są tym, co edytujesz przy większości implementacji operacji API, klientów, middleware i serwisów. Moduły synchroniczne wymienione w `scripts/gen_sync.py` powstają automatycznie z tych źródeł.
 
 Wygenerowane pliki zaczynają się od:
 
@@ -16,13 +14,13 @@ Wygenerowane pliki zaczynają się od:
 
 ## Zmień wygenerowaną parę
 
-1. Edytuj moduł źródłowy async.
+1. Edytuj źródłowy moduł asynchroniczny.
 
    ```bash
    $EDITOR src/ksef2/_clients/async_auth.py
    ```
 
-2. Wygeneruj odpowiadający moduł sync.
+2. Wygeneruj odpowiadający moduł synchroniczny.
 
    ```bash
    just gen-sync
@@ -34,24 +32,23 @@ Wygenerowane pliki zaczynają się od:
    uv run python scripts/gen_sync.py --only src/ksef2/_clients/async_auth.py
    ```
 
-3. Sprawdź diff źródła async i wygenerowanego targetu sync.
+3. Sprawdź diff źródła asynchronicznego i wygenerowanego pliku synchronicznego.
 
    ```bash
    git diff -- src/ksef2/_clients/async_auth.py src/ksef2/_clients/auth.py
    ```
 
-4. Uruchom check generacji przed PR.
+4. Uruchom kontrolę generacji przed pull requestem.
 
    ```bash
    just check-gen-sync
    ```
 
-`just release-check` też uruchamia `check-gen-sync`, więc nieaktualne pliki
-generated blokują release.
+`just release-check` też uruchamia `check-gen-sync`, więc nieaktualne wygenerowane pliki blokują wydanie.
 
 ## Sprawdź jedną parę
 
-Użyj `--only` ze źródłem async albo targetem sync:
+Użyj `--only` ze źródłem asynchronicznym albo z plikiem synchronicznym:
 
 ```bash
 uv run python scripts/gen_sync.py --check --diff --only src/ksef2/_clients/auth.py
@@ -59,22 +56,18 @@ uv run python scripts/gen_sync.py --check --diff --only src/ksef2/_clients/auth.
 
 To pomaga przy pracy nad jedną parą, gdy chcesz zobaczyć krótki diff.
 
-## Granice generatora
+## Czego generator nie obejmuje
 
-Nie każda para sync/async jest generowana. Część modułów jest celowo wspólna
-albo strukturalnie inna:
+Nie każda para synchroniczna i asynchroniczna jest generowana. Część modułów jest celowo wspólna albo zbudowana inaczej:
 
-- `src/ksef2/_core/polling.py` zawiera wspólne helpery pollingu sync i async.
+- `src/ksef2/_core/polling.py` zawiera wspólne metody sprawdzania statusu dla wersji synchronicznej i asynchronicznej.
 - `src/ksef2/_core/response_errors.py` zawiera wspólne mapowanie błędów odpowiedzi.
-- `src/ksef2/_clients/base.py` i `src/ksef2/_clients/async_base.py` różnią się
-  własnością klienta bazowego i zarządzaniem zasobami.
-- `src/ksef2/_core/http.py` i `src/ksef2/_core/async_http.py` różnią się
-  własnością transportu i zamykaniem.
+- `src/ksef2/_clients/base.py` i `src/ksef2/_clients/async_base.py` różnią się tym, kto jest właścicielem klienta głównego i jak zamykane są zasoby.
+- `src/ksef2/_core/http.py` i `src/ksef2/_core/async_http.py` różnią się własnością transportu i zamykaniem.
 
-Lista par i wyjątków znajduje się w `scripts/gen_sync.py`. Aktualizuj ją, gdy
-moduł staje się generated albo celowo divergent.
+Lista par i wyjątków jest w `scripts/gen_sync.py`. Aktualizuj ją, gdy moduł staje się wygenerowany albo celowo zostaje napisany ręcznie.
 
-## Co sprawdza release gate
+## Co sprawdza kontrola przed wydaniem
 
 `just release-check` uruchamia:
 
@@ -89,14 +82,14 @@ just test-runtime-checks
 uv build
 ```
 
-Dla generacji sync oznacza to, że:
+Dla generacji kodu synchronicznego oznacza to, że:
 
-- wygenerowane targety zgadzają się z transformacją źródeł async;
-- wygenerowane pliki nadal formatują się konfiguracją repo;
-- publiczne powierzchnie sync i async są pilnowane przez testy parytetu;
-- paczka buduje się z wygenerowanych plików zapisanych w repo.
+- wygenerowane pliki zgadzają się z przekształceniem źródeł asynchronicznych;
+- wygenerowane pliki nadal formatują się konfiguracją repozytorium;
+- publiczne API wersji synchronicznej i asynchronicznej pilnują testy zgodności;
+- paczka buduje się z wygenerowanych plików zapisanych w repozytorium.
 
-## Referencja
+## Powiązane strony
 
 - [Konfiguracja klienta](../how-to-guides/client-setup.md)
 - [API niskiego poziomu](../reference/low-level/overview.md)

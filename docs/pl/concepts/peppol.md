@@ -1,33 +1,26 @@
 ---
 title: PEPPOL
-description: Zrozum lookup dostawców PEPPOL i jego miejsce w SDK.
+description: Wyszukiwanie dostawców PEPPOL i jego miejsce w SDK.
 ---
 
-Lookup dostawców PEPPOL jest publicznym przepływem klienta głównego. Nie wymaga
-uwierzytelnionego kontekstu KSeF i sam nie bierze udziału w przetwarzaniu sesji
-faktur.
+Wyszukiwanie dostawców PEPPOL jest publicznym przepływem klienta głównego. Nie wymaga uwierzytelnionego kontekstu logowania i nie bierze udziału w przetwarzaniu sesji faktur.
 
-Używaj go jako danych referencyjnych: do wypełniania wyboru dostawcy, walidacji
-identyfikatorów dostawców albo odświeżania lokalnego cache dostawców. Trzymaj
-go osobno od wysyłki faktur, zapytań o metadane KSeF, eksportów i statusu UPO.
+Traktuj je jako dane słownikowe: do listy dostawców, sprawdzenia identyfikatora albo odświeżenia lokalnej kopii. Trzymaj je osobno od wysyłki faktur, zapytań o metadane KSeF, eksportów i UPO (Urzędowego Poświadczenia Odbioru).
 
-:::note[Tylko publiczny lookup]
-Lookup PEPPOL nie potwierdza doręczenia, akceptacji KSeF ani stanu
-przetwarzania sesji. Odczytuje tylko dane dostawców zarejestrowane w KSeF.
+:::note[Tylko publiczne wyszukiwanie]
+Wyszukiwanie PEPPOL nie potwierdza doręczenia, przyjęcia faktury przez KSeF ani stanu sesji. Odczytuje tylko dane dostawców zapisane w KSeF.
 :::
 
-## Gdzie znajduje się w SDK
+## Gdzie jest w SDK
 
-PEPPOL jest wystawiony na kliencie głównym obok innych publicznych gałęzi:
+PEPPOL jest na kliencie głównym, obok innych publicznych modułów do odczytu:
 
 ```python
 for provider in client.peppol.list():
     print(provider.id, provider.name)
 ```
 
-`list()` zwraca `Pager` po stronicowanej odpowiedzi: iteracja sama przechodzi po
-stronach, `.pages()` zwraca po jednej liście na stronę, a `.first_page()`
-wykonuje pojedyncze żądanie.
+`list()` zwraca `Pager` po stronicowanej odpowiedzi. Iteracja sama przechodzi po stronach, `.pages()` zwraca po jednej liście na stronę, a `.first_page()` wykonuje pojedyncze żądanie.
 
 ```python
 providers_by_id = {
@@ -38,16 +31,12 @@ providers_by_id = {
 
 ## Granica produktu
 
-Rekordy dostawców są danymi referencyjnymi produktu. Cacheuj identyfikatory i
-nazwy dostawców zgodnie z wymaganiami świeżości danych, a cache odświeżaj
-niezależnie od uwierzytelnionych workerów faktur.
+Rekordy dostawców to dane słownikowe. Zapisuj identyfikatory i nazwy zgodnie z tym, jak świeże dane są Ci potrzebne, i odświeżaj tę kopię niezależnie od procesów roboczych, które wysyłają faktury.
 
-Łącz ten lookup z przepływami faktur tylko wtedy, gdy Twój produkt ma własny
-krok PEPPOL, na przykład wybór identyfikatora dostawcy przez użytkownika przed
-budową payloadu specyficznego dla integracji.
+Łącz to wyszukiwanie z fakturami tylko wtedy, gdy Twój produkt ma własny krok PEPPOL, na przykład wybór identyfikatora dostawcy przed zbudowaniem danych właściwych dla integracji.
 
 ## Powiązane strony
 
-- [Wyszukaj dostawców PEPPOL](../how-to-guides/query-peppol-providers.md): Pobierz jedną stronę albo przejdź przez wszystkich dostawców PEPPOL w kodzie SDK.
-- [Przegląd SDK](overview.md): Zobacz PEPPOL wśród gałęzi klienta głównego.
-- [Skonfiguruj klienta](../how-to-guides/client-setup.md): Utwórz klienta głównego używanego do publicznego lookupu dostawców.
+- [Wyszukiwanie dostawców PEPPOL](../how-to-guides/query-peppol-providers.md): jedna strona albo przejście przez wszystkich dostawców w kodzie SDK.
+- [Działanie SDK](overview.md): PEPPOL wśród modułów klienta głównego.
+- [Konfiguracja klienta](../how-to-guides/client-setup.md): klient główny używany do publicznego wyszukiwania dostawców.

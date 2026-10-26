@@ -1,29 +1,21 @@
 ---
-title: Skonfiguruj magazyn certyfikatów
-description: Skonfiguruj cache certyfikatów SDK używany przez uwierzytelnianie tokenem, sesje i eksporty faktur.
+title: Konfiguracja magazynu certyfikatów
+description: Skonfiguruj pamięć certyfikatów SDK używaną przez uwierzytelnianie tokenem, sesje i eksporty faktur.
 ---
 
-SDK przechowuje publiczne certyfikaty szyfrowania KSeF na kliencie głównym.
-Uwierzytelnianie tokenem, sesje online i batch oraz eksporty faktur używają tego
-magazynu, gdy muszą zaszyfrować materiał klucza dla KSeF.
+SDK przechowuje publiczne certyfikaty szyfrowania KSeF na kliencie głównym. Uwierzytelnianie tokenem, sesje interaktywne i wsadowe oraz eksporty faktur używają tej pamięci, gdy muszą zaszyfrować klucz dla KSeF.
 
-Użyj domyślnego magazynu pamięciowego dla skryptów i workerów, które mogą
-odświeżać certyfikaty z KSeF. Przekaż własny magazyn, gdy certyfikaty muszą być
-współdzielone między procesami albo zapisane w magazynie aplikacji.
+Domyślnej pamięci w procesie używaj w skryptach i procesach roboczych, które mogą odświeżać certyfikaty z KSeF. Przekaż własny magazyn, gdy certyfikaty mają być wspólne dla wielu procesów albo zapisane w magazynie aplikacji.
 
-:::note[To cache publicznych certyfikatów szyfrowania]
-Ta strona opisuje cache publicznych certyfikatów szyfrowania KSeF. Aby zapisać
-własny certyfikat podpisu i klucz prywatny, zobacz
-[Certyfikaty](../concepts/certificates.md).
+:::note[To pamięć publicznych certyfikatów szyfrowania]
+Ta strona opisuje pamięć publicznych certyfikatów szyfrowania KSeF. Aby zapisać własny certyfikat podpisu i klucz prywatny, zobacz [Certyfikaty](../concepts/certificates.md).
 :::
 
 ## Użyj domyślnego magazynu
 
-`Client` i `AsyncClient` tworzą `CertificateStore` automatycznie. Domyślny
-magazyn odświeża ważne certyfikaty po 24 godzinach i odświeża je natychmiast,
-gdy brakuje wymaganego zastosowania certyfikatu.
+`Client` i `AsyncClient` tworzą `CertificateStore` automatycznie. Domyślny magazyn odświeża ważne certyfikaty po 24 godzinach i odświeża je od razu, gdy brakuje wymaganego zastosowania certyfikatu.
 
-Ustaw inny interwał odświeżania podczas tworzenia klienta głównego:
+Ustaw inny odstęp odświeżania przy tworzeniu klienta głównego:
 
 ```python
 from datetime import timedelta
@@ -36,12 +28,9 @@ with Client(Environment.PRODUCTION, certificate_store=store) as client:
     auth = client.authentication.with_profile("prod-token")
 ```
 
-`AsyncClient` przyjmuje ten sam argument `certificate_store`. Użyj
-`async with AsyncClient(...)` i `await` przy wywołaniu uwierzytelniania; nic
-więcej się nie zmienia.
+`AsyncClient` przyjmuje ten sam argument `certificate_store`. Użyj `async with AsyncClient(...)` i `await` przy wywołaniu uwierzytelniania. Nic więcej się nie zmienia.
 
-Użyj `refresh_after=None` tylko dla krótkotrwałych klientów, w których
-zachowanie "pobierz raz" jest zamierzone:
+Użyj `refresh_after=None` tylko dla krótkotrwałych klientów, w których jednorazowe pobranie jest zamierzone:
 
 ```python
 from ksef2 import CertificateStore
@@ -50,16 +39,12 @@ store = CertificateStore(refresh_after=None)
 ```
 
 :::note[Brak zastosowania nadal wymusza odświeżenie]
-`refresh_after=None` nie blokuje odświeżenia, gdy w magazynie brakuje
-zastosowania wymaganego przez przepływ. SDK ponownie sprawdza KSeF przed
-zgłoszeniem `NoCertificateAvailableError`.
+`refresh_after=None` nie blokuje odświeżenia, gdy w magazynie brakuje zastosowania wymaganego przez przepływ. SDK ponownie sprawdza KSeF, zanim zgłosi `NoCertificateAvailableError`.
 :::
 
 ## Przekaż własny magazyn
 
-Własne magazyny implementują `CertificateStoreProtocol`. SDK odpowiada za
-zdalne pobieranie, a magazyn odpowiada za trwałość, wybór ważnego certyfikatu i
-decyzje o świeżości.
+Własne magazyny implementują `CertificateStoreProtocol`. SDK odpowiada za pobranie z KSeF. Magazyn odpowiada za trwałość, wybór ważnego certyfikatu i decyzję, czy dane są jeszcze świeże.
 
 ```python
 from collections.abc import Iterable
@@ -93,20 +78,18 @@ store: CertificateStoreProtocol = DatabaseCertificateStore()
 client = Client(Environment.PRODUCTION, certificate_store=store)
 ```
 
-## Zalecany przepływ
+## Zalecany przebieg
 
 1. Zacznij od domyślnego `CertificateStore`.
 
-2. Ustaw `refresh_after`, gdy aplikacja ma bardziej rygorystyczną politykę
-   rotacji certyfikatów albo startu.
+2. Ustaw `refresh_after`, gdy aplikacja ma ostrzejszą zasadę wymiany certyfikatów albo startu.
 
-3. Implementuj `CertificateStoreProtocol` tylko wtedy, gdy certyfikaty muszą
-   przetrwać restart procesu albo być współdzielone przez wiele workerów.
+3. Implementuj `CertificateStoreProtocol` tylko wtedy, gdy certyfikaty mają przetrwać restart procesu albo być wspólne dla wielu procesów roboczych.
 
-4. Zdalne pobieranie z KSeF zostaw klientowi SDK, a trwałość danych magazynowi.
+4. Pobieranie z KSeF zostaw klientowi SDK, a trwałość danych magazynowi.
 
 ## Powiązane strony
 
-- [Sprawdź certyfikaty szyfrowania](inspect-encryption-certificates.md): Odczytaj i sprawdź publiczne certyfikaty szyfrowania KSeF bezpośrednio.
-- [Konfiguracja klienta](client-setup.md): Skonfiguruj klientów głównych, transport, cykl życia i gałęzie uwierzytelnione.
-- [Szyfrowanie](../concepts/encryption.md): Zrozum, jak publiczne certyfikaty chronią materiał kluczy tokenów, sesji i eksportów.
+- [Podgląd certyfikatów szyfrowania](inspect-encryption-certificates.md): odczyt i sprawdzenie publicznych certyfikatów szyfrowania KSeF.
+- [Konfiguracja klienta](client-setup.md): klient główny, transport, zamykanie zasobów i moduły uwierzytelnione.
+- [Szyfrowanie](../concepts/encryption.md): jak publiczne certyfikaty chronią klucze tokenów, sesji i eksportów.

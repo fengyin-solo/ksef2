@@ -1,67 +1,60 @@
 ---
 title: API niskiego poziomu
-description: Wrappery endpointów zgodne ze schematem, przestrzenie nazw modeli raw i narzędzia niskopoziomowe.
+description: Wywołania operacji API zgodne ze schematem, przestrzenie nazw modeli raw i narzędzia niskiego poziomu.
 ---
 
-API niskiego poziomu to powierzchnia SDK dla kontroli na poziomie endpointów bez
-wychodzenia poza transport biblioteki. Jest dostępne przez `client.raw` przed
-uwierzytelnieniem i `auth.raw` po uwierzytelnieniu.
+API niskiego poziomu to zestaw metod SDK do kontroli na poziomie pojedynczych operacji API, bez wychodzenia poza transport biblioteki. Jest dostępne przez `client.raw` przed uwierzytelnieniem i `auth.raw` po uwierzytelnieniu.
 
-Użyj go, gdy integracja wymaga własnego podpisywania, własnej obsługi
-szyfrowania, dokładnych payloadów OpenAPI albo debugowania endpointów. Większość
-aplikacji nadal powinna zaczynać od klientów wysokiego poziomu.
+Użyj go, gdy integracja wymaga własnego podpisu, własnego szyfrowania, dokładnej treści żądania z OpenAPI albo diagnostyki operacji. Większość aplikacji nadal powinna zaczynać od klientów wysokiego poziomu.
 
 ## Kontrakt
 
-| Właściwość | Zachowanie low-level |
+| Właściwość | Zachowanie niskiego poziomu |
 | --- | --- |
-| Transport | Ten sam stos middleware, retry, sprawdzenia cyklu życia i mapowanie wyjątków co klient bazowy. |
-| Uwierzytelnienie | `client.raw` jest nieuwierzytelnione; `auth.raw` używa bearer transportu tam, gdzie wymaga tego KSeF. |
-| Modele | Żądania i odpowiedzi używają nazw ze schematu KSeF/OpenAPI, np. `referenceNumber`, `publicKeyId`, `authenticationToken`. |
+| Transport | Ten sam stos middleware, ponowień, sprawdzeń cyklu życia i mapowania wyjątków co klient główny. |
+| Uwierzytelnienie | `client.raw` jest nieuwierzytelnione. `auth.raw` używa transportu z tokenem Bearer tam, gdzie wymaga tego KSeF. |
+| Modele | Żądania i odpowiedzi używają nazw ze schematu KSeF i OpenAPI, na przykład `referenceNumber`, `publicKeyId`, `authenticationToken`. |
 | Parsowanie | Poprawne odpowiedzi JSON trafiają do wygenerowanych modeli `spec` albo uzupełniających `supp`. |
-| Odpowiedzi binarne | XML faktur i UPO zwracane jako `bytes`. |
-| Async | Klient async ma te same moduły i nazwy metod; wywołania sieciowe używają `await`. |
+| Odpowiedzi binarne | XML faktur i UPO (Urzędowe Poświadczenie Odbioru) zwracane jako `bytes`. |
+| Wersja asynchroniczna | Klient asynchroniczny ma te same moduły i nazwy metod. Wywołania sieciowe używają `await`. |
 
 ## Przestrzenie nazw modeli
 
-Modele low-level importuj ze wspieranego `ksef2.raw`, nie z wewnętrznych
-pakietów wygenerowanych:
+Modele niskiego poziomu importuj ze wspieranego `ksef2.raw`, nie z wewnętrznych pakietów wygenerowanych:
 
 ```python
 from ksef2.raw import spec, supp
 ```
 
-| Namespace | Do czego służy |
+| Przestrzeń | Do czego służy |
 | --- | --- |
 | `spec` | Wygenerowane modele żądań i odpowiedzi OpenAPI. |
-| `supp` | Modele supplemental używane tam, gdzie wygenerowany kształt OpenAPI wymaga wsparcia SDK. |
-| `ksef2.raw.mappers` | Jawne mosty z modeli schema-native do publicznych modeli SDK. |
+| `supp` | Modele uzupełniające, używane tam, gdzie wygenerowany model OpenAPI wymaga wsparcia SDK. |
+| `ksef2.raw.mappers` | Jawne przejścia z modeli zgodnych ze schematem do publicznych modeli SDK. |
 
-## Eksportowane utility
+## Eksportowane narzędzia
 
-| Export | Do czego służy |
+| Eksport | Do czego służy |
 | --- | --- |
-| `encrypt_token` | Szyfrowanie payloadów uwierzytelniania tokenem KSeF. |
-| `generate_session_key` | Generowanie klucza AES i IV dla szyfrowania sesji, faktur albo eksportu. |
+| `encrypt_token` | Szyfrowanie danych uwierzytelniania tokenem KSeF. |
+| `generate_session_key` | Generowanie klucza AES i IV do szyfrowania sesji, faktury albo eksportu. |
 | `encrypt_symmetric_key` | Szyfrowanie lokalnego materiału AES publicznym certyfikatem KSeF. |
-| `encrypt_invoice` | Szyfrowanie bajtów XML faktury dla low-level wysyłki online. |
-| `sha256_b64` | Obliczanie base64 SHA-256 dla metadanych payloadów low-level. |
-| `prepare_batch_package` | Budowanie zaszyfrowanej paczki batch, gdy caller prowadzi low-level batch flow. |
+| `encrypt_invoice` | Szyfrowanie bajtów XML faktury do wysyłki interaktywnej niskiego poziomu. |
+| `sha256_b64` | Obliczanie SHA-256 w Base64 dla metadanych żądań niskiego poziomu. |
+| `prepare_batch_package` | Budowanie zaszyfrowanej paczki faktur, gdy wywołujący sam prowadzi sesję wsadową niskiego poziomu. |
 
 ## Poziomy kontroli
 
-| Poziom | Co posiada SDK | Co posiada caller | Typowe wejście |
+| Poziom | Co ma SDK | Co ma wywołujący | Typowe wejście |
 | --- | --- | --- | --- |
-| Workflow | Kolejność endpointów, szyfrowanie, polling i mapowanie modeli. | Dane biznesowe i persystencja. | `auth.invoices`, `auth.batch`, klienci sesji. |
-| Step-level | Szczegóły protokołu dla jednego kroku workflow SDK. | Kolejność i zapis stanu między krokami. | `session.send_invoice()`, `submission.wait()`. |
-| Low-level | Transport, parsowanie odpowiedzi, mapowanie wyjątków. | Kolejność endpointów, payloady ze schematu, obsługa szyfrowania, polling. | `client.raw`, `auth.raw`. |
+| Przepływ | Kolejność operacji, szyfrowanie, sprawdzanie statusu i mapowanie modeli. | Dane biznesowe i trwały zapis. | `auth.invoices`, `auth.batch`, klienci sesji. |
+| Krok | Szczegóły protokołu jednego kroku przepływu SDK. | Kolejność i zapis stanu między krokami. | `session.send_invoice()`, `submission.wait()`. |
+| Niski poziom | Transport, parsowanie odpowiedzi, mapowanie wyjątków. | Kolejność operacji, treść żądań ze schematu, szyfrowanie, sprawdzanie statusu. | `client.raw`, `auth.raw`. |
 
-Główna zasada dotyczy właściciela sesji: jeśli low-level kod otwiera sesję, ten
-sam poziom zwykle powinien ją zamknąć i sprawdzać. Jeśli wysoki poziom otwiera
-sesję, używaj zwróconego klienta sesji.
+Zasada dotyczy właściciela sesji. Jeśli kod niskiego poziomu otwiera sesję, ten sam poziom zwykle powinien ją zamknąć i sprawdzać jej status. Jeśli sesję otwiera poziom wysoki, używaj zwróconego klienta sesji.
 
-## Sekcja low-level
+## Dalszy opis
 
-- [Uwierzytelnianie niskiego poziomu](authentication.md): Sprawdź endpointy auth raw oraz sekwencję wiązania token/XAdES.
-- [Sesje i faktury niskiego poziomu](sessions-invoices.md): Sprawdź metody endpointów sesji, faktur, UPO i eksportu.
-- [Mapa endpointów](endpoint-map.md): Znajdź moduł raw i grupę metod dla danego obszaru KSeF.
+- [Uwierzytelnianie niskiego poziomu](authentication.md): operacje uwierzytelniania `raw` oraz sekwencja tokena KSeF i XAdES.
+- [Sesje i faktury niskiego poziomu](sessions-invoices.md): metody sesji, faktur, UPO i eksportu.
+- [Mapa operacji API](endpoint-map.md): moduł `raw` i grupa metod dla danego obszaru KSeF.

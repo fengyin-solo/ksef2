@@ -1,49 +1,37 @@
 ---
 title: Środowiska
-description: Zrozum wybór środowisk TEST, DEMO i PRODUCTION w ksef2.
+description: Wybór środowiska testowego, przedprodukcyjnego (Demo) i produkcyjnego w ksef2.
 ---
 
-Przepływy KSeF działają wobec jawnie wybranego środowiska. Wybierasz je przy
-tworzeniu klienta głównego, a dane dostępowe, profile, zapisany stan sesji i
-URL-e pobierania powinny pozostać przypisane do tego środowiska.
+Każdy przepływ KSeF działa w jawnie wybranym środowisku. Wskazujesz je przy tworzeniu klienta głównego. Dane uwierzytelniające, profile, zapisany stan sesji i adresy pobierania zostaw w tym samym środowisku.
 
-| Środowisko | Oficjalna rola | Bazowy URL | Typowe użycie |
+| Środowisko | Oficjalna rola | Adres bazowy | Typowe użycie |
 | --- | --- | --- | --- |
-| `Environment.TEST` | Środowisko testowe / release candidate | `https://api-test.ksef.mf.gov.pl/v2` | Lokalny development, CI, certyfikaty TEST generowane przez SDK, dane TEST. |
-| `Environment.DEMO` | Środowisko przedprodukcyjne / demo | `https://api-demo.ksef.mf.gov.pl/v2` | Testy integracyjne z zachowaniem podobnym do produkcji i nieprodukcyjnymi credentialami. |
-| `Environment.PRODUCTION` | Środowisko produkcyjne | `https://api.ksef.mf.gov.pl/v2` | Rzeczywiste przepływy podatnika i produkcyjne credentiale. |
+| `Environment.TEST` | Środowisko testowe (release candidate) | `https://api-test.ksef.mf.gov.pl/v2` | Praca lokalna, CI, certyfikaty testowe generowane przez SDK, dane testowe. |
+| `Environment.DEMO` | Środowisko przedprodukcyjne (Demo) | `https://api-demo.ksef.mf.gov.pl/v2` | Testy integracyjne przy zachowaniu zbliżonym do produkcji, z osobnymi danymi uwierzytelniającymi. |
+| `Environment.PRODUCTION` | Środowisko produkcyjne | `https://api.ksef.mf.gov.pl/v2` | Rzeczywiste faktury podatnika i produkcyjne dane uwierzytelniające. |
 
-:::caution[Stan środowiska nie jest przenośny]
-Nie przenoś tokenów, założeń certyfikatowych, referencji sesji ani URL-i
-paczek między środowiskami. Traktuj każde środowisko jako osobną granicę
-operacyjną.
+:::caution[Stan środowiska nie przechodzi między środowiskami]
+Nie przenoś tokenów, założeń o certyfikatach, numerów referencyjnych sesji ani adresów paczek między środowiskami. Każde środowisko trzymaj osobno.
 :::
 
-## Oficjalne granice środowisk
+## Czym różnią się środowiska
 
-TEST jest celowo luźniejszy niż DEMO i PRODUCTION. Obsługuje przepływy danych
-testowych, materiał certyfikatu testowego generowany przez SDK i scenariusze z
-certyfikatami self-signed. Dane TEST nie są prywatnym archiwum produkcyjnym, więc
-nie używaj tam rzeczywistych danych faktur.
+Środowisko testowe jest celowo luźniejsze niż przedprodukcyjne (Demo) i produkcyjne. Obsługuje dane testowe, certyfikat testowy generowany przez SDK i scenariusze z certyfikatami samopodpisanymi. Dane ze środowiska testowego nie są prywatnym archiwum, więc nie wysyłaj tam rzeczywistych faktur.
 
-DEMO jest bliżej zachowania produkcyjnego, ale nadal nie jest środowiskiem
-produkcyjnych faktur. PRODUCTION jest jedynym środowiskiem dla rzeczywistych
-przepływów podatnika. URL-e zwracane przez KSeF, na przykład linki do paczek,
-należą do tego samego hosta środowiska, które je wytworzyło.
+Środowisko przedprodukcyjne (Demo) jest bliższe produkcji, ale nadal nie służy do faktur o pełnej mocy prawnej. Środowisko produkcyjne jest jedynym miejscem na rzeczywiste faktury podatnika. Adresy zwracane przez KSeF, na przykład linki do paczek, wskazują host tego środowiska, które je utworzyło.
 
-Dostępność schematów faktur też zależy od środowiska:
+Od środowiska zależy też, które struktury faktur są dostępne:
 
-| Środowisko | Format faktur ustrukturyzowanych |
+| Środowisko | Struktury faktur |
 | --- | --- |
 | TEST | `FA(2)`, `FA(3)`, `FA_PEF(3)`, `FA_KOR_PEF(3)` |
 | DEMO | `FA(3)`, `FA_PEF(3)`, `FA_KOR_PEF(3)` |
 | PRODUCTION | `FA(3)`, `FA_PEF(3)`, `FA_KOR_PEF(3)` |
 
-## Co kontroluje środowisko
+## Co wybiera środowisko
 
-Środowisko wybiera bazowy URL API KSeF oraz granicę operacyjną dla credentiali,
-profili, certyfikatów, danych testowych, referencji sesji, numerów faktur i
-eksportów.
+Środowisko wybiera adres bazowy API KSeF. Do tego samego środowiska należą dane uwierzytelniające, profile, certyfikaty, dane testowe, numery referencyjne sesji, numery KSeF i eksporty.
 
 ```python
 from ksef2 import Client, Environment
@@ -51,28 +39,24 @@ from ksef2 import Client, Environment
 client = Client(Environment.TEST)
 ```
 
-`client.testdata` jest dostępne tylko w `Environment.TEST`. Helper
-uwierzytelniania certyfikatem TEST generowanym przez SDK również działa tylko w
-TEST.
+`client.testdata` jest dostępne tylko w `Environment.TEST`. Uwierzytelnianie certyfikatem testowym generowanym przez SDK też działa tylko w środowisku testowym.
 
-## Granice bezpieczeństwa
+## Rozdzielenie danych
 
-Credentiale są przypisane do środowiska. Profil utworzony dla PRODUCTION nie
-powinien być wybrany przez klienta TEST, a `with_profile()` odrzuca taki
-mismatch.
+Dane uwierzytelniające są przypisane do środowiska. Profil utworzony dla środowiska produkcyjnego nie powinien być wybrany przez klienta środowiska testowego. `with_profile()` odrzuca taką niezgodność.
 
-Zapisany stan oznaczaj środowiskiem, które go wytworzyło:
+Zapisany stan oznaczaj środowiskiem, które go utworzyło:
 
 - nazwa profilu uwierzytelniania;
-- identyfikator podatnika albo kontekstu;
-- referencja sesji online albo batch;
+- identyfikator podatnika albo identyfikator kontekstu;
+- numer referencyjny sesji interaktywnej albo wsadowej;
 - numer referencyjny faktury;
 - numer KSeF;
 - numer referencyjny eksportu.
 
 ## Powiązane strony
 
-- [Przegląd SDK](overview.md): Zrozum główne obiekty SDK i granice przepływów.
-- [Skonfiguruj klienta](../how-to-guides/client-setup.md): Wybierz TEST, DEMO albo PRODUCTION podczas tworzenia klienta.
-- [Uwierzytelnij się](../how-to-guides/authenticate.md): Uwierzytelnij się właściwym credentialem w wybranym środowisku.
-- [Cykl życia klienta](../reference/client-lifecycle.md): Sprawdź, jak wybór środowiska wpływa na klientów SDK.
+- [Działanie SDK](overview.md): główne obiekty SDK i podział przepływów.
+- [Konfiguracja klienta](../how-to-guides/client-setup.md): wybór środowiska testowego, przedprodukcyjnego (Demo) albo produkcyjnego przy tworzeniu klienta.
+- [Uwierzytelnianie](../how-to-guides/authenticate.md): dane uwierzytelniające właściwe dla wybranego środowiska.
+- [Tworzenie i zamykanie klientów](../reference/client-lifecycle.md): jak wybór środowiska wpływa na klientów SDK.

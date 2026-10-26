@@ -1,35 +1,29 @@
 ---
 title: Status i UPO
-description: Zrozum powierzchnie statusu, polling, dokumenty UPO i lokalne timeouty w przepływach ksef2.
+description: Statusy, sprawdzanie wyniku, dokumenty UPO i lokalne limity czasu w przepływach ksef2.
 ---
 
-Przepływy KSeF są asynchroniczne. Wiele wywołań SDK rozpoczyna pracę i zwraca
-numer referencyjny; inne wywołanie mówi, co stało się później.
+Przepływy KSeF są asynchroniczne. Wiele wywołań SDK zaczyna pracę i zwraca numer referencyjny. Dopiero inne wywołanie mówi, co stało się później.
 
-Nie sprowadzaj tego do jednej flagi `done`. Każda powierzchnia statusu odpowiada
-na inne pytanie i ma inny numer referencyjny.
+Nie sprowadzaj tego do jednej flagi `done`. Każdy status odpowiada na inne pytanie i ma inny numer referencyjny.
 
 ## Którego statusu potrzebujesz?
 
-| Pytanie | Powierzchnia SDK | Typowy uchwyt |
+| Pytanie | Moduł SDK | Typowy identyfikator |
 | --- | --- | --- |
-| Czy uwierzytelnianie się zakończyło? | `client.authentication` | referencja operacji uwierzytelniania |
-| Czy sesja online albo batch nadal się przetwarza? | klient sesji albo `auth.batch` | numer referencyjny sesji |
-| Czy jedna wysłana faktura się udała albo nie? | status faktury w sesji online/batch | numer referencyjny faktury |
-| Czy przetworzone faktury są widoczne w wyszukiwaniu? | zapytania metadanych `auth.invoices` | filtry, paginacja, numer KSeF |
+| Czy uwierzytelnianie się zakończyło? | `client.authentication` | numer referencyjny operacji uwierzytelniania |
+| Czy sesja interaktywna albo wsadowa nadal się przetwarza? | klient sesji albo `auth.batch` | numer referencyjny sesji |
+| Czy jedna wysłana faktura się udała, czy nie? | status faktury w sesji | numer referencyjny faktury |
+| Czy przetworzone faktury widać w wyszukiwaniu? | zapytania o metadane `auth.invoices` | filtry, stronicowanie, numer KSeF |
 | Czy paczka eksportu jest gotowa? | status eksportu `auth.invoices` | numer referencyjny eksportu |
-| Czy token jest aktywny albo cofnięty? | `auth.tokens` | numer operacji/referencji tokenu |
-| Czy operacja uprawnień się zakończyła? | `auth.permissions` | referencja operacji uprawnień |
+| Czy token jest aktywny, czy unieważniony? | `auth.tokens` | numer referencyjny tokena |
+| Czy operacja na uprawnieniach się zakończyła? | `auth.permissions` | numer referencyjny operacji |
 
-Używaj powierzchni, która pasuje do pytania. Sesja może być zakończona, a jedna
-faktura w środku może być błędna. Eksport może nadal się przygotowywać, mimo że
-metadane faktur są już widoczne. Operacja tokenu kończy się niezależnie od
-sesji wysyłki faktur.
+Używaj modułu, który pasuje do pytania. Sesja może być zakończona, a jedna faktura w niej błędna. Eksport może nadal się przygotowywać, choć metadane faktur są już widoczne. Operacja na tokenie kończy się niezależnie od sesji wysyłki faktur.
 
 ## Status sesji
 
-Status sesji jest podsumowaniem zdalnego przepływu online albo batch po stronie
-KSeF. Po przetworzeniu może zawierać liczniki i referencje stron UPO.
+Status sesji jest podsumowaniem sesji interaktywnej albo wsadowej po stronie KSeF. Po przetworzeniu może zawierać liczniki i numery referencyjne stron UPO (Urzędowego Poświadczenia Odbioru).
 
 ```python
 status = session.get_status()
@@ -41,10 +35,7 @@ print(
 )
 ```
 
-Kod statusu dotyczy przepływu sesji, a niekoniecznie każdej faktury w środku.
-Podsumowanie sesji może mówić, że przetwarzanie się zakończyło, i jednocześnie
-raportować błędne faktury w `failed_invoice_count`. Gdy potrzebujesz szczegółów
-per faktura, sprawdzaj faktury sesji.
+Kod statusu dotyczy sesji, a niekoniecznie każdej faktury w środku. Podsumowanie może mówić, że przetwarzanie się zakończyło, i jednocześnie podawać błędne faktury w `failed_invoice_count`. Gdy potrzebujesz szczegółów jednej faktury, sprawdź faktury sesji.
 
 ```python
 failed = session.list_failed_invoices()
@@ -54,13 +45,9 @@ for invoice in failed.invoices:
 
 ## Status faktury
 
-Status faktury jest przypisany do jednej faktury w jednej sesji. Przy wysyłce
-online numer referencyjny faktury zwykle dostajesz od razu z `send_invoice()`.
-Przy wysyłce batch statusy poszczególnych faktur stają się widoczne po
-przetworzeniu wgranej paczki przez KSeF.
+Status faktury dotyczy jednej faktury w jednej sesji. Przy wysyłce interaktywnej numer referencyjny faktury zwykle dostajesz od razu z `send_invoice()`. Przy wysyłce wsadowej statusy poszczególnych faktur stają się widoczne, gdy KSeF przetworzy przesłaną paczkę.
 
-Zaakceptowany status faktury ma `ksef_number`. Błędny status faktury niesie kod
-statusu KSeF, opis i opcjonalne szczegóły.
+Status po nadaniu numeru ma `ksef_number`. Status błędu niesie kod KSeF, opis i opcjonalne szczegóły.
 
 ```python
 invoice_status = session.get_invoice_status(
@@ -71,16 +58,15 @@ print(invoice_status.ksef_number, invoice_status.status.description)
 
 ## Dokumenty UPO
 
-UPO jest urzędowym poświadczeniem. To XML podpisany przez Ministerstwo Finansów.
-Traktuj zwrócone bajty jak artefakt audytowy i zapisuj je trwale.
+UPO (Urzędowe Poświadczenie Odbioru) to XML podpisany przez Ministerstwo Finansów. Zwrócone bajty traktuj jak materiał do audytu i zapisuj je trwale.
 
 UPO nie jest dostępne w momencie wysyłki:
 
-1. Wyślij albo wgraj dane faktury.
+1. Wyślij albo prześlij dane faktury.
 
 2. Poczekaj, aż KSeF przetworzy fakturę albo sesję.
 
-3. Odczytaj referencję UPO albo użyj referencji faktury/numeru KSeF.
+3. Odczytaj numer referencyjny UPO albo użyj numeru referencyjnego faktury albo numeru KSeF.
 
 4. Pobierz i zapisz bajty XML UPO.
 
@@ -92,61 +78,51 @@ invoice_upo = submission.download_upo()
 session_upo_pages = session.download_upo()  # wszystkie strony, referencje rozwiązuje SDK
 ```
 
-`download_upo()` nigdy nie czeka. Najpierw wywołaj `submission.wait()` dla UPO
-faktury albo `session.wait()` (po zamknięciu sesji) dla stron UPO sesji. Wywołane
-za wcześnie, `submission.download_upo()` rzuca `KSeFNotReadyError`, a warianty
-sesji rzucają go, dopóki KSeF przetwarza zamkniętą sesję. Sesja, która jest nadal
-otwarta, rzuca `KSeFSessionError`. Oba niosą `hint` wskazujący `wait()`.
-`submission.download_upo()` wykonuje dokładnie jedno zapytanie; warianty sesji
-raz odczytują status sesji, a potem pobierają kolejne strony UPO.
+`download_upo()` nigdy nie czeka. Najpierw wywołaj `submission.wait()` dla UPO faktury albo `session.wait()` (po zamknięciu sesji) dla stron UPO sesji. Wywołane za wcześnie, `submission.download_upo()` zgłasza wyjątek `KSeFNotReadyError`. Warianty sesji zgłaszają go, dopóki KSeF przetwarza zamkniętą sesję. Sesja, która nadal jest otwarta, zgłasza `KSeFSessionError`. Oba wyjątki niosą `hint` wskazujący `wait()`.
 
-Odpowiedzi statusowe mogą też wystawiać dane stron UPO, takie jak
-`download_url_expiration_date`. Do wywołań SDK używaj referencji i zapisuj
-pobrany XML, gdy już go masz.
+`submission.download_upo()` wykonuje dokładnie jedno zapytanie. Warianty sesji raz odczytują status sesji, a potem pobierają kolejne strony UPO.
 
-## Polling i timeouty
+Odpowiedzi ze statusem mogą też podawać dane stron UPO, takie jak `download_url_expiration_date`. Do wywołań SDK używaj numerów referencyjnych i zapisuj pobrany XML, gdy już go masz.
 
-Helpery oczekujące pollują KSeF do momentu, gdy stanie się jedna z trzech rzeczy:
+## Sprawdzanie statusu i limit czasu
+
+Metody oczekujące sprawdzają KSeF, aż stanie się jedna z trzech rzeczy:
 
 - pojawi się oczekiwany stan;
-- KSeF zgłosi terminalny błąd klasyfikowany przez SDK;
-- minie lokalny timeout.
+- KSeF zgłosi błąd końcowy, który SDK tak klasyfikuje;
+- minie lokalny limit czasu.
 
-Lokalny timeout nie dowodzi, że zdalna operacja nie powiodła się. Oznacza tylko,
-że stan docelowy nie został zaobserwowany przed twoim deadline.
+Lokalny limit czasu nie dowodzi, że operacja po stronie KSeF się nie udała. Oznacza tylko, że oczekiwany stan nie pojawił się przed ustawionym terminem.
 
-:::note[Timeouty są lokalnymi deadline]
-Po timeoucie wznów sprawdzanie po zapisanym numerze referencyjnym zamiast
-ponownie wysyłać tę samą fakturę w ciemno. Pierwotny zdalny przepływ może
-nadal się zakończyć.
+:::note[Limit czasu jest lokalny]
+Po upływie limitu wróć do sprawdzania po zapisanym numerze referencyjnym, zamiast ponownie wysyłać tę samą fakturę w ciemno. Pierwotna praca po stronie KSeF może nadal się zakończyć.
 :::
 
-Dostosuj ustawienia pollingu do przepływu:
+Dobierz oczekiwanie do przepływu:
 
-| Przepływ | Typowy helper oczekujący |
+| Przepływ | Typowa metoda |
 | --- | --- |
-| Akceptacja faktury online | `submission.wait()` |
-| Przetwarzanie batch | `session.wait()` |
+| Nadanie numeru KSeF w sesji interaktywnej | `submission.wait()` |
+| Przetwarzanie sesji wsadowej | `session.wait()` |
 | Gotowość paczki eksportu | `auth.invoices.export(...).wait()` |
-| Aktywacja albo sprawdzanie tokenu | `auth.tokens.generate(...).wait()` albo `auth.tokens.get_status()` |
+| Aktywacja albo sprawdzenie tokena | `auth.tokens.generate(...).wait()` albo `auth.tokens.get_status()` |
 | Nadanie albo cofnięcie uprawnienia | `operation.wait()` albo `auth.permissions.get_operation_status()` |
 | Wydanie certyfikatu | `enrollment.wait()` albo `auth.certificates.get_enrollment_status()` |
 
 ## Co zapisywać
 
-Zapisz informacje wystarczające do późniejszej inspekcji statusu bez pierwotnego
-obiektu Pythona:
+Zapisz tyle, żeby później sprawdzić status bez pierwotnego obiektu Pythona:
 
 - numer referencyjny sesji;
 - numer referencyjny faktury;
-- numer KSeF po akceptacji;
-- referencję UPO albo bajty XML UPO;
+- numer KSeF po jego nadaniu;
+- numer referencyjny UPO albo bajty XML UPO;
 - numer referencyjny eksportu albo operacji dla przepływów poza sesją;
-- ostatni zaobserwowany payload statusu do audytu.
+- ostatnią zaobserwowaną odpowiedź ze statusem, do audytu.
 
 ## Powiązane strony
 
-- [Sprawdź status i UPO](../how-to-guides/get-status-and-upo.md): Polluj sesje online i batch, a potem pobierz XML UPO.
-- [Sesje](sessions.md): Zrozum zdalne konteksty przepływów, które wystawiają status.
-- [Cykl życia faktury](invoice-lifecycle.md): Prześledź fakturę od wysyłki po numer KSeF, metadane, pobranie i UPO.
-- [Obsługa błędów](../reference/errors.md): Obsłuż operacje odrzucone, nieudane, wygasłe i możliwe do ponowienia.
+- [Pobieranie statusu i UPO](../how-to-guides/get-status-and-upo.md): sesje interaktywne i wsadowe, a potem XML UPO.
+- [Sesje](sessions.md): zdalne sesje, które wystawiają status.
+- [Faktura w KSeF](invoice-lifecycle.md): faktura od wysyłki do numeru KSeF, metadanych, pobrania i UPO.
+- [Obsługa błędów](../reference/errors.md): operacje odrzucone, nieudane, wygasłe i takie, które można ponowić.

@@ -1,30 +1,17 @@
 ---
-title: Skonfiguruj uprawnienia
-description: Nadawaj, wyszukuj, odbieraj i monitoruj uprawnienia KSeF z ksef2.
+title: Konfiguracja uprawnień
+description: Nadawaj, wyszukuj, odbieraj i śledź uprawnienia KSeF w ksef2.
 ---
 
-Użyj `auth.permissions`, gdy uwierzytelniony kontekst ma nadawać, sprawdzać albo
-cofać uprawnienia KSeF. Zmiany uprawnień są asynchroniczne: metody grant i
-revoke najpierw zwracają referencję operacji.
+Użyj `auth.permissions`, gdy uwierzytelniony kontekst logowania ma nadawać, sprawdzać albo cofać uprawnienia KSeF. Zmiany uprawnień są asynchroniczne: metody nadania i cofnięcia najpierw zwracają numer referencyjny operacji.
 
-Podaj 11-cyfrowy PESEL z poprawną sumą kontrolną lub NIP zgodny z 10-cyfrowym
-wzorcem OpenAPI. Nadawanie uprawnień nie sprawdza sumy kontrolnej NIP.
-Identyfikator musi odpowiadać `subject_type`. SDK sprawdza te wartości przed
-wysłaniem nadania uprawnień. Puste listy uprawnień oraz puste identyfikatory
-w `revoke()` i `revoke_authorization()` zgłaszają `KSeFArgumentError` z podpowiedzią
-`hint` przed wysłaniem żądania.
+Podaj 11-cyfrowy PESEL z poprawną sumą kontrolną albo NIP zgodny z 10-cyfrowym wzorcem OpenAPI. Nadawanie uprawnień nie sprawdza sumy kontrolnej NIP. Identyfikator musi odpowiadać `subject_type`. SDK sprawdza te wartości przed wysłaniem nadania. Puste listy uprawnień oraz puste identyfikatory w `revoke()` i `revoke_authorization()` zgłaszają wyjątek `KSeFArgumentError` z podpowiedzią `hint` przed wysłaniem żądania.
 
-W `grant_person()` i `grant_entity()` podawaj uprawnienia w snake_case lub jako
-odpowiednie elementy enum, tak jak w `tokens.generate()`. Możesz użyć
-`"invoice_read"`, `PersonPermissionTypeEnum.INVOICE_READ` lub
-`EntityPermissionTypeEnum.INVOICE_READ`. Aby umożliwić delegowanie uprawnienia
-podmiotowi, użyj `EntityPermission(type="invoice_read", can_delegate=True)`.
-Wartość `"InvoiceRead"` zgłasza błąd z sugestią `"invoice_read"`.
+W `grant_person()` i `grant_entity()` podawaj uprawnienia w zapisie `snake_case` albo jako odpowiednie elementy wyliczenia, tak jak w `tokens.generate()`. Możesz użyć `"invoice_read"`, `PersonPermissionTypeEnum.INVOICE_READ` albo `EntityPermissionTypeEnum.INVOICE_READ`. Aby pozwolić przekazać uprawnienie dalej, użyj `EntityPermission(type="invoice_read", can_delegate=True)`. Wartość `"InvoiceRead"` zgłasza błąd z sugestią `"invoice_read"`.
 
 ## Nadaj uprawnienia
 
-Wybierz metodę nadania pasującą do docelowego podmiotu. Utrzymuj zakres
-uprawnień tak mały, jak pozwala na to przepływ.
+Wybierz metodę nadania pasującą do podmiotu, który ma dostać uprawnienie. Zakres trzymaj tak mały, jak pozwala na to przepływ.
 
 ### Osoba
 
@@ -59,7 +46,7 @@ operation = auth.permissions.grant_entity(
 )
 ```
 
-### Autoryzacja
+### Podmiot uprawniony
 
 ```python
 operation = auth.permissions.grant_authorization(
@@ -73,18 +60,13 @@ operation = auth.permissions.grant_authorization(
 
 ## Poczekaj na operację
 
-Każde wywołanie `grant_*()` i `revoke*()` zwraca uchwyt `PermissionOperation`.
-Czekaj na niego, aż KSeF zgłosi wynik operacji uprawnień.
+Każde wywołanie `grant_*()` i `revoke*()` zwraca obiekt `PermissionOperation`. Czekaj na niego, aż KSeF poda wynik operacji na uprawnieniach.
 
 ```python
 status = operation.wait(timeout=60.0, poll_interval=1.0)
 ```
 
-`wait()` zgłasza `KSeFPermissionOperationFailedError`, gdy KSeF zakończy
-operację bez zastosowania uprawnienia, oraz `KSeFPermissionOperationTimeoutError`,
-gdy nie zakończy się na czas. Aby sprawdzić jednorazowo bez czekania, wywołaj
-`operation.get_status()` albo `get_operation_status()`, gdy zapisałeś tylko
-numer referencyjny:
+`wait()` zgłasza wyjątek `KSeFPermissionOperationFailedError`, gdy KSeF zakończy operację bez zastosowania uprawnienia, oraz `KSeFPermissionOperationTimeoutError`, gdy nie zakończy się na czas. Aby sprawdzić raz, bez czekania, wywołaj `operation.get_status()` albo `get_operation_status()`, gdy zapisałeś tylko numer referencyjny:
 
 ```python
 status = auth.permissions.get_operation_status(
@@ -101,15 +83,12 @@ status = auth.permissions.get_operation_status(
 ```
 
 :::caution[Nie pokazuj uprawnienia przed zakończeniem statusu]
-Odpowiedź grant oznacza, że KSeF przyjął żądanie operacji. Poczekaj na
-operację, zanim potraktujesz uprawnienie jako aktywne w aplikacji.
+Odpowiedź nadania oznacza, że KSeF przyjął żądanie operacji. Poczekaj na operację, zanim potraktujesz uprawnienie jako aktywne w aplikacji.
 :::
 
 ### Wznów operację po restarcie
 
-`operation.resume_state()` zwraca `PermissionOperationResumeState` z numerem
-referencyjnym operacji. Zapisz go przez `to_json()` i przekaż do
-`auth.permissions.operation()`, gdy późniejszy proces przejmuje pracę:
+`operation.resume_state()` zwraca `PermissionOperationResumeState` z numerem referencyjnym operacji. Zapisz go przez `to_json()` i przekaż do `auth.permissions.operation()`, gdy późniejszy proces przejmuje pracę:
 
 ```python
 zapisany_stan = operation.resume_state().to_json()
@@ -119,16 +98,11 @@ operation = auth.permissions.operation(zapisany_stan)
 status = operation.wait(timeout=60.0, poll_interval=1.0)
 ```
 
-`operation()` przyjmuje obiekt stanu albo jego JSON i zwraca uchwyt odpytujący
-ten sam numer referencyjny. Numer referencyjny to wszystko, co KSeF zwrócił dla
-tej operacji, więc wznowiony uchwyt jest pełną kopią oryginalnego.
+`operation()` przyjmuje obiekt stanu albo jego JSON i zwraca obiekt, który sprawdza ten sam numer referencyjny. Numer referencyjny to wszystko, co KSeF zwrócił dla tej operacji, więc wznowiony obiekt jest pełną kopią oryginalnego.
 
 ## Wyszukaj uprawnienia
 
-Metody `list_*()` mają osobne kształty, ponieważ KSeF rozróżnia rekordy personal,
-person, entity, authorization, EU entity, subordinate entity i subunit. Każda
-zwraca `Pager`: iteruj po nim, by dostać każdy rekord, wywołaj `.pages()` dla
-list wielkości strony albo `.first_page()`, by wykonać jedno żądanie.
+Metody `list_*()` mają osobne struktury zapytań, bo KSeF rozróżnia rekordy uprawnień osobistych, osób, podmiotów, podmiotów uprawnionych, podmiotów unijnych, podmiotów podrzędnych i jednostek podrzędnych. Każda zwraca `Pager`. Iteruj po nim, żeby dostać każdy rekord, wywołaj `.pages()` dla list wielkości strony albo `.first_page()`, żeby wykonać jedno żądanie.
 
 ### Moje uprawnienia
 
@@ -146,7 +120,7 @@ for permission in permissions:
     print(permission.id, permission.permission_type, permission.permission_state)
 ```
 
-### Nadania entity
+### Nadania dla podmiotu
 
 ```python
 from ksef2.models import EntityPermissionsQuery
@@ -159,7 +133,7 @@ for permission in permissions:
     print(permission.id, permission.permission_type, permission.can_delegate)
 ```
 
-### Autoryzacje
+### Uprawnienia podmiotu uprawnionego
 
 ```python
 from ksef2.models import AuthorizationPermissionsQuery
@@ -177,8 +151,7 @@ for grant in grants:
 
 ## Cofnij uprawnienia
 
-Użyj rekordu `permission` wybranego z listy powyżej. Cofnięcie też zwraca
-uchwyt `PermissionOperation`.
+Użyj rekordu `permission` wybranego z listy powyżej. Cofnięcie też zwraca obiekt `PermissionOperation`.
 
 ```python
 operation = auth.permissions.revoke(permission_id=permission.id)
@@ -186,7 +159,7 @@ status = operation.wait()
 print(status.status.code, status.status.description)
 ```
 
-Dla rekordu `grant` wybranego z listy autoryzacji użyj metody cofania autoryzacji:
+Dla rekordu `grant` wybranego z listy uprawnień podmiotu uprawnionego użyj metody cofania tego rodzaju uprawnienia:
 
 ```python
 operation = auth.permissions.revoke_authorization(
@@ -206,21 +179,20 @@ status = auth.permissions.get_attachment_permission_status()
 # }
 ```
 
-## Zalecany przepływ
+## Zalecany przebieg
 
-1. Nadaj najmniejszy zestaw uprawnień wymagany przez docelowy podmiot.
+1. Nadaj najmniejszy zestaw uprawnień wymagany przez podmiot, który ma je dostać.
 
 2. Zapisz `reference_number` operacji.
 
-3. Poczekaj na operację przed pokazaniem uprawnienia jako aktywnego.
+3. Poczekaj na operację, zanim pokażesz uprawnienie jako aktywne.
 
-4. Wyszukaj uprawnienia, aby zebrać identyfikatory do audytu albo cofnięcia.
+4. Wyszukaj uprawnienia, żeby zebrać identyfikatory do audytu albo cofnięcia.
 
-5. Cofnij po identyfikatorze uprawnienia, gdy dostęp ma się zakończyć, a potem
-   poczekaj na operację cofnięcia.
+5. Cofnij po identyfikatorze uprawnienia, gdy dostęp ma się skończyć, a potem poczekaj na operację cofnięcia.
 
-## Następne przepływy
+## Następne strony
 
-- [Uprawnienia](../concepts/permissions.md): Zrozum rodziny uprawnień KSeF i powód różnych kształtów zapytań.
-- [Zarządzaj tokenami](manage-tokens.md): Generuj i cofaj tokeny automatyzacji z ograniczonym zakresem uprawnień.
-- [Użyj danych TEST](use-test-data.md): Twórz sandboxowe podmioty i nadania dla testów integracyjnych.
+- [Tokeny i uprawnienia](../concepts/permissions.md): rodziny uprawnień KSeF i powód różnych zapytań.
+- [Zarządzanie tokenami](manage-tokens.md): tokeny automatyzacji z ograniczonym zakresem uprawnień.
+- [Dane testowe](use-test-data.md): podmioty i nadania w środowisku testowym, do testów integracyjnych.

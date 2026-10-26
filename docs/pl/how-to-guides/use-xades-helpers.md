@@ -1,13 +1,11 @@
 ---
 title: Podpisy XAdES
-description: Ładowanie certyfikatów i kluczy, generowanie certyfikatów TEST i podpisywanie XML do uwierzytelniania KSeF.
+description: Wczytywanie certyfikatów i kluczy, certyfikaty testowe oraz podpis XML do uwierzytelniania w KSeF.
 ---
 
-Użyj pomocników XAdES, gdy uwierzytelniasz się materiałem certyfikatu albo
-diagnozujesz podpisany XML uwierzytelniania. Większość aplikacji powinna nadal
-wywoływać `client.authentication.with_xades()` zamiast podpisywać ręcznie.
+Sięgnij po funkcje XAdES, gdy uwierzytelniasz się certyfikatem albo sprawdzasz podpisany XML uwierzytelniania. W zwykłej aplikacji wywołuj `client.authentication.with_xades()`, zamiast podpisywać XML ręcznie.
 
-Przekaż `Path`, aby odczytać plik PEM lub PKCS#12. Napisy i bajty są treścią. Ścieżki tekstowe do istniejących plików działają z ostrzeżeniem o wycofaniu przez całą serię 1.x; usunięcie może nastąpić najwcześniej w 2.0.0. Krótkie napisy wyglądające jak ścieżki do brakujących plików zgłaszają `KSeFArgumentError` ze wskazówką `Path(...)`. Błąd nie zawiera treści wejścia.
+Przekaż `Path`, żeby odczytać plik PEM albo PKCS#12. Napis i bajty oznaczają treść, nie ścieżkę. Tekstowa ścieżka do istniejącego pliku działa przez całą serię 1.x z ostrzeżeniem o wycofaniu. Usunięcie tej zgodności może nastąpić najwcześniej w 2.0.0. Krótki napis, który wygląda jak ścieżka do brakującego pliku, zgłasza wyjątek `KSeFArgumentError` ze wskazówką `Path(...)`. Komunikat błędu nie zawiera treści wejścia.
 
 ## Załaduj materiał certyfikatu
 
@@ -30,8 +28,7 @@ private_key = load_private_key_from_pem(
 
 ### Z DER
 
-`XAdESCredentials.from_der` czyta bajty certyfikatu i klucza w formacie DER i trzyma
-je w jednym obiekcie poświadczeń jako załadowane obiekty cryptography.
+`XAdESCredentials.from_der` czyta bajty certyfikatu i klucza w formacie DER i trzyma je w jednym obiekcie jako załadowane obiekty cryptography.
 
 ```python
 import os
@@ -64,7 +61,7 @@ cert, private_key = load_certificate_and_key_from_p12(
 )
 ```
 
-To samo archiwum można przekazać w formie opartej na danych:
+To samo archiwum możesz przekazać jako gotowe bajty:
 
 ```python
 import os
@@ -80,7 +77,7 @@ credentials = XAdESCredentials.from_pkcs12(
 
 ## Uwierzytelnij przez XAdES
 
-Przekaż załadowany certyfikat i klucz prywatny do gałęzi uwierzytelniania.
+Przekaż załadowany certyfikat i klucz prywatny do uwierzytelniania:
 
 ```python
 auth = client.authentication.with_xades(
@@ -90,8 +87,7 @@ auth = client.authentication.with_xades(
 )
 ```
 
-Można też przekazać obiekt poświadczeń. W warstwie async użyj `await` wewnątrz
-funkcji `async def main()`:
+Możesz też przekazać obiekt z certyfikatem i kluczem. W wersji asynchronicznej użyj `await` wewnątrz `async def main()`:
 
 ```python
 import asyncio
@@ -108,9 +104,9 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-## Wygeneruj materiał certyfikatu TEST
+## Wygeneruj certyfikat testowy
 
-Wygenerowanych certyfikatów używaj tylko w przepływach TEST.
+Wygenerowanego certyfikatu używaj tylko w środowisku testowym.
 
 ### Firma
 
@@ -133,8 +129,7 @@ cert, private_key = generate_personal_test_certificate(
 
 ## Podpisz XML bezpośrednio
 
-Bezpośrednich helperów podpisu używaj do diagnostyki albo niższych testów
-integracyjnych. Dla zwykłego uwierzytelniania preferuj `with_xades()`.
+Bezpośredniego podpisu używaj do diagnostyki albo do niższych testów integracyjnych. Do zwykłego uwierzytelniania wybierz `with_xades()`.
 
 ```python
 from ksef2.xades import build_auth_token_request_xml, sign_xades
@@ -149,11 +144,7 @@ signed_xml = sign_xades(xml, cert, private_key)
 
 ## Podpisz certyfikatem z magazynu
 
-Magazyn certyfikatów podpisu oddaje załadowany rekord, więc jego certyfikat i
-klucz trafiają wprost do `LocalSigner`. Klucz prywatny to obiekt zwrócony przez
-magazyn: jest używany do podpisu bez eksportu, ponownego odszyfrowania ani
-parsowania. Przykłady poniżej zakładają, że `store` to magazyn trzymający rekord,
-a `reference` to referencja tego rekordu.
+Magazyn certyfikatów podpisu oddaje załadowany rekord, więc jego certyfikat i klucz trafiają wprost do `LocalSigner`. Klucz prywatny to obiekt zwrócony przez magazyn. Podpis korzysta z niego bez eksportu, ponownego odszyfrowania i ponownego parsowania. Przykłady zakładają, że `store` trzyma rekord, a `reference` to wskazanie tego rekordu.
 
 ```python
 from ksef2.xades import LocalSigner
@@ -167,37 +158,26 @@ signer = LocalSigner(
 signed_xml = signer.sign(xml)
 ```
 
-Traktuj `record` jak sekret, dopóki żyje: trzyma klucz prywatny. Gdy podpis
-służy uwierzytelnieniu, użyj zamiast tego `with_stored_certificate()`.
+Traktuj `record` jak sekret, dopóki istnieje w pamięci: trzyma klucz prywatny. Gdy podpis ma tylko uwierzytelnić, użyj `with_stored_certificate()`.
 
 :::caution[Chroń klucze prywatne]
-Pliki kluczy prywatnych i hasła trzymaj poza kontrolą wersji. Ładuj hasła ze
-zmiennych środowiskowych albo managera sekretów. `XAdESCredentials` przechowuje w
-pamięci załadowane obiekty certyfikatu i odszyfrowanego klucza prywatnego, bez hasła
-ani bajtów wejściowych. `repr()` ukrywa oba obiekty. Obiekt poświadczeń nie ma
-schematu Pydantic ani API serializacji JSON. Traktuj go jako sekret, dopóki żyje.
-Konstruktor sprawdza typ klucza i zgodność certyfikatu z kluczem tylko raz.
-Uwierzytelnianie i podpisywanie używają załadowanych obiektów bez serializacji ani
-ponownego parsowania klucza prywatnego.
+Pliki kluczy prywatnych i hasła trzymaj poza kontrolą wersji. Hasła bierz ze zmiennych środowiskowych albo z menedżera sekretów. `XAdESCredentials` trzyma w pamięci załadowany certyfikat i odszyfrowany klucz prywatny, bez hasła i bez bajtów wejściowych. `repr()` ukrywa oba obiekty. Obiekt nie ma schematu Pydantic ani zapisu do JSON. Traktuj go jak sekret, dopóki żyje. Konstruktor sprawdza typ klucza i zgodność certyfikatu z kluczem tylko raz. Uwierzytelnianie i podpisywanie używają załadowanych obiektów, bez serializacji i bez ponownego parsowania klucza prywatnego.
 :::
 
 ## Zalecany przepływ
 
-1. Załaduj materiał certyfikatu z PEM, DER albo PKCS#12 — jako obiekty albo jako
-   jedną wartość `XAdESCredentials`.
+1. Wczytaj certyfikat z PEM, DER albo PKCS#12, jako osobne obiekty albo jako jedno `XAdESCredentials`.
 
-2. Trzymaj hasła kluczy prywatnych w zmiennych środowiskowych albo managerze
-   sekretów.
+2. Hasła kluczy prywatnych trzymaj w zmiennych środowiskowych albo w menedżerze sekretów.
 
 3. Uwierzytelniaj się przez `with_xades()`, gdy to możliwe.
 
-4. Generuj samopodpisane certyfikaty tylko dla TEST.
+4. Certyfikat samopodpisany generuj tylko dla środowiska testowego.
 
-5. Używaj bezpośrednich helperów podpisu tylko do diagnostyki albo
-   niskopoziomowych testów integracyjnych.
+5. Bezpośredniego podpisu używaj tylko do diagnostyki albo do niskopoziomowych testów integracyjnych.
 
-## Następne przepływy
+## Następne kroki
 
-- [Uwierzytelnianie](authenticate.md): Użyj załadowanego materiału certyfikatu XAdES w uwierzytelnianiu SDK.
-- [Zarządzaj certyfikatami](manage-certificates.md): Rejestruj, pobieraj i cofaj certyfikaty KSeF.
-- [XAdES](../concepts/xades.md): Zrozum, gdzie XAdES pasuje do modelu uwierzytelniania KSeF.
+- [Uwierzytelnianie](authenticate.md): Użyj wczytanego certyfikatu XAdES w uwierzytelnianiu SDK.
+- [Zarządzanie certyfikatami](manage-certificates.md): Rejestruj, pobieraj i unieważniaj certyfikaty KSeF.
+- [XAdES](../concepts/xades.md): Gdzie XAdES wchodzi w uwierzytelnianie KSeF.

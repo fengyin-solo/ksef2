@@ -1,55 +1,42 @@
 ---
 title: Certyfikaty
-description: Zrozum role certyfikatów w uwierzytelnianiu KSeF, rejestracji, trybie offline i publicznym szyfrowaniu.
+description: Role certyfikatów w uwierzytelnianiu KSeF, rejestracji, trybie offline i publicznym szyfrowaniu.
 ---
 
-KSeF używa słowa certyfikat w kilku różnych miejscach. Łączy je kryptografia,
-ale w SDK nie pełnią tej samej roli.
+KSeF używa słowa „certyfikat” w kilku różnych miejscach. Wszystkie opierają się na kryptografii, ale w SDK nie pełnią tej samej roli.
 
-| Rola certyfikatu | Kto go posiada | Powierzchnia SDK | Cel |
+| Rola certyfikatu | Kto go ma | Moduł SDK | Cel |
 | --- | --- | --- | --- |
-| Materiał podpisu uwierzytelniania | Aplikacja, użytkownik, HSM, magazyn certyfikatów albo helper TEST. | `client.authentication.with_xades()` i `ksef2.xades` | Podpisuje `AuthTokenRequest` używany do uwierzytelnienia. |
-| Certyfikat wydany przez KSeF | KSeF wydaje go po wniosku rejestracyjnym. Przechowujesz go z kluczem prywatnym. | `auth.certificates` | Daje podmiotowi uwierzytelniającemu certyfikat KSeF do uwierzytelniania albo trybu offline. |
-| Publiczny certyfikat szyfrowania | KSeF go publikuje. SDK go odczytuje. | `client.encryption` i przepływy wysokopoziomowe | Szyfruje payload uwierzytelniania tokenem, klucze sesji i klucze eksportu dla KSeF. |
+| Materiał podpisu uwierzytelniania | Aplikacja, użytkownik, HSM, magazyn certyfikatów albo metoda pomocnicza środowiska testowego. | `client.authentication.with_xades()` i `ksef2.xades` | Podpisuje `AuthTokenRequest` używany do uwierzytelnienia. |
+| Certyfikat wydany przez KSeF | KSeF wydaje go po wniosku. Przechowujesz go razem z kluczem prywatnym. | `auth.certificates` | Daje podmiotowi uwierzytelniającemu certyfikat KSeF typu Authentication albo Offline. |
+| Publiczny certyfikat szyfrowania | Publikuje go KSeF. SDK go odczytuje. | `client.encryption` i przepływy wysokiego poziomu | Szyfruje dla KSeF dane uwierzytelniania tokenem, klucze sesji i klucze eksportu. |
 
-Rozdzielenie tych ról zapobiega dwóm częstym błędom projektowym: traktowaniu
-certyfikatu tak, jakby niósł uprawnienia KSeF, albo traktowaniu rejestracji
-certyfikatu tak, jakby KSeF miał otrzymać klucz prywatny.
+Rozdzielenie tych ról chroni przed dwoma częstymi błędami: traktowaniem certyfikatu tak, jakby niósł uprawnienia KSeF, oraz traktowaniem rejestracji tak, jakby KSeF miał dostać klucz prywatny.
 
 :::caution[Rejestracja nie jest przechowywaniem klucza]
-SDK wysyła CSR i żądania cyklu życia certyfikatu. Aplikacja albo narzędzia
-certyfikatowe generują, przechowują, rotują i chronią klucze prywatne.
+SDK wysyła CSR i żądania dotyczące życia certyfikatu. Klucze prywatne generuje, przechowuje, wymienia i chroni aplikacja albo narzędzia do certyfikatów.
 :::
 
 ## Tożsamość i uprawnienia
 
-Certyfikat KSeF jest nośnikiem tożsamości podmiotu uwierzytelniającego. Zwykle
-jest powiązany z NIP-em, PESEL-em albo odciskiem palca certyfikatu. Sam nie
-jest przypisany do kontekstu podatnika i nie zawiera zestawu uprawnień używanego
-przez operacje KSeF.
+Certyfikat KSeF jest nośnikiem tożsamości podmiotu uwierzytelniającego. Zwykle jest powiązany z NIP-em, PESEL-em albo odciskiem palca certyfikatu. Sam nie jest przypisany do kontekstu logowania i nie zawiera zestawu uprawnień używanego przez operacje KSeF.
 
-Uprawnienia są oceniane osobno. Certyfikat może potwierdzić, kto się
-uwierzytelnia, a KSeF nadal sprawdza, czy ten podmiot ma prawo działać w
-wybranym kontekście logowania.
+Uprawnienia są sprawdzane osobno. Certyfikat potwierdza, kto się uwierzytelnia. KSeF i tak sprawdza, czy ten podmiot może działać w wybranym kontekście logowania.
 
-## Typy certyfikatów
+## Typy certyfikatów KSeF
 
-Certyfikaty wydawane przez KSeF mają jeden typ:
+Certyfikat wydany przez KSeF ma jeden typ. Nie da się połączyć obu ról w jednym certyfikacie.
 
 | Wartość SDK | Znaczenie |
 | --- | --- |
-| `authentication` | Może być używany jako materiał certyfikatu do uwierzytelniania KSeF. |
-| `offline` | Używany do identyfikacji wystawiania faktur offline; nie jest credentialem logowania. |
+| `authentication` | Certyfikat KSeF typu Authentication. Służy do uwierzytelniania w KSeF. |
+| `offline` | Certyfikat KSeF typu Offline. Potwierdza autentyczność wystawcy i integralność faktury w trybie offline. Nie służy do uwierzytelniania. |
 
-Jeden wydany certyfikat nie łączy obu ról. Wnioskuj o typ pasujący do
-przepływu, który budujesz.
+Wniosek składaj o typ, którego potrzebuje dany przepływ.
 
-## Model rejestracji
+## Rejestracja
 
-Rejestracja certyfikatu jest przepływem uwierzytelnionym, ale nie jest tylko
-kolejnym formularzem administracyjnym. KSeF wyprowadza dane podmiotu do
-rejestracji z certyfikatu użytego do uwierzytelnienia XAdES. CSR musi użyć tych
-wartości; ich zmiana powoduje odrzucenie wniosku przez KSeF.
+Rejestracja certyfikatu wymaga uwierzytelnienia, ale nie jest zwykłym formularzem administracyjnym. KSeF bierze dane podmiotu do wniosku z certyfikatu użytego do uwierzytelnienia XAdES. CSR musi użyć tych wartości. Ich zmiana powoduje odrzucenie wniosku.
 
 ```python
 limits = auth.certificates.get_limits()
@@ -59,60 +46,45 @@ subject = auth.certificates.get_enrollment_data()
 print(subject.common_name, subject.country_name)
 ```
 
-SDK udostępnia cykl życia jako metody wysokiego poziomu, ale klucz prywatny i
-CSR nadal pochodzą z Twoich narzędzi certyfikatowych:
+SDK udostępnia kolejne kroki jako metody wysokiego poziomu. Klucz prywatny i CSR nadal pochodzą z Twoich narzędzi:
 
-1. Uwierzytelnij się materiałem certyfikatu XAdES.
-2. Odczytaj limity certyfikatów i dane podmiotu do rejestracji.
+1. Uwierzytelnij się certyfikatem i podpisem XAdES.
+2. Odczytaj limity certyfikatów i dane podmiotu do wniosku.
 3. Wygeneruj klucz prywatny i CSR poza SDK.
 4. Wyślij CSR przez `auth.certificates.enroll()`.
-5. Odpytuj status rejestracji, aż KSeF zwróci numer seryjny certyfikatu.
+5. Sprawdzaj status wniosku, aż KSeF zwróci numer seryjny certyfikatu.
 6. Pobierz wydany certyfikat i zapisz go razem z kluczem prywatnym.
 
-:::note[Uwierzytelnienie tokenem nie wystarczy do rejestracji]
-Rejestracja certyfikatu wymaga uwierzytelnienia XAdES, ponieważ KSeF używa
-tożsamości z certyfikatu podpisującego jako źródła danych podmiotu.
+:::note[Token KSeF nie wystarczy do rejestracji]
+Rejestracja certyfikatu wymaga uwierzytelnienia XAdES, bo KSeF bierze tożsamość z certyfikatu, którym podpisano żądanie.
 :::
 
-## Magazyny certyfikatów podpisu a cache certyfikatów szyfrowania
+## Magazyn certyfikatów podpisu i pamięć certyfikatów szyfrowania
 
-SDK ma dwie rzeczy nazwane magazynem i one się nie spotykają. Żadna z nich nie
-jest usługą KSeF: obie działają w Twojej aplikacji.
+SDK ma dwie rzeczy nazywane magazynem i one się nie spotykają. Żadna nie jest usługą KSeF. Obie działają w Twojej aplikacji.
 
-| | `ksef2.certificate_stores` | Cache `certificate_store=` |
+| | `ksef2.certificate_stores` | Pamięć `certificate_store=` |
 | --- | --- | --- |
 | Co trzyma | Twój certyfikat podpisu i jego klucz prywatny. | Publiczne certyfikaty szyfrowania KSeF. |
 | Kto wkłada materiał | Twoja aplikacja przez `save()`. | SDK, pobierając z `client.encryption`. |
-| Do czego służy | Przekazanie pary do `with_stored_certificate()` albo do podpisującego. | Szyfrowanie materiału kluczy tokena, sesji i eksportu dla KSeF. |
-| Sekret? | Tak, trzyma klucz prywatny. | Nie, wszystko w nim jest publiczne. |
+| Do czego służy | Przekazanie pary do `with_stored_certificate()` albo do podpisu. | Szyfrowanie dla KSeF kluczy tokena, sesji i eksportu. |
+| Sekret? | Tak, trzyma klucz prywatny. | Nie. Wszystko w niej jest publiczne. |
 
-Przekazanie magazynu certyfikatów podpisu jako `certificate_store=` albo
-oczekiwanie, że `with_stored_certificate()` przeczyta cache szyfrowania, miesza
-te role.
+Przekazanie magazynu certyfikatów podpisu jako `certificate_store=` albo oczekiwanie, że `with_stored_certificate()` przeczyta pamięć certyfikatów szyfrowania, miesza te role.
 
-Lokalny rekord mówi tylko to, co twierdzi sam certyfikat. Nie mówi, czy KSeF
-nadal uważa certyfikat za aktywny i nieunieważniony — zapytaj KSeF przez
-`auth.certificates.list()`. Obie strony tej różnicy mają znaczenie. Usunięcie
-lokalnego rekordu nie cofa niczego w KSeF, a unieważnienie certyfikatu w KSeF nie
-usuwa rekordu z Twojego magazynu.
+Lokalny rekord mówi tylko to, co twierdzi sam certyfikat. Nie mówi, czy KSeF nadal uważa certyfikat za aktywny i nieunieważniony. To sprawdzisz w KSeF przez `auth.certificates.list()`. Obie strony tej różnicy mają znaczenie. Usunięcie lokalnego rekordu niczego nie cofa w KSeF, a unieważnienie certyfikatu w KSeF nie usuwa rekordu z Twojego magazynu.
 
-## Relacja do XAdES i szyfrowania
+## Związek z XAdES i szyfrowaniem
 
-XAdES używa materiału certyfikatu do podpisania XML uwierzytelniającego.
-Rejestracja certyfikatów zarządza certyfikatami wydawanymi przez KSeF. Publiczne
-certyfikaty szyfrowania są jeszcze czymś innym: to publiczne klucze KSeF używane
-przez SDK do szyfrowania kluczy payloadów.
+XAdES używa certyfikatu do podpisania XML uwierzytelniania. Rejestracja dotyczy certyfikatów wydawanych przez KSeF. Publiczne certyfikaty szyfrowania to jeszcze coś innego: publiczne klucze KSeF, którymi SDK szyfruje klucze przesyłanych danych.
 
-Jeśli problem dotyczy kluczy prywatnych, CSR, numerów seryjnych wydanych
-certyfikatów albo certyfikatów offline, należy do zarządzania certyfikatami.
-Jeśli dotyczy `public_key_id`, szyfrowania tokenu, szyfrowania sesji albo
-deszyfrowania paczki eksportu, należy do modelu szyfrowania.
+Jeśli problem dotyczy kluczy prywatnych, CSR, numerów seryjnych wydanych certyfikatów albo certyfikatu typu Offline, należy do zarządzania certyfikatami. Jeśli dotyczy `public_key_id`, szyfrowania tokena, szyfrowania sesji albo odszyfrowania paczki eksportu, należy do szyfrowania.
 
 ## Powiązane strony
 
-- [Zarządzaj certyfikatami](../how-to-guides/manage-certificates.md): Rejestruj, pobieraj, wyszukuj i unieważniaj certyfikaty KSeF z kodu uwierzytelnionego.
-- [Własny magazyn certyfikatów podpisu](../how-to-guides/write-signing-certificate-store.md): Zaimplementuj magazyn trzymający Twój certyfikat i klucz.
-- [Skonfiguruj magazyn certyfikatów](../how-to-guides/configure-certificate-store.md): Skonfiguruj cache publicznych certyfikatów szyfrowania KSeF.
-- [XAdES](xades.md): Zrozum podpis XML oparty o certyfikat podczas uwierzytelniania.
-- [Szyfrowanie](encryption.md): Zrozum publiczne certyfikaty szyfrowania KSeF i rotację kluczy.
-- [Uprawnienia](permissions.md): Zrozum, dlaczego tożsamość uwierzytelniania i uprawnienia operacji są osobne.
+- [Zarządzanie certyfikatami](../how-to-guides/manage-certificates.md): rejestracja, pobieranie, wyszukiwanie i unieważnianie certyfikatów KSeF.
+- [Własny magazyn certyfikatów podpisu](../how-to-guides/write-signing-certificate-store.md): magazyn, który trzyma Twój certyfikat i klucz.
+- [Konfiguracja magazynu certyfikatów](../how-to-guides/configure-certificate-store.md): pamięć publicznych certyfikatów szyfrowania KSeF.
+- [XAdES](xades.md): podpis XML oparty na certyfikacie podczas uwierzytelniania.
+- [Szyfrowanie](encryption.md): publiczne certyfikaty szyfrowania KSeF i zmiana kluczy.
+- [Tokeny i uprawnienia](permissions.md): dlaczego tożsamość przy uwierzytelnianiu i uprawnienia operacji są osobne.

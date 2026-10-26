@@ -557,7 +557,16 @@ def _create_env(name: str, work: Path, requirements: list[str], python: str) -> 
         ["uv", "venv", os.fspath(directory), "--python", python], work, f"create {name}"
     )
     _ = _execute(
-        ["uv", "pip", "install", "--python", os.fspath(interpreter), *requirements],
+        [
+            "uv",
+            "pip",
+            "install",
+            "--refresh-package",
+            PACKAGE_NAME,
+            "--python",
+            os.fspath(interpreter),
+            *requirements,
+        ],
         work,
         f"install into {name}",
     )

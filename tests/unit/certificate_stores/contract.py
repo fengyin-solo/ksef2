@@ -6,6 +6,7 @@ adapter gets the contract by subclassing ``SyncSigningStoreContract`` or
 """
 
 import datetime
+import functools
 from typing import cast
 
 from cryptography import x509
@@ -35,7 +36,12 @@ from tests.unit.support.xades_material import TestKey
 MIDDLE = datetime.datetime(2026, 5, 1, 12, tzinfo=datetime.UTC)
 
 
-def _key(kind: str = "rsa") -> TestKey:
+@functools.cache
+def _key(kind: str = "rsa", label: str = "") -> TestKey:
+    """Return a key per ``(kind, label)``, generated once per test session.
+
+    RSA generation dominates the contract's run time, and every adapter reruns it.
+    """
     if kind == "rsa":
         return rsa.generate_private_key(public_exponent=65537, key_size=2048)
     return ec.generate_private_key(ec.SECP256R1())
@@ -68,7 +74,7 @@ def make_record(
 
 
 def pair(kind: str) -> tuple[TestKey, x509.Certificate]:
-    key = _key(kind)
+    key = _key(kind, "pair")
     return key, _certificate(key, f"ksef2 {kind} contract")
 
 
@@ -79,11 +85,11 @@ def _listing_records() -> tuple[list[SigningCertificate], SigningCertificate]:
     their order, and one is expired so a store cannot quietly filter it out.
     """
     early_key, twin_key, late_key, expired_key, demo_key = (
-        _key("rsa"),
-        _key("ec"),
-        _key("rsa"),
-        _key("rsa"),
-        _key("ec"),
+        _key("rsa", "early"),
+        _key("ec", "twin"),
+        _key("rsa", "late"),
+        _key("rsa", "expired"),
+        _key("ec", "demo"),
     )
     late_from = MIDDLE + datetime.timedelta(days=90)
     expired = material.self_signed_with_validity(
@@ -174,17 +180,20 @@ class SyncSigningStoreContract:
         """
         raise NotImplementedError
 
-    def test_save_then_load_returns_the_samepair(self) -> None:
-        for kind in ("rsa", "ec"):
-            key, certificate = pair(kind)
-            store = self.make_store()
-            record = make_record(key, certificate, Environment.TEST)
+    def test_it_satisfies_the_store_protocol(self) -> None:
+        assert isinstance(self.make_store(), SigningCertificateStoreProtocol)
 
-            info = store.save(record)
-            loaded = store.load(record.reference)
+    @pytest.mark.parametrize("kind", ["rsa", "ec"])
+    def test_save_then_load_returns_the_same_pair(self, kind: str) -> None:
+        key, certificate = pair(kind)
+        store = self.make_store()
+        record = make_record(key, certificate, Environment.TEST)
 
-            assert info == record.info
-            _assert_loaded_pair_matches(loaded, record)
+        info = store.save(record)
+        loaded = store.load(record.reference)
+
+        assert info == record.info
+        _assert_loaded_pair_matches(loaded, record)
 
     def test_saving_an_equal_record_twice_keeps_one(self) -> None:
         key, certificate = pair("rsa")
@@ -298,17 +307,20 @@ class AsyncSigningStoreContract:
         """
         raise NotImplementedError
 
-    async def test_save_then_load_returns_the_samepair(self) -> None:
-        for kind in ("rsa", "ec"):
-            key, certificate = pair(kind)
-            store = self.make_store()
-            record = make_record(key, certificate, Environment.TEST)
+    async def test_it_satisfies_the_store_protocol(self) -> None:
+        assert isinstance(self.make_store(), AsyncSigningCertificateStoreProtocol)
 
-            info = await store.save(record)
-            loaded = await store.load(record.reference)
+    @pytest.mark.parametrize("kind", ["rsa", "ec"])
+    async def test_save_then_load_returns_the_same_pair(self, kind: str) -> None:
+        key, certificate = pair(kind)
+        store = self.make_store()
+        record = make_record(key, certificate, Environment.TEST)
 
-            assert info == record.info
-            _assert_loaded_pair_matches(loaded, record)
+        info = await store.save(record)
+        loaded = await store.load(record.reference)
+
+        assert info == record.info
+        _assert_loaded_pair_matches(loaded, record)
 
     async def test_saving_an_equal_record_twice_keeps_one(self) -> None:
         key, certificate = pair("rsa")

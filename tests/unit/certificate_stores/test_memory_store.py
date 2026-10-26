@@ -6,11 +6,7 @@ import os
 import pytest
 
 from ksef2._certificate_stores.async_memory import AsyncInMemorySigningCertificateStore
-from ksef2._certificate_stores.async_protocols import (
-    AsyncSigningCertificateStoreProtocol,
-)
 from ksef2._certificate_stores.memory import InMemorySigningCertificateStore
-from ksef2._certificate_stores.protocols import SigningCertificateStoreProtocol
 from ksef2._config import Environment
 from ksef2._core.exceptions import (
     KSeFArgumentError,
@@ -32,9 +28,6 @@ requires_unchecked_types = pytest.mark.skipif(
 class TestInMemorySigningCertificateStore(SyncSigningStoreContract):
     def make_store(self) -> InMemorySigningCertificateStore:
         return InMemorySigningCertificateStore()
-
-    def test_it_satisfies_the_store_protocol(self) -> None:
-        assert isinstance(self.make_store(), SigningCertificateStoreProtocol)
 
     def test_the_repr_counts_records_and_shows_no_material(self) -> None:
         key, certificate = pair("rsa")
@@ -78,9 +71,6 @@ class TestInMemorySigningCertificateStore(SyncSigningStoreContract):
 class TestAsyncInMemorySigningCertificateStore(AsyncSigningStoreContract):
     def make_store(self) -> AsyncInMemorySigningCertificateStore:
         return AsyncInMemorySigningCertificateStore()
-
-    async def test_it_satisfies_the_store_protocol(self) -> None:
-        assert isinstance(self.make_store(), AsyncSigningCertificateStoreProtocol)
 
     async def test_the_repr_counts_records_and_shows_no_material(self) -> None:
         key, certificate = pair("rsa")

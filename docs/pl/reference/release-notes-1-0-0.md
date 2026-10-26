@@ -3,10 +3,6 @@ title: Notatki wydania 1.0.0
 description: Granica stabilności i udokumentowana publiczna powierzchnia pierwszego stabilnego wydania SDK.
 ---
 
-> Trwają przygotowania do wydania. Data wydania nie jest ustalona.
-> Aliasy kompatybilności z [#171](https://github.com/stacking-hq/ksef2/issues/171)
-> są już dostępne i objęte kontrolą zgodności dawnych API.
-
 ksef2 1.0.0 to pierwsze wydanie, które traktuje udokumentowane, aplikacyjne
 ścieżki importu jako kontrakt kompatybilności dla linii 1.x.
 SDK obecnie celuje w wersję OpenAPI KSeF `2.9.0`.

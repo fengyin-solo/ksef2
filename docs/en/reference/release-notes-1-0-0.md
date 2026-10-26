@@ -3,10 +3,6 @@ title: ksef2 1.0.0 Release Notes
 description: Stability boundary and the documented public surface of the first stable ksef2 SDK release.
 ---
 
-> Release preparation is in progress. The release date is not set.
-> Compatibility aliases from [#171](https://github.com/stacking-hq/ksef2/issues/171)
-> are included and covered by the legacy compatibility gate.
-
 ksef2 1.0.0 is the first release that treats documented application-facing
 imports as a compatibility contract for the 1.x line.
 The SDK currently targets KSeF OpenAPI version `2.9.0`.

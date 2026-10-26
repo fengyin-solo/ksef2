@@ -211,7 +211,7 @@ Przydatne pola logów produkcyjnych:
 | `workflow` | Nazwa operacji na poziomie aplikacji. |
 | `session_reference_number` | Numer referencyjny sesji interaktywnej albo wsadowej. |
 | `invoice_reference_number` | Numer referencyjny faktury w sesji. |
-| `ksef_number` | Końcowy numer KSeF po przyjęciu faktury. |
+| `ksef_number` | Końcowy numer KSeF po przetworzeniu. |
 | `operation_reference_number` | Numer referencyjny operacji na tokenie, uprawnieniu, certyfikacie, uwierzytelnieniu albo eksporcie. |
 | `sdk_error_code` | `KSeFException.context["code"]`, gdy istnieje. |
 | `ksef_code` | Surowy kod błędu KSeF z `KSeFApiError.ksef_code`, gdy istnieje. |

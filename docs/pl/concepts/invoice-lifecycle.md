@@ -39,7 +39,7 @@ XML FA(3)
 
    Po poprawnym przetworzeniu numer KSeF jest stabilnym identyfikatorem do bezpośredniego pobierania, uzgodnień, metadanych i wielu spraw wsparcia.
 
-## Wysłanie nie oznacza nadania numeru KSeF
+## Wysłanie nie oznacza przyjęcia faktury
 
 `send_invoice()` szyfruje XML i wysyła go do otwartej sesji interaktywnej. Zwraca `reference_number` faktury.
 

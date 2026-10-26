@@ -16,7 +16,7 @@ Te nazwy są używane w przykładach i przez profile `ksef2-cli`:
 | Zmienna | Znaczenie |
 | --- | --- |
 | `KSEF2_ENV` | `test`, `demo` albo `production` w przykładach SDK. |
-| `KSEF2_NIP` | NIP podatnika albo identyfikator kontekstu logowania używany przy uwierzytelnianiu. |
+| `KSEF2_NIP` | NIP kontekstu logowania. |
 | `KSEF2_TOKEN` | Token KSeF do uwierzytelniania tokenem. |
 | `KSEF2_PROFILE` | Nazwa profilu wybierana przez `ksef2-cli` i uwierzytelnianie profilami w SDK. |
 | `KSEF2_CONFIG` | Opcjonalna ścieżka do pliku konfiguracji profili CLI. |

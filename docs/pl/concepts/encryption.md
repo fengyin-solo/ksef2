@@ -51,7 +51,7 @@ Pamięć podręczna certyfikatów pomaga, jeśli skraca start aplikacji. Odświe
 
 Przy zwykłej wysyłce faktur zapisuj identyfikatory biznesowe, numery referencyjne KSeF, UPO (Urzędowe Poświadczenie Odbioru) i końcowe pliki. Szczegółów szyfrowania nie zapisuj, chyba że inny proces ma wznowić sesję.
 
-Przy eksporcie trzymaj obiekt eksportu, aż paczka zostanie pobrana. Jest w nim lokalny materiał do odszyfrowania części. Przy wznawianiu sesji interaktywnej albo wsadowej zapisuj stan sesji zwrócony przez SDK, zamiast składać klucze ręcznie.
+Przy eksporcie trzymaj obiekt eksportu (`ExportHandle`), aż paczka zostanie pobrana. Jest w nim lokalny materiał do odszyfrowania części. Przy wznawianiu sesji interaktywnej albo wsadowej zapisuj stan sesji zwrócony przez SDK, zamiast składać klucze ręcznie.
 
 ## Powiązane strony
 

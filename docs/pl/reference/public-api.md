@@ -139,7 +139,7 @@ Te API działają przez całe 1.x. Każde z nich zgłasza `DeprecationWarning` r
 | Wycofane | Użyj zamiast | Usunięte w |
 | --- | --- | --- |
 | `Client.authenticated(tokens)` i `AsyncClient.authenticated(tokens)` | `client.authentication.resume(AuthenticationResumeState.from_tokens(tokens))` | 2.0.0 lub później |
-| `get_state()` w klientach sesji online i wsadowej | `resume_state()` | 2.0.0 lub później |
+| `get_state()` w klientach sesji interaktywnej i wsadowej | `resume_state()` | 2.0.0 lub później |
 | `BatchSessionClient.access_token` | `AuthenticatedClient.access_token` klienta nadrzędnego | 2.0.0 lub później |
 | `dump_state()` w stanie wznowienia sesji | `to_dict()` | 2.0.0 lub później |
 | `model_dump_sensitive()` w stanie wznowienia sesji | `to_dict()` | 2.0.0 lub później |
@@ -149,8 +149,8 @@ Te API działają przez całe 1.x. Każde z nich zgłasza `DeprecationWarning` r
 | argument `access_token=` w `from_encoded()` stanu wznowienia sesji (ignorowany) | Zapisuj `AuthenticationResumeState` osobno | 2.0.0 lub później |
 | klucz `access_token` w zapisanym stanie wznowienia sesji (ignorowany; stare pliki nadal się wczytują) | Zapisuj `AuthenticationResumeState` osobno | 2.0.0 lub później |
 | klucz `auth_timeout` w profilu zapisanym przez ksef2-cli 0.0.2 | `max_poll_attempts` (i opcjonalnie `poll_interval`) | 2.0.0 lub później |
-| `send_invoice_and_wait()` i `wait_for_invoice_ready()` w sesji online | `send_invoice(...).wait()` | 2.0.0 lub później |
-| `get_invoice_upo_by_ksef_number()` i `get_invoice_upo_by_reference()` w sesji online | `download_invoice_upo(ksef_number=...)` albo `download_invoice_upo(reference_number=...)` | 2.0.0 lub później |
+| `send_invoice_and_wait()` i `wait_for_invoice_ready()` w sesji interaktywnej | `send_invoice(...).wait()` | 2.0.0 lub później |
+| `get_invoice_upo_by_ksef_number()` i `get_invoice_upo_by_reference()` w sesji interaktywnej | `download_invoice_upo(ksef_number=...)` albo `download_invoice_upo(reference_number=...)` | 2.0.0 lub później |
 | `BatchSessionClient.get_upo(upo_reference_number=...)` | `download_upo()` | 2.0.0 lub później |
 | `auth.batch.prepare_batch()` i `prepare_batch_from_paths()` | `auth.batch.prepare()` | 2.0.0 lub później |
 | `auth.batch.submit_batch()`, `submit_prepared_batch()` i `open_session()` | `auth.batch.submit()` albo `auth.batch_session(...)` | 2.0.0 lub później |

@@ -35,7 +35,7 @@ Asynchroniczne przygotowanie przez KSeF metadanych albo treści faktur zgodnych 
 
 ## Obiekt eksportu
 
-Obiekt SDK z numerem referencyjnym eksportu i lokalnym materiałem potrzebnym do pobrania oraz odszyfrowania paczki.
+Obiekt eksportu (`ExportHandle`) z numerem referencyjnym eksportu i lokalnym materiałem potrzebnym do pobrania oraz odszyfrowania paczki.
 
 ## FA(3)
 

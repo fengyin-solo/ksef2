@@ -36,7 +36,7 @@ Rozmiar paczki, decyzja o eksporcie, rytm sprawdzania statusu i sposób ponawian
 
 ## Limit czasu sprawdzania statusu
 
-Wiele przepływów KSeF jest asynchronicznych. SDK ma metody takie jak `.wait()` na wysyłce faktury, sesji i zadaniu eksportu, a także `download(..., timeout=...)` i oczekiwanie na aktywację tokena.
+Wiele przepływów KSeF jest asynchronicznych. SDK ma metody takie jak `.wait()` na wysyłce faktury, sesji, zadaniu eksportu i wynikach `search()`, a także `download(..., timeout=...)` i oczekiwanie na aktywację tokena.
 
 Limit czasu tych metod dotyczy całego przepływu. To nie jest limit czasu pojedynczego połączenia HTTP. Jeśli limit minie, oczekiwany stan KSeF nie pojawił się na czas. Nie zawsze oznacza to, że operacja po stronie KSeF się nie udała.
 

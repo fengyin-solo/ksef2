@@ -87,7 +87,7 @@ except KSeFException as exc:
 | `KSeFPollingTimeoutError` | `POLLING_TIMEOUT` | Baza dziesięciu przekroczeń czasu oczekiwania na wynik przepływu. |
 | `KSeFResponseValidationError` | `RESPONSE_VALIDATION_ERROR` | Nieprawidłowa odpowiedź API lub metadane eksportu. |
 | `KSeFProfileConfigError` | `PROFILE_CONFIG_ERROR` | Nieprawidłowa konfiguracja profilu, brak sekretów lub błąd wczytywania poświadczeń. |
-| `KSeFSessionFailedError` | `SESSION_FAILED` | Przetwarzanie sesji online lub wsadowej zakończyło się błędem. |
+| `KSeFSessionFailedError` | `SESSION_FAILED` | Przetwarzanie sesji interaktywnej lub wsadowej zakończyło się błędem. |
 | `KSeFTokenActivationFailedError` | `TOKEN_ACTIVATION_FAILED` | Aktywacja wygenerowanego tokenu nie powiodła się lub token został unieważniony. |
 | `KSeFNotFoundError` | `NOT_FOUND` | Brak zasobu według kodu KSeF lub HTTP 404/410. |
 | `KSeFServerError` | `SERVER_ERROR` | Sesja tymczasowo niedostępna lub HTTP 5xx. |

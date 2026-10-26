@@ -129,7 +129,7 @@ with auth.batch_session(state=saved_state, prepared_batch=restored) as session:
 
 Format zapisu to `{"version": "1", "payload": {...}}`. Obie metody eksportu sekretów zwracają tę samą strukturę zgodną z JSON. Zaszyfrowane części są w Base64 bezpiecznym dla adresów URL, z dopełnieniem. Dla słownika użyj `from_sensitive_dict()`.
 
-Wersje to łańcuchy liczb rozdzielonych kropkami, na przykład `"1"` albo `"1.2"`. Czytniki przyjmują wersję główną 1 oraz liczbę `1`. Odrzucają brak wersji, błędne wersje, wyższe wersje główne i nieznane pola przez `ValueError`, bez ujawniania zapisanych wartości. Zapisów bez wersji, pochodzących z wersji rozwojowej, nie obsługują. Czytniki w serii 1.x nadal czytają wydane wersje zapisu. Niezgodny format wymaga nowej wersji i opisanej migracji. Zwykła walidacja Pydantic nie odczytuje tego formatu. Stany wznowienia sesji zachowują dotychczasowy format.
+Wersje to łańcuchy liczb rozdzielonych kropkami, na przykład `"1"` albo `"1.2"`. Czytniki przyjmują wersję główną 1 oraz liczbę `1`. Odrzucają brak wersji, błędne wersje, wyższe wersje główne i nieznane pola przez `ValueError`, bez ujawniania zapisanych wartości. Czytniki nie obsługują zapisów bez wersji, pochodzących z wersji rozwojowej. Czytniki w serii 1.x nadal czytają wydane wersje zapisu. Niezgodny format wymaga nowej wersji i opisanej migracji. Zwykła walidacja Pydantic nie odczytuje tego formatu. Stany wznowienia sesji zachowują dotychczasowy format.
 
 ## Stan, status i historia
 
@@ -159,7 +159,7 @@ Zapisz co najmniej:
 
 - numer referencyjny sesji;
 - numer referencyjny faktury zwrócony po wysyłce;
-- numer KSeF po przyjęciu faktury;
+- numer KSeF po przetworzeniu;
 - skrót faktury albo nazwę pliku, żeby powiązać wynik sesji wsadowej z lokalnym plikiem;
 - numer referencyjny UPO albo pobrane bajty UPO, gdy są dostępne;
 - lokalny identyfikator korelacji z własnego systemu.

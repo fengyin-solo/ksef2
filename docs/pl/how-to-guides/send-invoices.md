@@ -92,7 +92,7 @@ with auth.online_session(form_code=FormSchema.FA3) as session:
 `session.send_invoice(invoice_xml).wait()` wysyła fakturę i sprawdza status, gdy nie potrzebujesz osobnego obiektu wysyłki.
 :::
 
-## Zachowaj stan sesji
+## Zachowaj stan sesji i numery referencyjne
 
 Zapisz stan, zanim długo będziesz sprawdzać status albo przekażesz pracę innemu procesowi.
 
@@ -215,7 +215,7 @@ Status sesji wsadowej podsumowuje sesję. Sprawdź strony faktur przyjętych i o
 
 4. Zapisz zwrócone numery referencyjne sesji i faktur, zanim zaczniesz sprawdzać status.
 
-5. Sprawdzaj status, zapisz wyniki przyjęte i odrzucone, a potem pobierz UPO (Urzędowe Poświadczenie Odbioru) albo XML faktury.
+5. Sprawdzaj status, zapisz wyniki przyjęte i odrzucone z kolejnych stron, a potem pobierz UPO (Urzędowe Poświadczenie Odbioru) albo XML faktury.
 
 ## Następne strony
 

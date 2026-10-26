@@ -114,6 +114,15 @@ GENERATED_PAIRS: tuple[GeneratedPair, ...] = (
         Path("src/ksef2/_core/async_external_transfer.py"),
         Path("src/ksef2/_core/external_transfer.py"),
     ),
+    # certificate_stores/
+    GeneratedPair(
+        Path("src/ksef2/_certificate_stores/async_protocols.py"),
+        Path("src/ksef2/_certificate_stores/protocols.py"),
+    ),
+    GeneratedPair(
+        Path("src/ksef2/_certificate_stores/async_memory.py"),
+        Path("src/ksef2/_certificate_stores/memory.py"),
+    ),
     # clients/
     GeneratedPair(
         Path("src/ksef2/_clients/_async_handles.py"),

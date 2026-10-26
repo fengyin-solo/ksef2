@@ -7,7 +7,7 @@ from datetime import date
 from enum import StrEnum
 from typing import Annotated, Any
 
-from pydantic import AnyUrl, AwareDatetime, Base64Str, BaseModel, Field, RootModel
+from pydantic import AnyUrl, AwareDatetime, BaseModel, Field, RootModel
 
 
 class Ip4Address(RootModel[str]):
@@ -833,17 +833,17 @@ class EffectiveApiRateLimits(BaseModel):
 
 
 class EncryptionInfo(BaseModel):
-    encryptedSymmetricKey: Base64Str
+    encryptedSymmetricKey: str
     """
     Klucz symetryczny o długości 32 bajtów, zaszyfrowany algorytmem RSA (Padding: OAEP z SHA-256), zakodowany w formacie Base64.
 
     [Klucz publiczny Ministerstwa Finansów](/docs/v2/index.html#tag/Certyfikaty-klucza-publicznego)
     """
-    initializationVector: Base64Str
+    initializationVector: str
     """
     Wektor inicjalizujący (IV) o długości 16 bajtów, używany do szyfrowania symetrycznego, zakodowany w formacie Base64.
     """
-    publicKeyId: Annotated[Base64Str | None, Field(max_length=44, min_length=44)] = None
+    publicKeyId: Annotated[str | None, Field(max_length=44, min_length=44)] = None
     """
     Identyfikator klucza publicznego użytego do szyfrowania.
     """
@@ -1077,13 +1077,13 @@ class ForbiddenProblemDetails(BaseModel):
     reasonCode: str
     """
      Kod przyczyny odmowy dostępu.
-    | Code | Opis |  
+    | Code | Opis |
     |------|-------------|
-    | missing-permissions | Brak wymaganych uprawnień do wykonania operacji w bieżącym kontekście. | 
-    | ip-not-allowed | Żądanie pochodzi z adresu IP innego niż wskazany podczas uwierzytelnienia. | 
-    | insufficient-resource-access | Brak dostępu do wskazanego zasobu. | 
-    | auth-method-not-allowed | Ta operacja nie jest dostępna dla użytej metody uwierzytelnienia. | 
-    | security-service-blocked | Żądanie zostało zablokowane przez mechanizmy bezpieczeństwa. | 
+    | missing-permissions | Brak wymaganych uprawnień do wykonania operacji w bieżącym kontekście. |
+    | ip-not-allowed | Żądanie pochodzi z adresu IP innego niż wskazany podczas uwierzytelnienia. |
+    | insufficient-resource-access | Brak dostępu do wskazanego zasobu. |
+    | auth-method-not-allowed | Ta operacja nie jest dostępna dla użytej metody uwierzytelnienia. |
+    | security-service-blocked | Żądanie zostało zablokowane przez mechanizmy bezpieczeństwa. |
     | context-type-not-allowed | Operacja nie jest dostępna dla uwierzytelnionego typu kontekstu. |
     """
     security: dict[str, Any] | None = None
@@ -1135,7 +1135,7 @@ class GenerateCollectiveIdentifierResponse(BaseModel):
     - `RRRRMM` – rok i miesiąc utworzenia,
     - `FFFFFFFFFFFF` –  część techniczna składająca się z 12 znaków w zapisie szesnastkowym, tylko [0–9 A–F], wielkie litery,
     - `FF` –  suma kontrolna CRC-8 - 2 znaki w zapisie szesnastkowym, tylko [0–9 A–F], wielkie litery.
-                
+
     Do obliczenia sumy kontrolnej stosowany jest algorytm CRC-8 z parametrami:
     - Polinom: 0x07
     - Wartość początkowa: 0x00
@@ -1828,7 +1828,7 @@ class QueryType(StrEnum):
 
 
 class RetrieveCertificatesListItem(BaseModel):
-    certificate: Base64Str
+    certificate: str
     """
     Certyfikat w formacie DER, zakodowany w formacie Base64.
     """
@@ -2325,8 +2325,8 @@ class UpoPageResponse(BaseModel):
     """
     downloadUrl: AnyUrl
     """
-    Adres do pobrania strony UPO. Link generowany jest przy każdym odpytaniu o status. 
-    Dostęp odbywa się metodą `HTTP GET` i <b>nie należy</b> wysyłać tokenu dostępowego. 
+    Adres do pobrania strony UPO. Link generowany jest przy każdym odpytaniu o status.
+    Dostęp odbywa się metodą `HTTP GET` i <b>nie należy</b> wysyłać tokenu dostępowego.
     Link nie podlega limitom API i wygasa po określonym czasie w `DownloadUrlExpirationDate`.
 
     Odpowiedź HTTP zawiera dodatkowe nagłówki:
@@ -2592,7 +2592,7 @@ class BatchFilePartInfo(BaseModel):
     """
     Rozmiar zaszyfrowanej części pliku paczki w bajtach.
     """
-    fileHash: Annotated[Base64Str, Field(max_length=44, min_length=44)]
+    fileHash: Annotated[str, Field(max_length=44, min_length=44)]
     """
     Skrót SHA256 zaszyfrowanej części pliku paczki, zakodowany w formacie Base64.
     """
@@ -2619,7 +2619,7 @@ class CertificateEnrollmentStatusResponse(BaseModel):
         str | None, Field(max_length=16, min_length=16, pattern="^[0-9A-F]{16}$")
     ] = None
     """
-    Numer seryjny wygenerowanego certyfikatu (w formacie szesnastkowym). 
+    Numer seryjny wygenerowanego certyfikatu (w formacie szesnastkowym).
     Zwracany w przypadku prawidłowego przeprocesowania wniosku certyfikacyjnego.
     """
 
@@ -2748,7 +2748,7 @@ class EnrollCertificateRequest(BaseModel):
     | Offline | Certyfikat używany wyłącznie do potwierdzania autentyczności wystawcy i integralności faktury w trybie offline |
 
     """
-    csr: Base64Str
+    csr: str
     """
     Wniosek certyfikacyjny PKCS#10 (CSR) w formacie DER, zakodowany w formacie Base64.
     """
@@ -3109,11 +3109,11 @@ class InitTokenAuthenticationRequest(BaseModel):
     """
     Identyfikator kontekstu do którego następuje uwierzytelnienie.
     """
-    encryptedToken: Base64Str
+    encryptedToken: str
     """
     Zaszyfrowany token wraz z timestampem z challenge'a, w postaci `token|timestamp`, zakodowany w formacie Base64.
     """
-    publicKeyId: Annotated[Base64Str | None, Field(max_length=44, min_length=44)] = None
+    publicKeyId: Annotated[str | None, Field(max_length=44, min_length=44)] = None
     """
     Identyfikator klucza publicznego użytego do szyfrowania tokena.
     """
@@ -3237,7 +3237,7 @@ class InvoicePackagePart(BaseModel):
     """
     Rozmiar części paczki w bajtach.
     """
-    partHash: Annotated[Base64Str, Field(max_length=44, min_length=44)]
+    partHash: Annotated[str, Field(max_length=44, min_length=44)]
     """
     Skrót SHA256 pliku części paczki, zakodowany w formacie Base64.
     """
@@ -3245,7 +3245,7 @@ class InvoicePackagePart(BaseModel):
     """
     Rozmiar zaszyfrowanej części paczki w bajtach.
     """
-    encryptedPartHash: Annotated[Base64Str, Field(max_length=44, min_length=44)]
+    encryptedPartHash: Annotated[str, Field(max_length=44, min_length=44)]
     """
     Skrót SHA256 zaszyfrowanej części paczki, zakodowany w formacie Base64.
     """
@@ -3279,8 +3279,8 @@ class InvoiceQueryDateRange(BaseModel):
     """
     Określa, czy system ma ograniczyć filtrowanie (zakres dateRange.to) do wartości `PermanentStorageHwmDate`.
 
-    * Dotyczy wyłącznie zapytań z `dateType = PermanentStorage`,  
-    * Gdy `true`, system ogranicza filtrowanie tak, aby wartość `dateRange.to` nie przekraczała wartości `PermanentStorageHwmDate`,  
+    * Dotyczy wyłącznie zapytań z `dateType = PermanentStorage`,
+    * Gdy `true`, system ogranicza filtrowanie tak, aby wartość `dateRange.to` nie przekraczała wartości `PermanentStorageHwmDate`,
     * Gdy `null` lub `false`, filtrowanie może wykraczać poza `PermanentStorageHwmDate`.
     """
 
@@ -3302,7 +3302,7 @@ class InvoiceQueryFilters(BaseModel):
     """
     Typ i zakres dat, według którego filtrowane są faktury.
     Maksymalny dozwolony okres wynosi 100 dni w strefie UTC
-                
+
     Format daty:
      * Daty muszą być przekazane w formacie ISO 8601, np. `yyyy-MM-ddTHH:mm:ss`.
      * Dopuszczalne są następujące warianty:
@@ -3413,7 +3413,7 @@ class OpenBatchSessionResponse(BaseModel):
     * dołączyć treść części pliku w korpusie żądania.
 
     `Uwaga: nie należy dodawać do nagłówków token dostępu (accessToken).`
-     
+
     Każdą część przesyła się oddzielnym żądaniem HTTP.Zwracane kody odpowiedzi:
      * <b>201</b> – poprawne przyjęcie pliku,
      * <b>400</b> – błędne dane,
@@ -3658,15 +3658,15 @@ class PersonalPermissionsTargetIdentifier(BaseModel):
 
 
 class PublicKeyCertificate(BaseModel):
-    certificate: Base64Str
+    certificate: str
     """
     Certyfikat klucza publicznego w formacie DER, zakodowany w formacie Base64.
     """
-    certificateId: Base64Str
+    certificateId: str
     """
     Identyfikator certyfikatu.
     """
-    publicKeyId: Annotated[Base64Str, Field(max_length=44, min_length=44)]
+    publicKeyId: Annotated[str, Field(max_length=44, min_length=44)]
     """
     Identyfikator klucza, używany jako selektor w wywołaniach, w których klient wskazuje, jakiego klucza publicznego użył do szyfrowania.
     """
@@ -3737,7 +3737,7 @@ class QueryTokensResponseItem(BaseModel):
 
 
 class SendInvoiceRequest(BaseModel):
-    invoiceHash: Annotated[Base64Str, Field(max_length=44, min_length=44)]
+    invoiceHash: Annotated[str, Field(max_length=44, min_length=44)]
     """
     Skrót SHA256 oryginalnej faktury, zakodowany w formacie Base64.
     """
@@ -3745,7 +3745,7 @@ class SendInvoiceRequest(BaseModel):
     """
     Rozmiar oryginalnej faktury w bajtach. Maksymalny rozmiar zależy od limitów ustawionych dla uwierzytelnionego kontekstu.
     """
-    encryptedInvoiceHash: Annotated[Base64Str, Field(max_length=44, min_length=44)]
+    encryptedInvoiceHash: Annotated[str, Field(max_length=44, min_length=44)]
     """
     Skrót SHA256 zaszyfrowanej faktury, zakodowany w formacie Base64.
     """
@@ -3753,7 +3753,7 @@ class SendInvoiceRequest(BaseModel):
     """
     Rozmiar zaszyfrowanej faktury w bajtach.
     """
-    encryptedInvoiceContent: Base64Str
+    encryptedInvoiceContent: str
     """
     Faktura zaszyfrowana algorytmem AES-256-CBC z dopełnianiem PKCS#7 (kluczem przekazanym przy otwarciu sesji), zakodowana w formacie Base64.
     """
@@ -3762,7 +3762,7 @@ class SendInvoiceRequest(BaseModel):
     Określa, czy podatnik deklaruje tryb fakturowania "offline" dla przesyłanego dokumentu.
     """
     hashOfCorrectedInvoice: Annotated[
-        Base64Str | None, Field(max_length=44, min_length=44)
+        str | None, Field(max_length=44, min_length=44)
     ] = None
     """
     Skrót SHA256 korygowanej faktury, zakodowany w formacie Base64. Wymagany przy wysyłaniu korekty technicznej faktury.
@@ -3793,7 +3793,7 @@ class SessionInvoiceStatusResponse(BaseModel):
     """
     Numer referencyjny faktury.
     """
-    invoiceHash: Annotated[Base64Str, Field(max_length=44, min_length=44)]
+    invoiceHash: Annotated[str, Field(max_length=44, min_length=44)]
     """
     Skrót SHA256 faktury, zakodowany w formacie Base64.
     """
@@ -3815,8 +3815,8 @@ class SessionInvoiceStatusResponse(BaseModel):
     """
     upoDownloadUrl: AnyUrl | None = None
     """
-    Adres do pobrania UPO. Link generowany jest przy każdym odpytaniu o status. 
-    Dostęp odbywa się metodą `HTTP GET` i <b>nie należy</b> wysyłać tokenu dostępowego. 
+    Adres do pobrania UPO. Link generowany jest przy każdym odpytaniu o status.
+    Dostęp odbywa się metodą `HTTP GET` i <b>nie należy</b> wysyłać tokenu dostępowego.
     Link nie podlega limitom API i wygasa po określonym czasie w `UpoDownloadUrlExpirationDate`.
 
     Odpowiedź HTTP zawiera dodatkowe nagłówki:
@@ -3866,7 +3866,7 @@ class SessionStatusResponse(BaseModel):
     status: StatusInfo
     """
     Informacje o aktualnym statusie.
-                
+
     Sesja wsadowa:
     | Code | Description | Details |
     | --- | --- | --- |
@@ -4152,7 +4152,7 @@ class BatchFileInfo(BaseModel):
     """
     Rozmiar pliku paczki w bajtach. Maksymalny rozmiar paczki to 5GB.
     """
-    fileHash: Annotated[Base64Str, Field(max_length=44, min_length=44)]
+    fileHash: Annotated[str, Field(max_length=44, min_length=44)]
     """
     Skrót SHA256 pliku paczki, zakodowany w formacie Base64.
     """
@@ -4535,10 +4535,10 @@ class InvoicePackage(BaseModel):
     """
     Dotyczy wyłącznie zapytań filtrowanych po typie daty <b>PermanentStorage</b>.
     Jeśli zapytanie dotyczyło najnowszego okresu, wartość ta może być wartością nieznacznie skorygowaną względem górnej granicy podanej w warunkach zapytania.
-    Dla okresów starszych, będzie to zgodne z warunkami zapytania. 
+    Dla okresów starszych, będzie to zgodne z warunkami zapytania.
 
     System gwarantuje, że dane poniżej tej wartości są spójne i kompletne.
-    Ponowne zapytania obejmujące zakresem dane poniżej tego kroczącego znacznika czasu nie zwrócą w przyszłości innych wyników (np.dodatkowych faktur). 
+    Ponowne zapytania obejmujące zakresem dane poniżej tego kroczącego znacznika czasu nie zwrócą w przyszłości innych wyników (np.dodatkowych faktur).
 
     Dla dateType = Issue lub Invoicing – null.
     """
@@ -4818,7 +4818,7 @@ class PersonPermissionsQueryRequest(BaseModel):
     """
     permissionState: PermissionState | None = None
     """
-    Stan uprawnienia. 
+    Stan uprawnienia.
     | Type | Value |
     | --- | --- |
     | Active | Uprawnienia aktywne |
@@ -4917,7 +4917,7 @@ class PersonalPermissionsQueryRequest(BaseModel):
     """
     permissionState: PermissionState | None = None
     """
-    Stan uprawnienia. 
+    Stan uprawnienia.
     | Type | Value |
     | --- | --- |
     | Active | Uprawnienia aktywne |
@@ -5401,12 +5401,12 @@ class InvoiceMetadata(BaseModel):
     """
     Określa, czy faktura posiada załącznik.
     """
-    invoiceHash: Annotated[Base64Str, Field(max_length=44, min_length=44)]
+    invoiceHash: Annotated[str, Field(max_length=44, min_length=44)]
     """
     Skrót SHA256 faktury, zakodowany w formacie Base64.
     """
     hashOfCorrectedInvoice: Annotated[
-        Base64Str | None, Field(max_length=44, min_length=44)
+        str | None, Field(max_length=44, min_length=44)
     ] = None
     """
     Skrót SHA256 korygowanej faktury, zakodowany w formacie Base64.
@@ -5445,13 +5445,13 @@ class QueryInvoicesMetadataResponse(BaseModel):
     """
     Dotyczy wyłącznie zapytań filtrowanych po typie daty <b>PermanentStorage</b>.
     Jeśli zapytanie dotyczyło najnowszego okresu, wartość ta może być wartością nieznacznie skorygowaną względem górnej granicy podanej w warunkach zapytania.
-    Dla okresów starszych, będzie to zgodne z warunkami zapytania. 
+    Dla okresów starszych, będzie to zgodne z warunkami zapytania.
 
     Wartość jest stała dla wszystkich stron tego samego zapytania
     i nie zależy od paginacji ani sortowania.
 
     System gwarantuje, że dane poniżej tej wartości są spójne i kompletne.
-    Ponowne zapytania obejmujące zakresem dane poniżej tego kroczącego znacznika czasu nie zwrócą w przyszłości innych wyników (np.dodatkowych faktur). 
+    Ponowne zapytania obejmujące zakresem dane poniżej tego kroczącego znacznika czasu nie zwrócą w przyszłości innych wyników (np.dodatkowych faktur).
 
     Dla dateType = Issue lub Invoicing – null.
     """
@@ -5504,7 +5504,7 @@ class EuEntityAdministrationPermissionsGrantRequest(BaseModel):
     """
     euEntityName: Annotated[str, Field(max_length=256, min_length=5)]
     """
-    Nazwa i adres podmiotu unijnego w formacie: 
+    Nazwa i adres podmiotu unijnego w formacie:
     `{euSubjectName}, {euSubjectAddress}`
     """
     subjectDetails: EuEntityPermissionSubjectDetails

@@ -19,6 +19,7 @@ Modes:
 import argparse
 from collections.abc import Callable
 import importlib
+import importlib.metadata
 import importlib.resources
 import importlib.util
 import json
@@ -46,10 +47,10 @@ PACKAGE_NAME = "ksef2"
 # PyPI. Entries are never dropped while 1.x is supported: each one is the
 # evidence that applications written against that release still import what
 # they used to import and still call what they used to call.
-BASELINE_VERSIONS: tuple[str, ...] = ("0.22.2",)
+BASELINE_VERSIONS: tuple[str, ...] = ("0.22.2", "1.0.0")
 
-# Present in the canonical tree since the #184 rename and absent from every
-# baseline, so it proves which of the two distributions an interpreter loaded.
+# Present in the canonical 1.x tree since the #184 rename and required of every
+# candidate. Published 1.x baselines also contain it; their version is checked.
 CANDIDATE_MARKER = "ksef2._core"
 LEGACY_FAMILIES = ("core", "domain", "infra", "services")
 ALLOWED_ENTRY_KINDS = frozenset({"tree", "exact", "submodules"})
@@ -195,7 +196,9 @@ def _site_dirs() -> list[Path]:
     return [directory.resolve() for directory in dirs]
 
 
-def _assert_environment(*, candidate: bool, label: str) -> Path:
+def _assert_environment(
+    *, candidate: bool, label: str, expected_version: str | None = None
+) -> Path:
     """Prove the interpreter loaded an installed distribution, not this checkout."""
     module = importlib.import_module(PACKAGE_NAME)
     location = getattr(module, "__file__", None)
@@ -224,10 +227,14 @@ def _assert_environment(*, candidate: bool, label: str) -> Path:
             f"{label}: {CANDIDATE_MARKER} is not importable, so {module_file} is not "
             "the candidate distribution"
         )
-    if not candidate and marker_present:
+    if (
+        expected_version is not None
+        and (installed_version := importlib.metadata.version(PACKAGE_NAME))
+        != expected_version
+    ):
         raise GateError(
-            f"{label}: {CANDIDATE_MARKER} is importable, so {module_file} is not the "
-            "published baseline distribution"
+            f"{label}: installed {PACKAGE_NAME}=={installed_version}, "
+            f"expected the published baseline {PACKAGE_NAME}=={expected_version}"
         )
     return module_file
 
@@ -235,7 +242,9 @@ def _assert_environment(*, candidate: bool, label: str) -> Path:
 def _snapshot(version: str) -> _Surface:
     """Record the public surface of the installed baseline distribution."""
     _ = _assert_environment(
-        candidate=False, label=f"baseline {PACKAGE_NAME}=={version}"
+        candidate=False,
+        label=f"baseline {PACKAGE_NAME}=={version}",
+        expected_version=version,
     )
     package = importlib.import_module(PACKAGE_NAME)
     module_names, broken_modules = _discover_modules(package)
@@ -664,6 +673,13 @@ def _check_baseline(
         )
 
     def verify() -> None:
+        allowlist = options.allowlist
+        if not version.startswith("0."):
+            # Existing allowances approve pre-1.0 removals only. Every name in a
+            # published 1.x baseline must survive without those allowances.
+            no_removals = work / "1x-no-removals.toml"
+            _ = no_removals.write_text("", encoding="utf-8")
+            allowlist = os.fspath(no_removals)
         _run_gate(
             candidate,
             [
@@ -671,7 +687,7 @@ def _check_baseline(
                 "--snapshot",
                 os.fspath(snapshot_path),
                 "--allowlist",
-                options.allowlist,
+                allowlist,
             ],
             work,
             f"verify {label}",

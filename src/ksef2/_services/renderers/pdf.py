@@ -66,7 +66,7 @@ class InvoicePDFExporter:
 
         Args:
             stylesheet_path: Path of an XSLT stylesheet to use; the bundled FA(3) stylesheet when ``None``.
-            enable_code_lookups: Allow the stylesheet to read local files and the network to resolve code descriptions. Use only with trusted stylesheets.
+            enable_code_lookups: Resolve code descriptions offline using bundled XSD files. Allows local file reads, so use only with trusted stylesheets and invoice XML. Network access and writes remain blocked.
             html_overrides: CSS applied before PDF conversion; ``None`` uses the bundled defaults.
             page_size: Paper size and orientation; ``None`` preserves the stylesheet setting, normally A4 landscape. Overrides page size in ``html_overrides``.
             verification_environment: Required KSeF environment used for verification QR links. Accepts an ``Environment`` or a case-insensitive environment name. QR output is enabled per export by supplying ``ksef_number``.

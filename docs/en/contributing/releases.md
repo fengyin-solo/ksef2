@@ -40,7 +40,10 @@ just changelog-seed    # commits since the previous tag, one bullet per line
    Set the actual release date as `## vX.Y.Z (YYYY-MM-DD)` only when the release
    is ready. `scripts/verify_release.py` rejects an unreleased heading, an
    invalid calendar date, or a heading for another version before publishing.
-2. Run `just release-check`.
+2. Run `just release-check`. It verifies the bundled code-list checksums and
+   their exact bytes and provenance manifest in both the wheel and sdist.
+   `scripts/verify_release.py --artifacts-only` repeats these artifact checks
+   without requiring a prepared release heading or tag.
 3. Open a PR targeting `main`. A release changes `pyproject.toml`, `uv.lock`, and
    `CHANGELOG.md`. Review it like any other change, then merge.
 

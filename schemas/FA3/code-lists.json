@@ -1,0 +1,42 @@
+[
+  {
+    "parameter": "schema-krajow",
+    "file": "KodyKrajow_v10-0E.xsd",
+    "source_url": "http://crd.gov.pl/xml/schematy/dziedzinowe/mf/2022/01/05/eD/DefinicjeTypy/KodyKrajow_v10-0E.xsd",
+    "retrieved_url": "http://crd.gov.pl/xml/schematy/dziedzinowe/mf/2022/01/05/eD/DefinicjeTypy/KodyKrajow_v10-0E.xsd",
+    "retrieved_on": "2026-10-26",
+    "sha256": "1d41a1b3184188f2d20a51d3afde26204dda182ec5dacf018204dcc9870dc644"
+  },
+  {
+    "parameter": "schema-urzedow",
+    "file": "KodyUrzedowSkarbowych_v8-0E.xsd",
+    "source_url": "http://crd.gov.pl/xml/schematy/dziedzinowe/mf/2022/01/05/eD/KodyUrzedowSkarbowych/KodyUrzedowSkarbowych_v8-0E.xsd",
+    "retrieved_url": "http://crd.gov.pl/wps/PA_E2_PI/zalacznik_oi/zalacznik_oi_2570",
+    "retrieved_on": "2026-10-26",
+    "sha256": "af27f583ea1ceb44ed37e0ec0d9bfdf2bfda74aadd5841ccbf0fc241175c2e91"
+  },
+  {
+    "parameter": "schema-urzedowexwus",
+    "file": "KodyUrzedowSkarbowychExWUS_v8-0E.xsd",
+    "source_url": "http://crd.gov.pl/xml/schematy/dziedzinowe/mf/2021/12/23/eD/KodyUrzedowSkarbowychExWUS/KodyUrzedowSkarbowychExWUS_v8-0E.xsd",
+    "retrieved_url": "http://crd.gov.pl/xml/schematy/dziedzinowe/mf/2021/12/23/eD/KodyUrzedowSkarbowychExWUS/KodyUrzedowSkarbowychExWUS_v8-0E.xsd",
+    "retrieved_on": "2026-10-26",
+    "sha256": "07a3d257cf82611fe6ffca36d016f3f5b0cc6ddebbf2986c06e1fac72935f6d3"
+  },
+  {
+    "parameter": "schema-naczelnikow-urzedow",
+    "file": "KodyNaczelnikowUrzedowSkarbowych_v4-0E.xsd",
+    "source_url": "http://crd.gov.pl/xml/schematy/dziedzinowe/mf/2017/02/06/eD/KodyNaczelnikowUrzedowSkarbowych/KodyNaczelnikowUrzedowSkarbowych_v4-0E.xsd",
+    "retrieved_url": "http://crd.gov.pl/wps/PA_E2_PI/zalacznik_oi/zalacznik_oi_1406",
+    "retrieved_on": "2026-10-26",
+    "sha256": "16f37bb5b26f543e8d6c9950f6c11e7d520d1c2890fcd0d5a6f40d614b6fcc87"
+  },
+  {
+    "parameter": "schema-walut",
+    "file": "KodyWalut_v1-0E.xsd",
+    "source_url": "http://crd.gov.pl/xml/schematy/dziedzinowe/mf/2021/12/23/eD/KodyWalut/KodyWalut_v1-0E.xsd",
+    "retrieved_url": "http://crd.gov.pl/wps/PA_E2_PI/zalacznik_oi/zalacznik_oi_2425",
+    "retrieved_on": "2026-10-26",
+    "sha256": "e2c3f52200d28de21681afc908e8c1b7ab660caca381334cac6cf2e147dbaa1f"
+  }
+]

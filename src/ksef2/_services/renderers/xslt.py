@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import final
+from typing import cast, final
 
 from lxml import etree
 
@@ -11,14 +11,25 @@ from ksef2._infra.schema.fa3 import STYLESHEET_PATH as _DEFAULT_STYLESHEET_PATH
 from lxml.etree import _ElementTree as ElementTree, _Element as Element
 
 
+_CODE_LIST_FILES = {
+    "schema-krajow": "KodyKrajow_v10-0E.xsd",
+    "schema-urzedow": "KodyUrzedowSkarbowych_v8-0E.xsd",
+    "schema-urzedowexwus": "KodyUrzedowSkarbowychExWUS_v8-0E.xsd",
+    "schema-naczelnikow-urzedow": "KodyNaczelnikowUrzedowSkarbowych_v4-0E.xsd",
+    "schema-walut": "KodyWalut_v1-0E.xsd",
+}
+
+
 @final
 class InvoiceXSLTRenderer:
     """Render FA3 invoice XML to HTML using the bundled XSLT stylesheet.
 
     By default, XSLT ``document()`` reads cannot access local files or the
-    network. Enabling code lookups allows read-only file and network access so
-    the bundled stylesheet can resolve schema documents for code descriptions.
-    Use enabled code lookups only with trusted stylesheets.
+    network. Enabling code lookups resolves country, currency, tax-office,
+    tax-office ex-WUS, and tax-office-head descriptions from bundled XSD files
+    offline. It allows read-only local file access; network access and writes
+    remain blocked. Use enabled code lookups only with trusted stylesheets and
+    invoice XML: either can direct ``document()`` to other local files.
     """
 
     def __init__(
@@ -30,7 +41,7 @@ class InvoiceXSLTRenderer:
 
         Args:
             stylesheet_path: Path of an XSLT stylesheet to use; the bundled FA(3) stylesheet when ``None``.
-            enable_code_lookups: Allow the stylesheet to read local files and the network to resolve code descriptions. Use only with trusted stylesheets.
+            enable_code_lookups: Resolve code descriptions offline using bundled XSD files. Allows local file reads, so use only with trusted stylesheets and invoice XML. Network access and writes remain blocked.
         """
         self._stylesheet_path = (
             Path(stylesheet_path) if stylesheet_path else _DEFAULT_STYLESHEET_PATH
@@ -39,7 +50,7 @@ class InvoiceXSLTRenderer:
         read_file = enable_code_lookups
         write_file = False
         create_dir = False
-        read_network = enable_code_lookups
+        read_network = False
         write_network = False
         xslt_access_options = {
             "read_file": read_file,
@@ -51,10 +62,14 @@ class InvoiceXSLTRenderer:
         self._access_control = etree.XSLTAccessControl(**xslt_access_options)
         self._transform: etree.XSLT | None = None
 
-    def _get_params(self) -> dict[str, str]:
-        xslt_params: dict[str, str] = {}
+    def _get_params(self) -> dict[str, object]:
+        xslt_params: dict[str, object] = {}
         if not self._enable_code_lookups:
             xslt_params["nazwy-dla-kodow"] = "false()"
+        else:
+            for parameter, filename in _CODE_LIST_FILES.items():
+                uri = (_DEFAULT_STYLESHEET_PATH.parent / filename).resolve().as_uri()
+                xslt_params[parameter] = etree.XSLT.strparam(uri)
         return xslt_params
 
     @property
@@ -99,8 +114,10 @@ class InvoiceXSLTRenderer:
         try:
             html_result = transform(xml_doc, **self._get_params())  # pyright: ignore[reportArgumentType]
         except etree.XSLTApplyError as e:
+            details = str(cast(object, e))
             raise KSeFInvoiceRenderingError(
-                "XSLT transformation failed while rendering invoice."
+                f"XSLT transformation failed while rendering invoice: {details}",
+                details=details,
             ) from e
 
         try:

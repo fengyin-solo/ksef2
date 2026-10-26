@@ -229,6 +229,27 @@ behavior and what stays the app's job.
 - [Inspect encryption certificates](inspect-encryption-certificates.md): Check the public KSeF certificates used by encrypted workflows.
 
 
+## Render code descriptions offline
+
+`InvoiceXSLTRenderer` and `InvoicePDFExporter` accept `enable_code_lookups=True`
+to add descriptions from bundled official country, currency, tax-office,
+tax-office ex-WUS, and tax-office-head XSD lists. No network connection is needed.
+
+```python
+from ksef2.renderers import InvoiceXSLTRenderer
+
+renderer = InvoiceXSLTRenderer(enable_code_lookups=True)
+html = renderer.render_from_path("invoice.xml")
+```
+
+By default, code lookups are disabled and XSLT `document()` cannot read files
+or the network. Enabling lookups permits local file reads. Network access and
+writes remain blocked. Use this option only with trusted stylesheets and invoice
+XML: either can direct `document()` to other local files. References to remote
+hosts remain blocked. This option does not restrict reads to the bundled lists.
+If a document URI cannot be resolved, `KSeFInvoiceRenderingError` includes it in
+the message and `context["details"]`.
+
 ## Export a PDF with a verification QR
 
 Install the optional dependencies with `pip install 'ksef2[pdf]'` and the native

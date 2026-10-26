@@ -79,6 +79,7 @@ release-check:
     just test-runtime-checks
     just test-fa3-contracts
     uv build
+    uv run python scripts/verify_release.py --artifacts-only
 
 
 # Deprecated-API compatibility gate. Deliberately outside release-check: it

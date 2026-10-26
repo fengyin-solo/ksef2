@@ -49,8 +49,8 @@ PACKAGE_NAME = "ksef2"
 # they used to import and still call what they used to call.
 BASELINE_VERSIONS: tuple[str, ...] = ("0.22.2", "1.0.0")
 
-# Present in the canonical 1.x tree since the #184 rename and required of every
-# candidate. Published 1.x baselines also contain it; their version is checked.
+# Present since the #184 rename, including published 1.x releases. Pre-1.0
+# baselines must lack it; both 1.x baselines and the candidate must expose it.
 CANDIDATE_MARKER = "ksef2._core"
 LEGACY_FAMILIES = ("core", "domain", "infra", "services")
 ALLOWED_ENTRY_KINDS = frozenset({"tree", "exact", "submodules"})
@@ -197,7 +197,7 @@ def _site_dirs() -> list[Path]:
 
 
 def _assert_environment(
-    *, candidate: bool, label: str, expected_version: str | None = None
+    *, candidate: bool, label: str, version: str | None = None
 ) -> Path:
     """Prove the interpreter loaded an installed distribution, not this checkout."""
     module = importlib.import_module(PACKAGE_NAME)
@@ -221,20 +221,25 @@ def _assert_environment(
     if cwd == ROOT or ROOT in cwd.parents:
         raise GateError(f"{label}: working directory {cwd} is inside the repository")
 
+    if version is not None:
+        installed_version = importlib.metadata.version(PACKAGE_NAME)
+        if installed_version != version:
+            raise GateError(
+                f"{label}: installed version {installed_version!r} does not match "
+                f"published baseline {version!r}"
+            )
+
     marker_present = importlib.util.find_spec(CANDIDATE_MARKER) is not None
-    if candidate and not marker_present:
+    modern_package = candidate or (version is not None and not version.startswith("0."))
+    if modern_package and not marker_present:
         raise GateError(
             f"{label}: {CANDIDATE_MARKER} is not importable, so {module_file} is not "
-            "the candidate distribution"
+            "the expected modern distribution"
         )
-    if (
-        expected_version is not None
-        and (installed_version := importlib.metadata.version(PACKAGE_NAME))
-        != expected_version
-    ):
+    if not modern_package and marker_present:
         raise GateError(
-            f"{label}: installed {PACKAGE_NAME}=={installed_version}, "
-            f"expected the published baseline {PACKAGE_NAME}=={expected_version}"
+            f"{label}: {CANDIDATE_MARKER} is importable, so {module_file} is not the "
+            "published baseline distribution"
         )
     return module_file
 
@@ -242,9 +247,7 @@ def _assert_environment(
 def _snapshot(version: str) -> _Surface:
     """Record the public surface of the installed baseline distribution."""
     _ = _assert_environment(
-        candidate=False,
-        label=f"baseline {PACKAGE_NAME}=={version}",
-        expected_version=version,
+        candidate=False, label=f"baseline {PACKAGE_NAME}=={version}", version=version
     )
     package = importlib.import_module(PACKAGE_NAME)
     module_names, broken_modules = _discover_modules(package)
@@ -340,9 +343,8 @@ def _load_snapshot(path: Path) -> _Surface:
     )
 
 
-def _verify(snapshot_path: Path) -> list[str]:
+def _verify(surface: _Surface) -> list[str]:
     """Return raw compatibility misses for the installed candidate distribution."""
-    surface = _load_snapshot(snapshot_path)
     _ = _assert_environment(candidate=True, label="candidate")
     with warnings.catch_warnings(record=True) as caught:
         # Deprecated names must keep resolving and resolving them warns; the
@@ -653,11 +655,10 @@ def _typecheck_wheel(candidate: Path, executable: str | None) -> None:
 def _check_baseline(
     failures: list[str],
     work: Path,
-    candidate: Path,
     version: str,
     options: _RunOptions,
-) -> None:
-    """Snapshot one published baseline and verify the candidate wheel against it."""
+) -> Path | None:
+    """Snapshot one published baseline for the combined compatibility check."""
     label = f"{PACKAGE_NAME}=={version}"
     snapshot_path = work / f"snapshot-{version}.json"
 
@@ -672,29 +673,9 @@ def _check_baseline(
             f"snapshot {label}",
         )
 
-    def verify() -> None:
-        allowlist = options.allowlist
-        if not version.startswith("0."):
-            # Existing allowances approve pre-1.0 removals only. Every name in a
-            # published 1.x baseline must survive without those allowances.
-            no_removals = work / "1x-no-removals.toml"
-            _ = no_removals.write_text("", encoding="utf-8")
-            allowlist = os.fspath(no_removals)
-        _run_gate(
-            candidate,
-            [
-                "verify",
-                "--snapshot",
-                os.fspath(snapshot_path),
-                "--allowlist",
-                allowlist,
-            ],
-            work,
-            f"verify {label}",
-        )
-
-    _ = _run_stage(failures, f"snapshot {label}", snapshot)
-    _ = _run_stage(failures, f"verify {label}", verify)
+    if _run_stage(failures, f"snapshot {label}", snapshot):
+        return snapshot_path
+    return None
 
 
 def _run_driver(options: _RunOptions) -> int:
@@ -716,8 +697,31 @@ def _run_driver(options: _RunOptions) -> int:
     failures: list[str] = []
     try:
         candidate = _create_env("candidate", work, [os.fspath(wheel)], python)
+        snapshot_paths: list[str] = []
         for version in BASELINE_VERSIONS:
-            _ = _check_baseline(failures, work, candidate, version, options)
+            snapshot_path = _check_baseline(failures, work, version, options)
+            if snapshot_path is not None:
+                snapshot_paths.append(os.fspath(snapshot_path))
+        if snapshot_paths:
+            # Allowlist entries must justify a miss in at least one baseline.
+            # Checking them separately falsely marks pre-1.0 removals as stale
+            # against 1.x, where those paths were never published.
+            _ = _run_stage(
+                failures,
+                "verify baselines",
+                lambda: _run_gate(
+                    candidate,
+                    [
+                        "verify",
+                        "--snapshot",
+                        *snapshot_paths,
+                        "--allowlist",
+                        options.allowlist,
+                    ],
+                    work,
+                    "verify baselines",
+                ),
+            )
         _ = _run_stage(
             failures,
             "consumer smoke test",
@@ -800,7 +804,9 @@ def _parser() -> argparse.ArgumentParser:
     verify = modes.add_parser(
         "verify", help="check the installed candidate against a snapshot"
     )
-    _ = verify.add_argument("--snapshot", required=True, help="JSON snapshot to use")
+    _ = verify.add_argument(
+        "--snapshot", required=True, nargs="+", help="JSON snapshots to check together"
+    )
     _ = verify.add_argument("--allowlist", default=os.fspath(DEFAULT_ALLOWLIST))
     return parser
 
@@ -829,13 +835,25 @@ def main(argv: list[str] | None = None) -> int:
 
         if mode == "verify":
             allowlist_path = Path(_text(args, "allowlist"))
-            misses = _verify(Path(_text(args, "snapshot")))
+            misses: list[str] = []
+            stable_misses: list[str] = []
+            for snapshot_path in cast(list[str], args.snapshot):
+                surface = _load_snapshot(Path(snapshot_path))
+                if surface.baseline.startswith("0."):
+                    misses.extend(_verify(surface))
+                else:
+                    # Pre-1.0 removal approvals cannot waive the 1.x contract.
+                    stable_misses.extend(_verify(surface))
             if "weasyprint" in sys.modules:
                 misses.append(
                     "module weasyprint.eager_import (optional dependency must stay lazy)"
                 )
             misses.extend(_check_legacy_families())
-            return _print_misses(misses, _load_allowlist(allowlist_path), "verify")
+            legacy_result = _print_misses(
+                misses, _load_allowlist(allowlist_path), "verify legacy"
+            )
+            stable_result = _print_misses(stable_misses, Allowlist([]), "verify 1.x")
+            return max(legacy_result, stable_result)
 
         return _run_driver(
             _RunOptions(

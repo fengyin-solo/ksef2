@@ -1,7 +1,8 @@
 """Regenerate or verify schema-derived source and packaged definition files.
 
-``schemas/FA3`` owns the shared XSD and XML definitions. The packaged XSL files
-are runtime-only assets and are intentionally left untouched.
+``schemas/FA3`` owns the shared XSD and XML definitions and code-list provenance
+manifest. The packaged XSL files are runtime-only assets and are intentionally
+left untouched.
 """
 
 import argparse
@@ -201,12 +202,12 @@ def sync_fa3(*, check: bool, temporary_root: Path) -> bool:
     expected_definition_names = {
         path.name
         for path in FA3_SOURCE.iterdir()
-        if path.is_file() and path.suffix in {".xml", ".xsd"}
+        if path.is_file() and path.suffix in {".xml", ".xsd", ".json"}
     }
     actual_definition_names = {
         path.name
         for path in FA3_DEFINITIONS_TARGET.glob("*")
-        if path.is_file() and path.suffix in {".xml", ".xsd"}
+        if path.is_file() and path.suffix in {".xml", ".xsd", ".json"}
     }
 
     for name in sorted(expected_definition_names):

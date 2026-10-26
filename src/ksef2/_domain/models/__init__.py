@@ -211,6 +211,12 @@ from ksef2._domain.models.pagination import (
     InvoiceMetadataParams,
     Page,
 )
+from ksef2._domain.models.signing_certificates import (
+    SigningCertificate,
+    SigningCertificateFingerprint,
+    SigningCertificateInfo,
+    SigningCertificateRef,
+)
 from ksef2._domain.models.xades import XAdESCredentials
 
 if TYPE_CHECKING:
@@ -448,6 +454,11 @@ __all__ = [
     # peppol
     "PeppolProvider",
     "ListPeppolProvidersResponse",
+    # signing certificates
+    "SigningCertificate",
+    "SigningCertificateFingerprint",
+    "SigningCertificateInfo",
+    "SigningCertificateRef",
     # xades
     "XAdESCredentials",
 ]

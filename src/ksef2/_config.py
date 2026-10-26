@@ -2,15 +2,34 @@
 
 from dataclasses import dataclass, field
 from enum import Enum
+from importlib import import_module
 import warnings
-from typing import Literal, cast
+from typing import Callable, Literal, cast
 
-from ksef2._core.exceptions import KSeFArgumentError
+
+def _argument_error(message: str, *, hint: str) -> Exception:
+    """Return the argument error for a rejected configuration value.
+
+    ``ksef2._core.exceptions`` imports the domain models and a domain model reads
+    ``Environment`` from this module, so the exception module is resolved on first
+    use rather than at import time. The exception raised is the same class, with
+    the same message and hint, as an eager import would give.
+
+    Args:
+        message: Human-readable error message.
+        hint: What to do next.
+
+    Returns:
+        The exception for the caller to raise.
+    """
+    module = import_module("ksef2._core.exceptions")
+    error_type = cast("Callable[..., Exception]", getattr(module, "KSeFArgumentError"))
+    return error_type(message, hint=hint)
 
 
 def _positive_number(name: str, value: object) -> None:
     if isinstance(value, bool) or not isinstance(value, int | float) or value <= 0:
-        raise KSeFArgumentError(
+        raise _argument_error(
             f"{name} must be a positive number.",
             hint="Pass a numeric value greater than zero.",
         )
@@ -18,7 +37,7 @@ def _positive_number(name: str, value: object) -> None:
 
 def _nonnegative_number(name: str, value: object) -> None:
     if isinstance(value, bool) or not isinstance(value, int | float) or value < 0:
-        raise KSeFArgumentError(
+        raise _argument_error(
             f"{name} must be a non-negative number.",
             hint="Pass a numeric value of zero or greater.",
         )
@@ -26,7 +45,7 @@ def _nonnegative_number(name: str, value: object) -> None:
 
 def _positive_integer(name: str, value: object) -> None:
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
-        raise KSeFArgumentError(
+        raise _argument_error(
             f"{name} must be an integer of at least 1.",
             hint="Pass an integer value of at least 1.",
         )
@@ -204,7 +223,7 @@ class TransportConfig:
             ("tls", TlsConfig),
         ):
             if not isinstance(getattr(self, name), expected):
-                raise KSeFArgumentError(
+                raise _argument_error(
                     f"{name} must be a {expected.__name__} instance.",
                     hint=f"Pass a {expected.__name__} object.",
                 )
@@ -212,7 +231,7 @@ class TransportConfig:
 
 def validate_transport_config(value: object) -> TransportConfig:
     if not isinstance(value, TransportConfig):
-        raise KSeFArgumentError(
+        raise _argument_error(
             "transport_config must be a TransportConfig instance.",
             hint="Construct TransportConfig with the desired settings.",
         )

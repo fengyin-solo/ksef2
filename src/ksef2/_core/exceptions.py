@@ -3,7 +3,7 @@
 from typing import Any, Callable, Literal, cast, override
 from pydantic import BaseModel, ValidationError
 from urllib.parse import urlsplit
-from enum import IntEnum
+from enum import Enum, IntEnum
 
 from ksef2._core import routes
 from ksef2._domain.models.batch import PreparedBatch
@@ -1250,6 +1250,161 @@ class KSeFCertificateEnrollmentTimeoutError(KSeFPollingTimeoutError):
             reference_number=reference_number,
             timeout=timeout,
         )
+
+
+def _reference_label(reference: object) -> str:
+    """Return a store reference as ``"<environment>:<fingerprint>"`` for ``context``.
+
+    A record reference is the only thing a store hands an error besides text, and the
+    record types read this module, so the reference is described by the two attributes
+    every reference exposes rather than by its class.
+
+    Args:
+        reference: The reference the store was asked about.
+
+    Returns:
+        The environment name in lower case, a colon, and the certificate fingerprint.
+    """
+    environment = cast("Enum | None", getattr(reference, "environment", None))
+    fingerprint = cast("str | None", getattr(reference, "fingerprint_sha256", None))
+    if environment is None or fingerprint is None:
+        return repr(reference)
+    return f"{environment.name.lower()}:{fingerprint}"
+
+
+class KSeFCertificateStoreError(KSeFException):
+    """Base error for reading or writing a stored signing certificate and key.
+
+    Raised by the signing-certificate stores in ``ksef2.certificate_stores`` and
+    their implementations. ``operation`` names the store method that failed and
+    ``reference`` identifies the record, both already rendered for display.
+
+    Args:
+        message: Human-readable error message.
+        operation: Store method that failed: ``"save"``, ``"load"``, ``"list"`` or
+            ``"delete"``. The SDK does not enforce the set of values.
+        reference: ``SigningCertificateRef`` for the record the store was asked about,
+            when one applies. Typed as ``object`` because the record types read this
+            module; stores pass a reference and nothing else.
+        outcome_ambiguous: Whether the store may have applied the operation even
+            though it failed. Stored in ``context`` in every case.
+        hint: Next step for this occurrence; overrides the class default.
+
+    Attributes:
+        operation: Store method that failed, or ``None`` when the store did not say.
+        reference: The ``SigningCertificateRef`` the store was asked about, or ``None``.
+        outcome_ambiguous: Whether the caller has to check whether the operation took
+            effect before retrying it.
+    """
+
+    code: str = "CERTIFICATE_STORE_ERROR"
+    hint: str | None = None
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        operation: str | None = None,
+        reference: object | None = None,
+        outcome_ambiguous: bool = False,
+        hint: str | None = None,
+    ) -> None:
+        self.operation = operation
+        self.reference = reference
+        self.outcome_ambiguous = outcome_ambiguous
+        context: dict[str, object] = {}
+        if operation is not None:
+            context["operation"] = operation
+        if reference is not None:
+            context["reference"] = _reference_label(reference)
+        context["outcome_ambiguous"] = outcome_ambiguous
+        super().__init__(message, hint=hint, **context)
+
+
+class KSeFCertificateStoreNotFoundError(KSeFCertificateStoreError):
+    """Raised when no signing certificate is stored under the asked-for reference.
+
+    Attributes:
+        operation: Store method that failed.
+        reference: Record that was asked for.
+        outcome_ambiguous: Always ``False`` here: nothing was changed.
+    """
+
+    code: str = "CERTIFICATE_STORE_NOT_FOUND"
+    hint: str | None = (
+        "Call list() to see the stored references, or save() the certificate first."
+    )
+
+
+class KSeFCertificateStoreConflictError(KSeFCertificateStoreError):
+    """Raised when a different record is already stored under the same reference.
+
+    Attributes:
+        operation: Store method that failed.
+        reference: Record already held by another certificate.
+        outcome_ambiguous: Always ``False`` here: the stored record was kept.
+    """
+
+    code: str = "CERTIFICATE_STORE_CONFLICT"
+    hint: str | None = (
+        "A different record is already stored under this reference. Load and inspect "
+        "it, or delete() it first if it should be replaced."
+    )
+
+
+class KSeFCertificateStoreAccessError(KSeFCertificateStoreError):
+    """Raised when the store rejects the caller's credentials or permissions.
+
+    Attributes:
+        operation: Store method that failed.
+        reference: Record the store was asked about, when one applies.
+        outcome_ambiguous: Whether the caller has to check before retrying.
+    """
+
+    code: str = "CERTIFICATE_STORE_ACCESS"
+    hint: str | None = (
+        "Check the store's access credentials or password source, and its permissions."
+    )
+
+
+class KSeFCertificateStoreUnavailableError(KSeFCertificateStoreError):
+    """Raised when the storage behind a signing certificate store cannot be reached.
+
+    Set ``outcome_ambiguous`` when the store cannot say whether the operation took
+    effect, which is the case after a write whose response was lost.
+
+    Attributes:
+        operation: Store method that failed.
+        reference: Record the store was asked about, when one applies.
+        outcome_ambiguous: Whether the caller has to check before retrying.
+    """
+
+    code: str = "CERTIFICATE_STORE_UNAVAILABLE"
+    hint: str | None = (
+        "Check that the storage backend is reachable and has free space, then retry. "
+        "When outcome_ambiguous is true, call load() or list() first to see whether "
+        "the operation took effect."
+    )
+
+
+class KSeFCertificateStoreMaterialError(KSeFCertificateStoreError):
+    """Raised when stored certificate or key material cannot be used.
+
+    The record is corrupt, in an unsupported format, undecryptable with the supplied
+    password source, or does not match the reference it is stored under.
+
+    Attributes:
+        operation: Store method that failed.
+        reference: Record whose material failed, when one applies.
+        outcome_ambiguous: Always ``False`` here: the record was not loaded.
+    """
+
+    code: str = "CERTIFICATE_STORE_MATERIAL"
+    hint: str | None = (
+        "The stored record is corrupt, uses an unsupported format, cannot be "
+        "decrypted, or does not match its reference. Check the password source, or "
+        "restore an intact copy of the record."
+    )
 
 
 class KSeFAuthPollingTimeoutError(KSeFPollingTimeoutError):

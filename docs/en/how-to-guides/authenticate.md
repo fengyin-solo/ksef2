@@ -185,6 +185,72 @@ auth = client.authentication.with_xades(
 )
 ```
 
+### With a stored certificate
+
+Use a signing-certificate store when your own certificate and private key live
+in application storage — a keychain, a database, a secret manager — rather than
+in a file you read at startup. `ksef2.certificate_stores` keeps signing
+certificates with their keys; it is not the encryption-certificate cache a root
+client holds.
+
+Save the pair once and authenticate with the reference the store returns:
+
+```python
+import os
+from pathlib import Path
+
+from ksef2 import Client, Environment
+from ksef2.certificate_stores import (
+    InMemorySigningCertificateStore,
+    SigningCertificate,
+)
+from ksef2.xades import XAdESCredentials
+
+credentials = XAdESCredentials.from_pem(
+    Path("company.pem").read_bytes(),
+    Path("company.key").read_bytes(),
+)
+
+store = InMemorySigningCertificateStore()
+info = store.save(
+    SigningCertificate(
+        credentials,
+        environment=Environment.PRODUCTION,
+        certificate_type="authentication",
+    )
+)
+
+with Client(Environment.PRODUCTION) as client:
+    auth = client.authentication.with_stored_certificate(
+        nip=os.environ["KSEF2_NIP"],
+        store=store,
+        reference=info.reference,
+    )
+```
+
+The store hands over exactly the record named by `reference`. It never picks a
+"latest" certificate, and the client does not close the store: your application
+opens and closes whatever the store sits on.
+
+Before the first request to KSeF, the client checks that:
+
+1. the store matches the client's flavour, because a sync client cannot await a
+   store and an async client cannot read a sync one;
+2. the reference was saved for this client's environment;
+3. the record the store returned is the record it asked for;
+4. the certificate is not a KSeF `offline` certificate. A certificate whose
+   KSeF purpose is unknown, such as an external or generated TEST one, is
+   accepted;
+5. the certificate is inside its validity period.
+
+The async client awaits the same call:
+
+```python
+auth = await client.authentication.with_stored_certificate(
+    nip="5261040828", store=store, reference=info.reference
+)
+```
+
 ## CLI-compatible profiles
 
 `ksef2-cli` and the SDK share the same local profile file. A profile stores
@@ -280,6 +346,7 @@ asyncio.run(main())
 **See also:**
 
 - [Use profiles](profiles.md): Create profiles with ksef2-cli, authenticate with with_profile(), and manage profiles through ProfileStore.
+- [Write a signing-certificate store](write-signing-certificate-store.md): Implement the store protocol over your own backend.
 - [CLI authentication](../../cli/guides/authentication.md): Use the same token, TEST certificate, PEM XAdES, PKCS#12, and profile flows from ksef2-cli.
 
 ## Recommended flow

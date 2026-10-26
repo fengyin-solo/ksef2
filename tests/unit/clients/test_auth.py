@@ -1,12 +1,15 @@
 import datetime
+import functools
 import json
+import os
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from cryptography.hazmat.primitives.serialization import (
     Encoding,
     NoEncryption,
@@ -16,6 +19,8 @@ from cryptography.x509 import Certificate
 from cryptography.x509.oid import NameOID, ObjectIdentifier
 from polyfactory import BaseFactory
 
+from ksef2._certificate_stores.async_memory import AsyncInMemorySigningCertificateStore
+from ksef2._certificate_stores.memory import InMemorySigningCertificateStore
 from ksef2._clients.async_authenticated import AsyncAuthenticatedClient
 from ksef2._clients.auth import AuthClient
 from ksef2._clients.authenticated import AuthenticatedClient
@@ -27,6 +32,8 @@ from ksef2._core.exceptions import (
     KSeFAuthPollingTimeoutError,
     KSeFAuthTokenRedemptionError,
     KSeFArgumentError,
+    KSeFCertificateStoreMaterialError,
+    KSeFCertificateStoreNotFoundError,
     KSeFTransportError,
     KSeFUnsupportedEnvironmentError,
     KSeFProfileConfigError,
@@ -35,7 +42,12 @@ from ksef2._core.exceptions import (
 from ksef2._core.routes import AuthRoutes
 from ksef2._core.stores import CertificateStore
 from ksef2._domain.models import auth as domain_auth
+from ksef2._domain.models.certificates import CertificateTypeValue
 from ksef2._domain.models.encryption import PublicKeyCertificate
+from ksef2._domain.models.signing_certificates import (
+    SigningCertificate,
+    SigningCertificateRef,
+)
 from ksef2._infra.schema.api.supp.auth import InitTokenAuthenticationRequest
 from ksef2._infra.schema.api import spec
 from ksef2.xades import XAdESCredentials, XAdESPrivateKey
@@ -47,6 +59,12 @@ from tests.unit.support.xades_material import (
     CredentialFormat,
     build_credentials,
     public_key_der,
+    self_signed_with_validity,
+)
+
+requires_unchecked_types = pytest.mark.skipif(
+    bool(os.environ.get("KSEF2_RUNTIME_CHECKS")),
+    reason="beartype rejects the out-of-contract value before the guard runs",
 )
 
 
@@ -921,3 +939,298 @@ def test_redemption_transport_error_keeps_the_redemption_contract(
     assert len(redemption_requests) == 1
     assert "ksef-token" not in str(error)
     assert "ksef-token" not in json.dumps(error.context, default=str)
+
+
+# `flavor.auth_client()` authenticates against this environment.
+CLIENT_ENVIRONMENT = Environment.PRODUCTION
+
+
+def _in_memory_store(flavor: Flavor) -> Any:
+    """Return the signing-certificate store of this flavour."""
+    return (
+        AsyncInMemorySigningCertificateStore()
+        if flavor.is_async
+        else InMemorySigningCertificateStore()
+    )
+
+
+def _other_flavour_store(flavor: Flavor) -> Any:
+    """Return the signing-certificate store of the other flavour."""
+    return (
+        InMemorySigningCertificateStore()
+        if flavor.is_async
+        else AsyncInMemorySigningCertificateStore()
+    )
+
+
+@functools.cache
+def _expired_key() -> rsa.RSAPrivateKey:
+    """Return one RSA key shared by the cases that need an out-of-date certificate."""
+    return rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+
+def _record(
+    *,
+    environment: Environment = CLIENT_ENVIRONMENT,
+    certificate_type: CertificateTypeValue | None = None,
+    certificate: x509.Certificate | None = None,
+    private_key: XAdESPrivateKey | None = None,
+) -> SigningCertificate:
+    """Build a stored record, by default one this flavour's client would accept."""
+    if certificate is None or private_key is None:
+        certificate, private_key = generate_test_certificate("5261040828")
+    return SigningCertificate(
+        XAdESCredentials(certificate, private_key),
+        environment=environment,
+        certificate_type=certificate_type,
+    )
+
+
+def _save(flavor: Flavor, store: Any, record: SigningCertificate) -> Any:
+    """Save through either flavour's store and return the record's metadata."""
+    return flavor.run(store.save(record))
+
+
+def _enqueue_authentication(flavor: Flavor, responses: tuple[Any, ...]) -> None:
+    """Queue the challenge, init, status and tokens responses of an XAdES login."""
+    for response in responses:
+        flavor.transport.enqueue(response.model_dump(mode="json"))
+
+
+class TestWithStoredCertificate:
+    @patch("ksef2.xades.sign_xades")
+    @patch(
+        "ksef2.xades.build_auth_token_request_xml",
+        return_value=b"<AuthTokenRequest />",
+    )
+    def test_it_authenticates_with_the_stored_pair(
+        self,
+        _mock_build_xml: MagicMock,
+        mock_sign_xades: MagicMock,
+        flavor: Flavor,
+        auth_challenge_resp: BaseFactory[spec.AuthenticationChallengeResponse],
+        auth_init_resp: BaseFactory[spec.AuthenticationInitResponse],
+        auth_status_resp: BaseFactory[spec.AuthenticationOperationStatusResponse],
+        auth_tokens_resp: BaseFactory[spec.AuthenticationTokensResponse],
+    ) -> None:
+        client = flavor.auth_client()
+        store = _in_memory_store(flavor)
+        record = _record()
+        info = _save(flavor, store, record)
+        _enqueue_authentication(
+            flavor,
+            (
+                auth_challenge_resp.build(),
+                auth_init_resp.build(),
+                auth_status_resp.build(
+                    status=spec.StatusInfo(code=200, description="Authenticated")
+                ),
+                auth_tokens_resp.build(),
+            ),
+        )
+        signed_with: list[tuple[Certificate, XAdESPrivateKey]] = []
+
+        def record_and_sign(
+            xml_bytes: bytes, signing_cert: Certificate, signing_key: XAdESPrivateKey
+        ) -> bytes:
+            signed_with.append((signing_cert, signing_key))
+            return b"<SignedXML />"
+
+        mock_sign_xades.side_effect = record_and_sign
+
+        result = flavor.run(
+            client.with_stored_certificate(
+                nip="5261040828", store=store, reference=info.reference
+            )
+        )
+
+        assert isinstance(
+            result, AsyncAuthenticatedClient if flavor.is_async else AuthenticatedClient
+        )
+        assert len(flavor.transport.calls) == 4
+        assert len(signed_with) == 1
+        used_cert, used_key = signed_with[0]
+        assert used_cert is record.credentials.certificate
+        assert used_key is record.credentials.private_key
+        xades_call = flavor.transport.calls[1]
+        assert xades_call.path == AuthRoutes.XADES_SIGNATURE
+        assert xades_call.content == b"<SignedXML />"
+        assert xades_call.params is not None
+        assert xades_call.params["verifyCertificateChain"] == "false"
+
+    def test_it_refuses_a_reference_of_another_environment(
+        self, flavor: Flavor
+    ) -> None:
+        client = flavor.auth_client()
+        store = _in_memory_store(flavor)
+        info = _save(flavor, store, _record(environment=Environment.DEMO))
+
+        with pytest.raises(KSeFArgumentError, match="reference is for DEMO"):
+            flavor.run(
+                client.with_stored_certificate(
+                    nip="5261040828", store=store, reference=info.reference
+                )
+            )
+
+        assert flavor.transport.calls == []
+
+    def test_it_refuses_an_offline_certificate(self, flavor: Flavor) -> None:
+        client = flavor.auth_client()
+        store = _in_memory_store(flavor)
+        info = _save(flavor, store, _record(certificate_type="offline"))
+
+        with pytest.raises(KSeFArgumentError, match="KSeF Offline certificate"):
+            flavor.run(
+                client.with_stored_certificate(
+                    nip="5261040828", store=store, reference=info.reference
+                )
+            )
+
+        assert flavor.transport.calls == []
+
+    def test_it_reports_a_reference_that_was_never_saved(self, flavor: Flavor) -> None:
+        client = flavor.auth_client()
+        store = _in_memory_store(flavor)
+        missing = _record().reference
+
+        with pytest.raises(KSeFCertificateStoreNotFoundError):
+            flavor.run(
+                client.with_stored_certificate(
+                    nip="5261040828", store=store, reference=missing
+                )
+            )
+
+        assert flavor.transport.calls == []
+
+    def test_it_refuses_an_expired_certificate(self, flavor: Flavor) -> None:
+        client = flavor.auth_client()
+        store = _in_memory_store(flavor)
+        now = datetime.datetime.now(datetime.timezone.utc)
+        expired_key = _expired_key()
+        expired = self_signed_with_validity(
+            expired_key,
+            not_valid_before=now - datetime.timedelta(days=400),
+            not_valid_after=now - datetime.timedelta(days=30),
+            common_name="ksef2 expired",
+        )
+        info = _save(
+            flavor, store, _record(certificate=expired, private_key=expired_key)
+        )
+
+        with pytest.raises(KSeFArgumentError, match="outside its validity period"):
+            flavor.run(
+                client.with_stored_certificate(
+                    nip="5261040828", store=store, reference=info.reference
+                )
+            )
+
+        assert flavor.transport.calls == []
+
+    def test_it_refuses_a_store_of_the_other_flavour(self, flavor: Flavor) -> None:
+        client = flavor.auth_client()
+        other = _other_flavour_store(flavor)
+        info = _save(flavor, other, _record())
+
+        # Both stores satisfy both protocols structurally, so this is the guard
+        # rather than a type check, with runtime type checking on and off alike.
+        with pytest.raises(KSeFArgumentError, match="signing certificate store"):
+            flavor.run(
+                client.with_stored_certificate(
+                    nip="5261040828", store=other, reference=info.reference
+                )
+            )
+
+        assert flavor.transport.calls == []
+
+    def test_it_reports_a_record_that_is_not_the_one_asked_for(
+        self, flavor: Flavor
+    ) -> None:
+        client = flavor.auth_client()
+        asked = _save(flavor, _in_memory_store(flavor), _record())
+        other = _record()
+        store = _StubAsyncStore(other) if flavor.is_async else _StubSyncStore(other)
+
+        with pytest.raises(
+            KSeFCertificateStoreMaterialError, match="different certificate"
+        ) as caught:
+            flavor.run(
+                client.with_stored_certificate(
+                    nip="5261040828", store=store, reference=asked.reference
+                )
+            )
+
+        assert caught.value.operation == "load"
+        assert caught.value.reference == asked.reference
+        assert flavor.transport.calls == []
+
+    @requires_unchecked_types
+    def test_it_reports_a_store_that_returns_no_record(self, flavor: Flavor) -> None:
+        client = flavor.auth_client()
+        info = _save(flavor, _in_memory_store(flavor), _record())
+        store = _StubAsyncStore("nope") if flavor.is_async else _StubSyncStore("nope")
+
+        with pytest.raises(KSeFArgumentError, match="not a SigningCertificate"):
+            flavor.run(
+                client.with_stored_certificate(
+                    nip="5261040828", store=store, reference=info.reference
+                )
+            )
+
+        assert flavor.transport.calls == []
+
+    @requires_unchecked_types
+    def test_it_needs_a_reference_object(self, flavor: Flavor) -> None:
+        client = flavor.auth_client()
+
+        with pytest.raises(KSeFArgumentError, match="needs a SigningCertificateRef"):
+            flavor.run(
+                client.with_stored_certificate(
+                    nip="5261040828",
+                    store=_in_memory_store(flavor),
+                    reference="abc",  # pyright: ignore[reportArgumentType]
+                )
+            )
+
+        assert flavor.transport.calls == []
+
+
+class _StubSyncStore:
+    """Sync store whose load() hands back whatever the test put in it.
+
+    Only ``load()`` matters: the other three methods exist so the store satisfies
+    its own flavour's protocol and refuse to be called.
+    """
+
+    def __init__(self, loaded: object) -> None:
+        self._loaded = loaded
+
+    def load(self, reference: SigningCertificateRef) -> Any:
+        return self._loaded
+
+    def save(self, certificate: SigningCertificate) -> Any:
+        raise AssertionError("with_stored_certificate() must not save")
+
+    def list(self, **kwargs: Any) -> tuple[Any, ...]:
+        raise AssertionError("with_stored_certificate() must not list")
+
+    def delete(self, reference: SigningCertificateRef) -> bool:
+        raise AssertionError("with_stored_certificate() must not delete")
+
+
+class _StubAsyncStore:
+    """Async store whose load() hands back whatever the test put in it."""
+
+    def __init__(self, loaded: object) -> None:
+        self._loaded = loaded
+
+    async def load(self, reference: SigningCertificateRef) -> Any:
+        return self._loaded
+
+    async def save(self, certificate: SigningCertificate) -> Any:
+        raise AssertionError("with_stored_certificate() must not save")
+
+    async def list(self, **kwargs: Any) -> tuple[Any, ...]:
+        raise AssertionError("with_stored_certificate() must not list")
+
+    async def delete(self, reference: SigningCertificateRef) -> bool:
+        raise AssertionError("with_stored_certificate() must not delete")

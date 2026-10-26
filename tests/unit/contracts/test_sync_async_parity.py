@@ -10,7 +10,12 @@ from typing import Any
 
 import pytest
 
-PACKAGES = ("ksef2._clients", "ksef2._endpoints", "ksef2._services")
+PACKAGES = (
+    "ksef2._certificate_stores",
+    "ksef2._clients",
+    "ksef2._endpoints",
+    "ksef2._services",
+)
 
 SKIPPED_MODULES = {
     "ksef2._clients._async_handles": "private handle base, paired with _handles rather than the async_X convention",

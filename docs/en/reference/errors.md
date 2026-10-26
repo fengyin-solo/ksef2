@@ -56,6 +56,7 @@ log it, but do not parse it.
 | `KSeFPermissionDeniedError` | `KSeFApiError` | `PERMISSION_DENIED` | API error attributes |
 | `KSeFAuthenticationExpiredError` | `KSeFAuthError` | `AUTHENTICATION_EXPIRED` | API error attributes |
 | `KSeFRateLimitError` | `KSeFApiError` | `RATE_LIMIT_ERROR` | `retry_after` and the API error attributes |
+| `KSeFCertificateStoreError` | `KSeFException` | `CERTIFICATE_STORE_ERROR` | `operation`, `reference`, `outcome_ambiguous` |
 | `KSeFExternalTransferError` | `KSeFTransportError` | `EXTERNAL_TRANSFER_ERROR` | `operation`, `host`, `reference_number`, `part_ordinal`, `status_code`, `outcome_ambiguous` |
 | `KSeFBatchUploadError` | `KSeFExternalTransferError` | `BATCH_UPLOAD_ERROR` | External-transfer attributes plus `recovery_state()` and `recovery_prepared_batch()` |
 | `KSeFInvoiceRejectedError` | `KSeFSessionError` | `INVOICE_REJECTED` | `invoice_reference_number`, `invoice_status_code`, `description`, `details`, `extensions`, `status` |
@@ -111,6 +112,12 @@ except KSeFException as exc:
 | `KSeFExportFailedError` | `EXPORT_FAILED` | KSeF finished an invoice export without a package: it failed, was cancelled by the system or expired (`ExportJob.wait()`). Subclass of `KSeFOperationFailedError`. |
 | `KSeFPermissionOperationFailedError` | `PERMISSION_OPERATION_FAILED` | KSeF finished a permission grant or revoke without applying it (`PermissionOperation.wait()`). Subclass of `KSeFOperationFailedError`. |
 | `KSeFCertificateEnrollmentFailedError` | `CERTIFICATE_ENROLLMENT_FAILED` | KSeF rejected, cancelled or failed a certificate enrollment (`CertificateEnrollment.wait()`). Subclass of `KSeFOperationFailedError`. |
+| `KSeFCertificateStoreError` | `CERTIFICATE_STORE_ERROR` | Base for signing-certificate store failures (`ksef2.certificate_stores`). Carries `operation`, `reference` and `outcome_ambiguous`. |
+| `KSeFCertificateStoreNotFoundError` | `CERTIFICATE_STORE_NOT_FOUND` | No signing certificate is stored under the asked-for reference. Subclass of `KSeFCertificateStoreError`. |
+| `KSeFCertificateStoreConflictError` | `CERTIFICATE_STORE_CONFLICT` | A different record is already stored under that reference. Subclass of `KSeFCertificateStoreError`. |
+| `KSeFCertificateStoreAccessError` | `CERTIFICATE_STORE_ACCESS` | The store rejected the caller's credentials or permissions. Subclass of `KSeFCertificateStoreError`. |
+| `KSeFCertificateStoreUnavailableError` | `CERTIFICATE_STORE_UNAVAILABLE` | The storage behind the store could not be reached or could not take the record. Subclass of `KSeFCertificateStoreError`. |
+| `KSeFCertificateStoreMaterialError` | `CERTIFICATE_STORE_MATERIAL` | Stored certificate or key material is corrupt, unsupported, undecryptable, or does not match its reference. Subclass of `KSeFCertificateStoreError`. |
 | `KSeFAuthTokenRedemptionError` | `AUTH_TOKEN_REDEMPTION_ERROR` | A one-shot authentication redemption got no usable response and may have succeeded. Subclass of `KSeFTransportError`. |
 | `KSeFExternalTransferError` | `EXTERNAL_TRANSFER_ERROR` | A presigned external-storage upload or download was rejected or got no usable response. |
 | `KSeFBatchUploadError` | `BATCH_UPLOAD_ERROR` | A batch-part upload failed while protected recovery state remains available. |
@@ -120,6 +127,11 @@ except KSeFException as exc:
 `KSeFAuthTokenRedemptionError.outcome_ambiguous` is always `True`. Do not retry
 the redemption: KSeF may already have consumed the temporary authentication
 token even though no usable response reached the caller.
+
+`KSeFCertificateStoreError.outcome_ambiguous` is `True` only when the store cannot
+say whether its write took effect. Then call `load()` or `list()` before repeating
+the write. `operation` names the store method that failed and `reference` is
+`"<environment>:<fingerprint_sha256>"`, both also in `context`.
 
 `KSeFValidationError` also subclasses `ValueError` for compatibility with code
 that caught builder or model validation failures. It exposes Pydantic's
@@ -331,6 +343,11 @@ Hints on the other SDK errors:
 | `KSeFBatchSessionTimeoutError` | KSeF may still be processing the batch. Call `wait()` on the batch session again with a larger `timeout`. After a restart, rebuild the session from the state saved with `resume_state()` using `batch_session(state=...)`. |
 | `KSeFCertificateEnrollmentFailedError` | Read `description` and `details` for the reason, then submit a corrected request with `enroll()`. `get_limits()` shows how many enrollments and certificates are still allowed. |
 | `KSeFCertificateEnrollmentTimeoutError` | KSeF may still issue the certificate. Call `wait()` on the enrollment again with a larger `timeout`, or check it with `get_enrollment_status()`. After a restart, get the handle back with `auth.certificates.enrollment(state)` using the state saved from `resume_state()`. |
+| `KSeFCertificateStoreAccessError` | Check the store's access credentials or password source, and its permissions. |
+| `KSeFCertificateStoreConflictError` | A different record is already stored under this reference. Load and inspect it, or delete() it first if it should be replaced. |
+| `KSeFCertificateStoreMaterialError` | The stored record is corrupt, uses an unsupported format, cannot be decrypted, or does not match its reference. Check the password source, or restore an intact copy of the record. |
+| `KSeFCertificateStoreNotFoundError` | Call list() to see the stored references, or save() the certificate first. |
+| `KSeFCertificateStoreUnavailableError` | Check that the storage backend is reachable and has free space, then retry. When outcome_ambiguous is true, call load() or list() first to see whether the operation took effect. |
 | `KSeFExportFailedError` | Read `description` and `details` for the reason, then start a new export with `export()`. |
 | `KSeFExportTimeoutError` | The export may still finish. Call `wait()` on the export again with a larger `timeout`. After a restart, get the job back with `export(state=...)` using the state saved from `resume_state()`. |
 | `KSeFInvoiceDownloadTimeoutError` | KSeF has not made the invoice available yet. Call `download()` again with a larger `timeout`. |

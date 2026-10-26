@@ -16,6 +16,7 @@ from typing import Any, Literal
 import pytest
 
 import ksef2
+import ksef2.certificate_stores as public_certificate_stores
 import ksef2.clients as public_clients
 from ksef2._core import exceptions, response_errors
 from ksef2._core.exceptions import ExceptionCode
@@ -24,6 +25,14 @@ from ksef2._domain.models.session import (
     SessionStatusResponse,
 )
 from ksef2._domain.models.session import StatusInfo
+
+# The signing-certificate stores are public through their own facade, not through
+# ``ksef2.clients``, and their hints name ``save()``, ``load()``, ``list()`` and
+# ``delete()`` on them, so the scan of the public surface has to look here too.
+PUBLIC_STORE_CLASSES: tuple[type, ...] = (
+    public_certificate_stores.SigningCertificateStoreProtocol,
+    public_certificate_stores.AsyncSigningCertificateStoreProtocol,
+)
 
 
 def _all_exception_classes() -> list[type[exceptions.KSeFException]]:
@@ -80,7 +89,7 @@ def _public_methods() -> set[str]:
     """Names of current, non-deprecated public methods on the public client classes."""
     names: set[str] = set()
     classes = [getattr(public_clients, name) for name in public_clients.__all__]
-    classes += [ksef2.Client, ksef2.AsyncClient]
+    classes += [ksef2.Client, ksef2.AsyncClient, *PUBLIC_STORE_CLASSES]
     for cls in classes:
         if not inspect.isclass(cls):
             continue
@@ -170,6 +179,7 @@ def _public_classes() -> list[type]:
     return [c for c in classes if inspect.isclass(c)] + [
         ksef2.Client,
         ksef2.AsyncClient,
+        *PUBLIC_STORE_CLASSES,
     ]
 
 

@@ -27,6 +27,7 @@ from pydantic import BaseModel
 
 PUBLIC_MODULES = (
     "ksef2",
+    "ksef2.certificate_stores",
     "ksef2.clients",
     "ksef2.models",
     "ksef2.fa3",

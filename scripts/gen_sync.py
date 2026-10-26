@@ -236,6 +236,7 @@ NAME_MAP = {
     "AsyncSleep": "Sleep",
     "StopAsyncIteration": "StopIteration",
     "async_poll_until": "poll_until",
+    "require_async_store": "require_sync_store",
     "aclose": "close",
     "__aenter__": "__enter__",
     "__aexit__": "__exit__",

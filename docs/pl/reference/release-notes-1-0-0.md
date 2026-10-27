@@ -3,7 +3,8 @@ title: Wydanie 1.0.0
 description: Co wchodzi w kontrakt zgodności pierwszego stabilnego wydania SDK.
 ---
 
-ksef2 1.0.0 to pierwsze wydanie, które traktuje udokumentowane ścieżki importu dla aplikacji jako kontrakt zgodności linii 1.x. SDK obecnie celuje w wersję OpenAPI KSeF `2.9.0`.
+ksef2 1.0.0 to pierwsze wydanie, które traktuje udokumentowane ścieżki importu dla aplikacji jako kontrakt zgodności linii 1.x.
+SDK obecnie celuje w wersję OpenAPI KSeF `2.9.0`.
 
 > **Nieoficjalne SDK.** ksef2 jest utrzymywane przez społeczność. Nie jest publikowane, zatwierdzane ani wspierane przez Ministerstwo Finansów. Oficjalna dokumentacja KSeF pozostaje miarodajnym opisem zachowania API.
 

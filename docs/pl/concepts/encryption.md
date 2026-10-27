@@ -1,42 +1,35 @@
 ---
 title: Szyfrowanie
-description: Zrozum, jak ksef2 używa publicznych certyfikatów KSeF do szyfrowania tokenów, sesji i eksportów.
+description: Jak ksef2 używa publicznych certyfikatów KSeF do szyfrowania tokenów, sesji i eksportów.
 ---
 
-KSeF wymaga, aby część materiału payloadów była zaszyfrowana zanim trafi do API.
-SDK ukrywa tę mechanikę w zwykłych przepływach, ale warto wiedzieć, który klucz
-jest chroniony i co trzeba zachować, aby kontynuować przepływ.
+KSeF wymaga, aby część danych była zaszyfrowana, zanim trafi do API. SDK ukrywa tę mechanikę w zwykłych przepływach, ale warto wiedzieć, który klucz jest chroniony i co trzeba zachować, żeby móc wrócić do przepływu.
 
-Publiczne certyfikaty używane do tego szyfrowania są publikowane przez KSeF.
-Aplikacja pobiera publiczny materiał certyfikatu, szyfruje lokalne sekrety dla
-KSeF i wysyła `public_key_id`, który wskazuje użyty klucz publiczny KSeF.
+Publiczne certyfikaty używane do tego szyfrowania publikuje KSeF. Aplikacja pobiera certyfikat, szyfruje lokalne sekrety dla KSeF i wysyła `public_key_id`, który wskazuje użyty klucz publiczny.
 
 ## Gdzie pojawia się szyfrowanie
 
 | Przepływ | Lokalny sekret | Co otrzymuje KSeF |
 | --- | --- | --- |
-| Uwierzytelnianie tokenem | Token KSeF razem ze znacznikiem czasu challenge. | Zaszyfrowany payload uwierzytelniania tokenem i odpowiadający `public_key_id`. |
-| Sesja online | Klucz AES i IV wygenerowane dla XML faktury. | Zaszyfrowany klucz sesji, IV i zaszyfrowane payloady faktur. |
-| Sesja batch | Klucz AES i IV dla paczki batch. | Zaszyfrowany materiał klucza batch i deklaracje uploadu. |
-| Eksport faktur | Klucz AES i IV dla paczki eksportu. | Zaszyfrowany materiał klucza eksportu; SDK później używa lokalnego materiału do odszyfrowania pobranych części. |
+| Uwierzytelnianie tokenem KSeF | Token KSeF razem ze znacznikiem czasu wyzwania. | Zaszyfrowane dane uwierzytelniania i odpowiadający im `public_key_id`. |
+| Sesja interaktywna | Klucz AES i IV wygenerowane dla XML faktury. | Zaszyfrowany klucz sesji, IV i zaszyfrowane faktury. |
+| Sesja wsadowa | Klucz AES i IV dla paczki faktur. | Zaszyfrowany klucz paczki i informacje o częściach do przesłania. |
+| Eksport faktur | Klucz AES i IV dla paczki eksportu. | Zaszyfrowany klucz eksportu. SDK później używa lokalnego materiału, żeby odszyfrować pobrane części. |
 
-:::tip[Preferuj ścieżkę wysokiego poziomu]
-Sesje online, sesje batch, eksporty i uwierzytelnianie tokenem pobierają i
-używają publicznych certyfikatów za Ciebie. `client.encryption` służy do
-diagnostyki, kontroli startowej albo własnego cache certyfikatów.
+:::tip[Zostań przy ścieżce wysokiego poziomu]
+Sesje interaktywne, sesje wsadowe, eksporty i uwierzytelnianie tokenem KSeF same pobierają publiczne certyfikaty i z nich korzystają. `client.encryption` jest do diagnostyki, kontroli przy starcie albo własnej pamięci podręcznej certyfikatów.
 :::
 
-## Model publicznego certyfikatu
+## Publiczny certyfikat
 
-KSeF publikuje publiczne certyfikaty klucza z metadanymi, które mówią klientom,
-do czego służy klucz i kiedy jest ważny.
+KSeF publikuje publiczne certyfikaty klucza razem z metadanymi. Z nich wynika, do czego służy klucz i jak długo jest ważny.
 
 | Pole SDK | Znaczenie |
 | --- | --- |
-| `certificate` | Materiał certyfikatu Base64 używany przez warstwę kryptograficzną SDK. |
+| `certificate` | Certyfikat w Base64, używany przez warstwę kryptograficzną SDK. |
 | `certificate_id` | Identyfikator obiektu certyfikatu. |
-| `public_key_id` | Identyfikator klucza publicznego; odsyłany do KSeF po szyfrowaniu. |
-| `valid_from` / `valid_to` | Okno ważności używane przy decyzjach cache i odświeżania. |
+| `public_key_id` | Identyfikator klucza publicznego. Po szyfrowaniu wraca do KSeF. |
+| `valid_from` / `valid_to` | Okres ważności, używany przy decyzjach o pamięci podręcznej i odświeżeniu. |
 | `usage` | `ksef_token_encryption` albo `symmetric_key_encryption`. |
 
 ```python
@@ -48,32 +41,21 @@ for certificate in certificates:
     print(certificate.public_key_id, certificate.valid_to, certificate.usage)
 ```
 
-## Rotacja i cache
+## Rotacja i pamięć podręczna
 
-Traktuj publiczne certyfikaty szyfrowania jak rotującą infrastrukturę. KSeF może
-opublikować nowy certyfikat dla tego samego klucza albo obrócić na nowy klucz.
-Nowy certyfikat może zmienić `certificate_id`; nowy klucz zmienia
-`public_key_id`.
+Publiczne certyfikaty szyfrowania traktuj jak infrastrukturę, która się zmienia. KSeF może opublikować nowy certyfikat dla tego samego klucza albo przejść na nowy klucz. Nowy certyfikat może zmienić `certificate_id`. Nowy klucz zmienia `public_key_id`.
 
-Cache certyfikatów jest przydatny, jeśli poprawia czas startu, ale odświeżaj go
-zanim długotrwałe workery otworzą sesje, zaplanują eksporty albo rozpoczną
-uwierzytelnianie tokenem. Nie zapisuj treści certyfikatów na stałe w kodzie
-aplikacji.
+Pamięć podręczna certyfikatów pomaga, jeśli skraca start aplikacji. Odśwież ją, zanim długo działające procesy otworzą sesje, zaplanują eksporty albo zaczną uwierzytelnianie tokenem KSeF. Nie zapisuj treści certyfikatów na stałe w kodzie aplikacji.
 
 ## Co zapisywać
 
-Dla zwykłej wysyłki faktur zapisuj identyfikatory biznesowe, referencje KSeF,
-dane UPO i finalne artefakty. Nie zapisuj niskopoziomowych szczegółów
-szyfrowania, chyba że inny proces musi wznowić sesję.
+Przy zwykłej wysyłce faktur zapisuj identyfikatory biznesowe, numery referencyjne KSeF, UPO (Urzędowe Poświadczenie Odbioru) i końcowe pliki. Szczegółów szyfrowania nie zapisuj, chyba że inny proces ma wznowić sesję.
 
-Dla eksportów przechowuj `ExportHandle`, aż paczka zostanie pobrana. Zawiera
-lokalny materiał deszyfrujący potrzebny do części eksportu. Dla wznawianych
-sesji online albo batch zapisuj serializowany stan sesji zwrócony przez SDK
-zamiast ręcznie rekonstruować klucze.
+Przy eksporcie trzymaj obiekt eksportu (`ExportHandle`), aż paczka zostanie pobrana. Jest w nim lokalny materiał do odszyfrowania części. Przy wznawianiu sesji interaktywnej albo wsadowej zapisuj stan sesji zwrócony przez SDK, zamiast składać klucze ręcznie.
 
 ## Powiązane strony
 
-- [Sprawdź certyfikaty szyfrowania](../how-to-guides/inspect-encryption-certificates.md): Pobierz i obejrzyj publiczne certyfikaty KSeF z klienta głównego.
-- [Wyślij faktury](../how-to-guides/send-invoices.md): Używaj szyfrowanych sesji online i batch bez ręcznego zarządzania kluczami.
-- [Pobierz faktury](../how-to-guides/download-invoices.md): Pobierz pojedyncze faktury i szyfrowane paczki eksportu.
-- [Certyfikaty](certificates.md): Oddziel publiczne certyfikaty szyfrowania od certyfikatów uwierzytelniania i certyfikatów wydanych przez KSeF.
+- [Podgląd certyfikatów szyfrowania](../how-to-guides/inspect-encryption-certificates.md): pobranie i obejrzenie publicznych certyfikatów KSeF z klienta głównego.
+- [Wysyłanie faktur](../how-to-guides/send-invoices.md): szyfrowane sesje interaktywne i wsadowe bez ręcznego zarządzania kluczami.
+- [Pobieranie faktur](../how-to-guides/download-invoices.md): pojedyncze faktury i zaszyfrowane paczki eksportu.
+- [Certyfikaty](certificates.md): różnica między publicznymi certyfikatami szyfrowania a certyfikatami uwierzytelniania i certyfikatami wydanymi przez KSeF.

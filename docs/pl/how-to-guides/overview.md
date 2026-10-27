@@ -1,82 +1,70 @@
 ---
 title: Spis poradników
-description: Wybierz poradnik do konkretnego zadania na publicznej powierzchni SDK.
+description: Wybierz poradnik do konkretnego zadania na publicznym API SDK.
 ---
 
-Ta sekcja jest dla sytuacji, w których znasz już ogólny kształt SDK i chcesz
-wykonać konkretne zadanie w KSeF. Szybki start pokazuje jedną ścieżkę od początku
-do końca; poniższe poradniki rozbijają typowe decyzje produkcyjne.
+Ta część jest dla sytuacji, w których znasz już ogólny układ SDK i chcesz wykonać konkretne zadanie w KSeF. Szybki start pokazuje jedną ścieżkę od początku do końca. Poniższe poradniki rozbijają typowe decyzje produkcyjne.
 
 ## Konfiguracja
 
-- [Konfiguracja klienta](client-setup.md): Sync albo async, publiczne moduły klienta bazowego i moduły po uwierzytelnieniu.
-- [Uwierzytelnij się](authenticate.md): Wybierz certyfikat TEST, token KSeF, certyfikat XAdES, zmienne środowiskowe albo profile kompatybilne z CLI.
-- [Użyj profili](profiles.md): Współdziel lokalną konfigurację ksef2-cli z uwierzytelnianiem SDK i ProfileStore.
+- [Konfiguracja klienta](client-setup.md): wersja synchroniczna albo asynchroniczna, publiczne moduły klienta głównego i moduły po uwierzytelnieniu.
+- [Uwierzytelnianie](authenticate.md): certyfikat testowy, token KSeF, certyfikat XAdES, zmienne środowiskowe albo profile zgodne z CLI.
+- [Profile](profiles.md): wspólna lokalna konfiguracja ksef2-cli dla uwierzytelniania SDK i `ProfileStore`.
 
 ## Faktury
 
-- [Zbuduj faktury FA(3)](build-fa3-invoices.md): Wygeneruj prosty publiczny model faktury i XML FA(3) do wysyłki przez fluent builder.
-- [Wyślij faktury](send-invoices.md): Wyślij XML FA(3) przez sesję online albo sesję wsadową i sprawdź wynik przetwarzania.
-- [Sprawdź status i UPO](get-status-and-upo.md): Odpytuj status online albo batch, listuj faktury sesji i pobieraj dokumenty UPO.
-- [Wyszukaj faktury](query-invoices.md): Zbuduj filtry metadanych, przejdź po stronach wyników i czekaj na widoczność nowych faktur.
-- [Pobierz faktury](download-invoices.md): Pobierz jedną fakturę po numerze KSeF albo zaplanuj szyfrowany eksport paczek.
+- [Budowanie faktur FA(3)](build-fa3-invoices.md): prosty publiczny model faktury i XML FA(3) budowany łańcuchem metod.
+- [Wysyłanie faktur](send-invoices.md): XML FA(3) przez sesję interaktywną albo wsadową i wynik przetwarzania.
+- [Pobieranie statusu i UPO](get-status-and-upo.md): status sesji interaktywnej albo wsadowej, lista faktur sesji i dokumenty UPO.
+- [Wyszukiwanie faktur](query-invoices.md): filtry metadanych, strony wyników i oczekiwanie, aż nowe faktury będą widoczne.
+- [Pobieranie faktur](download-invoices.md): jedna faktura po numerze KSeF albo zaplanowana, zaszyfrowana paczka eksportu.
 
 ## Administracja
 
-- [Zarządzaj tokenami](manage-tokens.md): Generuj, listuj, sprawdzaj i cofaj tokeny KSeF dla automatyzacji.
-- [Zarządzaj uprawnieniami](configure-permissions.md): Nadawaj, wyszukuj, odbieraj i monitoruj uprawnienia KSeF.
-- [Zarządzaj certyfikatami](manage-certificates.md): Sprawdzaj limity, rejestruj certyfikaty, pobieraj wydane materiały i cofaj certyfikaty.
-- [Zarządzaj limitami](manage-limits.md): Odczytuj i nadpisuj limity kontekstu, podmiotu oraz API rate limity.
+- [Zarządzanie tokenami](manage-tokens.md): generowanie, lista, sprawdzenie i unieważnienie tokenów KSeF dla automatyzacji.
+- [Konfiguracja uprawnień](configure-permissions.md): nadawanie, wyszukiwanie, odbieranie i śledzenie uprawnień KSeF.
+- [Zarządzanie certyfikatami](manage-certificates.md): limity, rejestracja, pobranie wydanego certyfikatu i unieważnienie.
+- [Zarządzanie limitami](manage-limits.md): odczyt i nadpisanie limitów kontekstu logowania, podmiotu oraz liczby żądań API.
 
 ## Narzędzia pomocnicze
 
-- [Sprawdź certyfikaty szyfrowania](inspect-encryption-certificates.md): Sprawdzaj publiczne certyfikaty KSeF używane w szyfrowanych przepływach faktur i eksportów.
-- [Wyszukaj dostawców PEPPOL](query-peppol-providers.md): Wyszukuj publiczne dane dostawców PEPPOL z klienta bazowego.
-- [Użyj danych TEST](use-test-data.md): Twórz sandboxowe podmioty, uprawnienia, flagi załączników i fixture'y z temporal cleanup.
-- [Użyj pomocników XAdES](use-xades-helpers.md): Ładuj materiał certyfikatu, generuj certyfikaty TEST i podpisuj XML.
-- [Przechowywanie certyfikatów podpisu](store-signing-certificates.md): Trzymaj pary podpisujące w pamięci albo w plikach szyfrowanych hasłem i wskazuj je referencją.
-- [Własny magazyn certyfikatów podpisu](write-signing-certificate-store.md): Trzymaj własny certyfikat podpisu i klucz w keychainie, bazie danych albo managerze sekretów.
-- [API niskiego poziomu](../reference/low-level/overview.md): Zejdź do schema-native wrapperów endpointów dla własnego podpisu, custody szyfrowania albo debugowania payloadów.
+- [Podgląd certyfikatów szyfrowania](inspect-encryption-certificates.md): publiczne certyfikaty KSeF używane przy szyfrowaniu faktur i eksportów.
+- [Wyszukiwanie dostawców PEPPOL](query-peppol-providers.md): publiczne dane dostawców PEPPOL z klienta głównego.
+- [Dane testowe](use-test-data.md): podmioty, uprawnienia i flagi załączników w środowisku testowym oraz dane, które same się sprzątają.
+- [Podpisy XAdES](use-xades-helpers.md): wczytanie certyfikatu, certyfikaty testowe i podpis XML.
+- [Przechowywanie certyfikatów podpisu](store-signing-certificates.md): pary do podpisu w pamięci albo w plikach szyfrowanych hasłem, wskazywane przez `SigningCertificateRef`.
+- [Własny magazyn certyfikatów podpisu](write-signing-certificate-store.md): własny certyfikat podpisu i klucz w pęku kluczy, bazie danych albo menedżerze sekretów.
+- [API niskiego poziomu](../reference/low-level/overview.md): bezpośrednie wywołania operacji API przy własnym podpisie, własnym szyfrowaniu albo diagnostyce treści żądań.
 
-:::tip[Sync i async mają ten sam przepływ]
-Klient async ma te same moduły i nazwy metod. Użyj `AsyncClient`, wywołania
-sieciowe poprzedź `await`, a zasoby klienta i sesji zamykaj przez
-`async with`.
+:::tip[Wersja synchroniczna i asynchroniczna mają ten sam przepływ]
+Klient asynchroniczny ma te same moduły i nazwy metod. Użyj `AsyncClient`, operacje sieciowe poprzedź `await`, a zasoby klienta i sesji zamykaj przez `async with`.
 :::
 
 ## Typowa kolejność
 
 1. Skonfiguruj środowisko i dane uwierzytelniające.
 
-   Sekrety trzymaj w zmiennych środowiskowych, a niesekretne ustawienia w
-   lokalnej konfiguracji.
+   Sekrety trzymaj w zmiennych środowiskowych, a ustawienia bez sekretów w lokalnej konfiguracji.
 
-2. Uwierzytelnij się dla wybranego kontekstu.
+2. Uwierzytelnij się dla wybranego kontekstu logowania.
 
-   Uwierzytelniony klient udostępnia `online_session`, `batch`, `invoices`,
-   `tokens`, `permissions`, `certificates` i inne moduły przepływów.
+   Klient uwierzytelniony udostępnia `online_session`, `batch`, `invoices`, `tokens`, `permissions`, `certificates` i inne moduły.
 
-3. Uruchom gałąź przepływu, która odpowiada za zadanie.
+3. Uruchom moduł, który odpowiada za zadanie.
 
-   Użyj publicznych modułów klienta bazowego do certyfikatów szyfrowania, lookupu
-   PEPPOL i danych TEST. Użyj modułów uwierzytelnionych do faktur, sesji,
-   tokenów, uprawnień, certyfikatów i limitów.
+   Publicznych modułów klienta głównego używaj do certyfikatów szyfrowania, wyszukiwania PEPPOL i danych testowych. Modułów uwierzytelnionych używaj do faktur, sesji, tokenów, uprawnień, certyfikatów i limitów.
 
-4. Poczekaj na przetwarzanie w KSeF albo status operacji.
+4. Poczekaj na przetwarzanie w KSeF albo na status operacji.
 
-   Pomocniki wysokiego poziomu potrafią odpytywać status faktury, zakończenie
-   batcha, operacje uprawnień, rejestrację certyfikatu, widoczność w metadanych
-   i gotowość paczki eksportu.
+   Metody wysokiego poziomu potrafią sprawdzać status faktury, zakończenie sesji wsadowej, operacje na uprawnieniach, rejestrację certyfikatu, widoczność w metadanych i gotowość paczki eksportu.
 
 5. Zapisz wynik biznesowy.
 
-   Zapisuj numery KSeF, referencje sesji, referencje operacji, uchwyty
-   eksportu, pobrany XML, referencje tokenów, numery seryjne certyfikatów i UPO
-   zgodnie z polityką retencji aplikacji.
+   Zapisuj numery KSeF, numery referencyjne sesji i operacji, obiekt eksportu, pobrany XML, numery referencyjne tokenów, numery seryjne certyfikatów i UPO (Urzędowe Poświadczenie Odbioru) zgodnie z zasadami przechowywania w aplikacji.
 
-## Referencja
+## Dalszy opis
 
-- [Szybki start](../getting-started/quickstart.md): Uruchom pierwszy przepływ generowania, wysyłki, potwierdzenia i pobrania.
-- [Operacje](../reference/operations.md): Mapuj zadania na moduły SDK, pomocniki pollingu i granice ponawiania.
-- [Kontrakt publicznego API](../reference/public-api.md): Przejrzyj stabilne importy i publiczne moduły wystawiane przez SDK.
-- [Low-level API](../reference/low-level/overview.md): Użyj schema-native wrapperów endpointów, gdy przepływ wysokiego poziomu nie wystarcza.
+- [Szybki start](../getting-started/quickstart.md): pierwszy przebieg od wygenerowania faktury, przez wysyłkę i poświadczenie, do pobrania.
+- [Operacje](../reference/operations.md): zadania, moduły SDK, sprawdzanie statusu i granice ponawiania.
+- [Interfejs publiczny](../reference/public-api.md): stabilne importy i publiczne moduły SDK.
+- [API niskiego poziomu](../reference/low-level/overview.md): bezpośrednie wywołania operacji API, gdy przepływ wysokiego poziomu nie wystarcza.

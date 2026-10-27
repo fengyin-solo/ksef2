@@ -1,15 +1,13 @@
 ---
-title: Mapa endpointów low-level
-description: Znajdź gałąź raw i grupę metod ksef2 dla wybranego obszaru KSeF.
+title: Mapa operacji API
+description: Znajdź moduł raw i grupę metod ksef2 dla wybranego obszaru KSeF.
 ---
 
-Grupy endpointów low-level są cienkimi fasadami nad wrapperami endpointów SDK.
-Są dostępne przez `client.raw` przed uwierzytelnieniem i `auth.raw` po
-uwierzytelnieniu.
+Grupy operacji niskiego poziomu są cienkimi fasadami nad metodami SDK odpowiadającymi operacjom API. Są dostępne przez `client.raw` przed uwierzytelnieniem i `auth.raw` po uwierzytelnieniu.
 
 ## Przed uwierzytelnieniem
 
-| Gałąź | Metody |
+| Moduł | Metody |
 | --- | --- |
 | `client.raw.auth` | `challenge`, `token_auth`, `xades_auth`, `auth_status`, `redeem_token`, `refresh_token` |
 | `client.raw.encryption` | `fetch_public_certificates` |
@@ -20,7 +18,7 @@ uwierzytelnieniu.
 
 ## Po uwierzytelnieniu
 
-| Gałąź | Metody |
+| Moduł | Metody |
 | --- | --- |
 | `auth.raw.auth` | `list_sessions`, `terminate_current_session`, `terminate_auth_session`; także metody auth, gdy są związane z uwierzytelnionym transportem |
 | `auth.raw.certificates` | `get_limits`, `get_enrollment_data`, `enroll`, `get_enrollment_status`, `retrieve`, `revoke`, `query` |
@@ -53,5 +51,4 @@ from ksef2.raw import (
 from ksef2.raw.mappers import auth as auth_mapper
 ```
 
-Używaj `spec` i `supp` dla wspieranych modeli schema-native. Nie importuj
-wygenerowanych modeli z prywatnego pakietu schem SDK w kodzie aplikacyjnym.
+Używaj `spec` i `supp` dla wspieranych modeli zgodnych ze schematem. Nie importuj wygenerowanych modeli z prywatnego pakietu schematów SDK w kodzie aplikacji.

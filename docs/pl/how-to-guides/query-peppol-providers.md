@@ -1,17 +1,13 @@
 ---
-title: Wyszukaj dostawców PEPPOL
+title: Wyszukiwanie dostawców PEPPOL
 description: Wyszukuj dostawców usług PEPPOL zarejestrowanych w KSeF.
 ---
 
-Użyj `client.peppol`, gdy potrzebujesz publicznej listy dostawców usług PEPPOL
-zarejestrowanych w KSeF. To gałąź klienta głównego i nie wymaga
-uwierzytelniania.
+Użyj `client.peppol`, gdy potrzebujesz publicznej listy dostawców usług PEPPOL zarejestrowanych w KSeF. To moduł klienta głównego i nie wymaga uwierzytelniania.
 
 ## Wyszukaj dostawców
 
-`list()` zwraca `Pager`: iteruj po nim, by dostać każdego dostawcę, wywołaj
-`.pages()` dla list wielkości strony albo `.first_page()`, by wykonać jedno
-żądanie.
+`list()` zwraca `Pager`. Iteruj po nim, żeby dostać każdego dostawcę, wywołaj `.pages()` dla list wielkości strony albo `.first_page()`, żeby wykonać jedno żądanie.
 
 ### Wszyscy dostawcy
 
@@ -33,10 +29,9 @@ for provider in client.peppol.list():
 first = client.peppol.list().first_page()
 ```
 
-## Cache'uj wybory dostawców
+## Zapisz wybory dostawców
 
-Rekordy dostawców są danymi referencyjnymi. Odpytaj je z KSeF, a potem cache'uj
-id i nazwę wyświetlaną do wyboru użytkownika albo walidacji w produkcie.
+Rekordy dostawców są danymi słownikowymi. Pobierz je z KSeF, a potem zapisz identyfikator i nazwę wyświetlaną do wyboru użytkownika albo do sprawdzenia w produkcie.
 
 ```python
 providers_by_id = {
@@ -45,18 +40,17 @@ providers_by_id = {
 }
 ```
 
-## Zalecany przepływ
+## Zalecany przebieg
 
 1. Wyszukaj dostawców z klienta głównego.
 
-2. Zapisz id i nazwy dostawców w cache'u danych referencyjnych aplikacji.
+2. Zapisz identyfikatory i nazwy w pamięci podręcznej danych słownikowych aplikacji.
 
-3. Używaj id dostawców przy walidacji wyborów użytkownika albo danych
-   związanych z PEPPOL.
+3. Używaj identyfikatorów przy sprawdzaniu wyborów użytkownika albo danych związanych z PEPPOL.
 
-4. Odświeżaj cache zgodnie z wymaganiami świeżości danych w produkcie.
+4. Odświeżaj tę kopię zgodnie z tym, jak świeże dane są potrzebne w produkcie.
 
-## Następne przepływy
+## Następne strony
 
-- [Konfiguracja klienta](client-setup.md): Utwórz klienta głównego używanego do publicznych zapytań o dostawców PEPPOL.
-- [PEPPOL](../concepts/peppol.md): Zrozum, gdzie dane dostawców PEPPOL pasują do powierzchni SDK.
+- [Konfiguracja klienta](client-setup.md): klient główny używany do publicznych zapytań o dostawców PEPPOL.
+- [PEPPOL](../concepts/peppol.md): gdzie dane dostawców PEPPOL mieszczą się w SDK.

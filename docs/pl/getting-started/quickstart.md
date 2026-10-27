@@ -1,15 +1,13 @@
 ---
 title: Szybki start
-description: Wygeneruj fakturę TEST, wyślij ją do KSeF, pobierz UPO i sprawdź zwrócony XML.
+description: Wygeneruj fakturę w środowisku testowym, wyślij ją do KSeF, pobierz UPO i sprawdź zwrócony XML.
 ---
 
-Ten przykład przeprowadza jedną fakturę TEST przez pełny scenariusz w SDK:
-zbudowanie faktury FA(3), uwierzytelnienie certyfikatem TEST, wysłanie faktury
-w sesji online, pobranie UPO oraz przetworzonego XML faktury z KSeF.
+W tym przykładzie przejdziesz cały proces dla jednej faktury w środowisku testowym: zbudujesz fakturę FA(3), uwierzytelnisz się certyfikatem testowym, wyślesz fakturę w sesji interaktywnej, pobierzesz UPO (Urzędowe Poświadczenie Odbioru) oraz XML faktury przetworzonej przez KSeF.
 
 ## Instalacja
 
-Wybierz preferowaną metodę instalacji:
+Wybierz sposób instalacji.
 
 ### Instalacja przez pip
 
@@ -114,55 +112,40 @@ Skrypt zapisze trzy lokalne pliki:
 - `downloads/upo.xml`
 - `downloads/processed-invoice.xml`
 
-Po zakończeniu sprawdź wygenerowany XML, UPO oraz XML zwrócony przez KSeF.
-Wygenerowany i przetworzony XML powinny opisywać tę samą fakturę; zachowaj
-przetworzony XML jako kopię zwróconą przez KSeF.
+Po zakończeniu sprawdź wygenerowany XML, UPO oraz XML zwrócony przez KSeF. Wygenerowany i przetworzony XML powinny opisywać tę samą fakturę. Przetworzony XML zachowaj jako kopię zwróconą przez KSeF.
 
 :::note[Dlaczego używamy certyfikatu TEST?]
-Ten przykład używa `with_test_certificate()`, bo w `Environment.TEST`
-wymaga najmniej przygotowania. Tokeny, XAdES i profile są opisane w poradniku
-uwierzytelniania.
+Ten przykład używa `with_test_certificate()`, bo w `Environment.TEST` wymaga najmniej przygotowania. Tokeny, XAdES i profile są opisane w poradniku uwierzytelniania.
 :::
 
 ## Co robi ten przykład
 
-1. `InvoiceBuilder` utworzył minimalny XML FA(3) z nazwami pól SDK, takimi
-   jak `invoice_number`, `tax_id` i `unit_price_net`.
+1. `InvoiceBuilder` tworzy minimalny XML FA(3). Nazwy pól, takie jak `invoice_number`, `tax_id` i `unit_price_net`, pochodzą z SDK.
 
-2. `Client(Environment.TEST)` wybrał adresy bazowe środowiska TEST KSeF i
-   zarządzał zasobami HTTP używanymi przez SDK.
+2. `Client(Environment.TEST)` wybiera adresy środowiska testowego KSeF i zarządza połączeniami HTTP używanymi przez SDK.
 
-3. `with_test_certificate()` uwierzytelniło kontekst TEST wskazany przez
-   `SELLER_NIP`.
+3. `with_test_certificate()` uwierzytelnia kontekst logowania środowiska testowego wskazany przez `SELLER_NIP`.
 
-4. `online_session(form_code=FormSchema.FA3)` otworzyło sesję online do wysłania faktury
-   FA(3).
+4. `online_session(form_code=FormSchema.FA3)` otwiera sesję interaktywną do wysłania faktury FA(3).
 
-5. `send_invoice()` wysłało fakturę i zwróciło uchwyt `InvoiceSubmission` z
-   numerem referencyjnym faktury w sesji.
+5. `send_invoice()` wysyła fakturę i zwraca obiekt `InvoiceSubmission` z numerem referencyjnym faktury w sesji.
 
-6. `submission.wait()` cyklicznie sprawdzało status, aż KSeF nadał numer
-   faktury.
+6. `submission.wait()` sprawdza status, dopóki KSeF nie nada fakturze numeru KSeF.
 
-7. `submission.download_upo()` pobrało XML UPO, a `auth.invoices.download()`
-   pobrało przetworzony XML faktury.
+7. `submission.download_upo()` pobiera XML UPO, a `auth.invoices.download()` pobiera przetworzony XML faktury.
 
 ## Dostosuj skrypt
 
-Zmień pola faktury albo dodaj kolejne pozycje, gdy dopasowujesz skrypt. Aby
-przenieść ten sam kształt do DEMO albo PRODUCTION, zmień główne `Environment` i
-użyj credentiala przypisanego do tego środowiska.
+Zmień pola faktury albo dodaj kolejne pozycje, gdy dopasowujesz skrypt do swojego przypadku. Aby uruchomić skrypt w środowisku przedprodukcyjnym (Demo) lub produkcyjnym, zmień `Environment` i użyj danych uwierzytelniających wydanych dla tego środowiska.
 
-Do codziennej pracy lokalnej utwórz profil kompatybilny z CLI i zastąp linię
-uwierzytelnienia wywołaniem `client.authentication.with_profile("test-company")`.
-Profil musi wskazywać to samo środowisko co klient główny.
+Do codziennej pracy lokalnej utwórz profil zgodny z CLI i zastąp linię uwierzytelnienia wywołaniem `client.authentication.with_profile("test-company")`. Profil musi wskazywać to samo środowisko co klient główny.
 
 ## Powiązane strony
 
-- [Konfiguracja klienta](../how-to-guides/client-setup.md): Utwórz klienta synchronicznego albo asynchronicznego i zarządzaj cyklem życia zasobów.
-- [Uwierzytelnianie](../how-to-guides/authenticate.md): Uwierzytelnij się tokenem, XAdES, certyfikatem TEST albo profilem.
-- [Profile](../how-to-guides/profiles.md): Użyj lokalnego profilu zgodnego z CLI po pierwszym uruchomieniu w środowisku TEST.
-- [Zbuduj faktury FA(3)](../how-to-guides/build-fa3-invoices.md): Generuj poprawny XML FA(3) za pomocą fluent buildera.
-- [Wysyłanie faktur](../how-to-guides/send-invoices.md): Wysyłaj faktury online albo w trybie batch i śledź stan przetwarzania.
-- [Pobieranie faktur](../how-to-guides/download-invoices.md): Pobieraj XML faktury bezpośrednio albo przez pakiety eksportu.
-- [Kontrakt publicznego API](../reference/public-api.md): Przejrzyj stabilne publiczne importy dla kodu aplikacyjnego.
+- [Konfiguracja klienta](../how-to-guides/client-setup.md): klient synchroniczny albo asynchroniczny i zamykanie zasobów.
+- [Uwierzytelnianie](../how-to-guides/authenticate.md): token KSeF, XAdES, certyfikat testowy albo profil.
+- [Profile](../how-to-guides/profiles.md): lokalny profil zgodny z CLI po pierwszym uruchomieniu w środowisku testowym.
+- [Budowanie faktur FA(3)](../how-to-guides/build-fa3-invoices.md): poprawny XML FA(3) budowany łańcuchem metod.
+- [Wysyłanie faktur](../how-to-guides/send-invoices.md): sesja interaktywna albo wsadowa i śledzenie przetwarzania.
+- [Pobieranie faktur](../how-to-guides/download-invoices.md): XML faktury bezpośrednio albo z paczki eksportu.
+- [Interfejs publiczny](../reference/public-api.md): stabilne publiczne importy dla kodu aplikacji.

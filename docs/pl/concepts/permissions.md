@@ -1,62 +1,39 @@
 ---
 title: Tokeny i uprawnienia
-description: Zrozum tokeny, zakresy uprawnień, nadania, cofnięcia i status operacji w KSeF.
+description: Tokeny KSeF, zakresy uprawnień, nadania, cofnięcia i status operacji.
 ---
 
-Uwierzytelnienie potwierdza tożsamość. Uprawnienia określają, co ta tożsamość
-może zrobić. Tokeny pakują wybrane uprawnienia w wielokrotnego użytku materiał
-credential. Credential może uwierzytelnić się poprawnie, a potem nie mieć prawa
-do następnej operacji.
+Uwierzytelnienie potwierdza tożsamość. Uprawnienia określają, co ta tożsamość może zrobić. Token KSeF zbiera wybrany zestaw uprawnień w sekret, którego można użyć wielokrotnie. Poprawne uwierzytelnienie nie gwarantuje, że kolejna operacja zostanie dopuszczona.
 
-Uprawnienia określają, co podmiot, osoba, jednostka, jednostka UE, autoryzacja
-albo subunit mogą zrobić w kontekście KSeF. Wiele zmian uprawnień jest
-operacjami asynchronicznymi: wywołanie nadania albo cofnięcia zwraca referencję
-operacji, a aplikacja potem sprawdza jej status.
+Uprawnienia określają, co podmiot, osoba, jednostka, jednostka unijna, podmiot uprawniony albo jednostka podrzędna mogą zrobić w kontekście logowania. Wiele zmian uprawnień jest asynchronicznych: nadanie albo cofnięcie zwraca numer referencyjny operacji, a aplikacja dopiero potem sprawdza jej status.
 
-Kod uprawnień powinien jawnie wskazywać identyfikator celu, zakres uprawnienia i
-kontekst. Ułatwia to późniejszy audyt i odtwarzanie po błędach.
+W kodzie uprawnień jawnie wskaż identyfikator celu, zakres uprawnienia i kontekst logowania. Łatwiej wtedy odtworzyć historię i wrócić do pracy po błędzie.
 
 ## Tokeny
 
-`auth.tokens` tworzy, listuje, sprawdza i cofa tokeny KSeF. Generowanie tokenu
-od razu zwraca uchwyt `GeneratedToken` z jednorazowym tokenem i numerem
-referencyjnym. Zapisz credential przed jawnym wywołaniem `wait()` na uchwycie.
-Dzięki temu timeout albo błąd transportu podczas pollingu nie odrzuci jedynej
-kopii tokenu.
+`auth.tokens` tworzy, listuje, sprawdza i unieważnia tokeny KSeF. Wygenerowanie tokena od razu zwraca obiekt `GeneratedToken` z jednorazową wartością tokena i numerem referencyjnym. Zapisz sekret, zanim jawnie wywołasz `wait()` na tym obiekcie. Dzięki temu limit czasu albo błąd połączenia podczas sprawdzania statusu nie skasuje jedynej kopii tokena.
 
-Wygenerowany token ma stały zestaw uprawnień. Jeśli uprawnienia mają się
-zmienić, wygeneruj nowy token i cofnij stary po migracji. Generowanie tokenu
-jest dostępne tylko w obsługiwanych kontekstach jednostki, takich jak NIP albo
-internal ID, i wymaga wcześniejszego uwierzytelnienia XAdES zanim powstanie
-wielokrotnego użytku credential tokenu.
+Wygenerowany token ma stały zestaw uprawnień. Gdy uprawnienia mają się zmienić, wygeneruj nowy token i unieważnij stary po przejściu na nowy. Token można wygenerować tylko w obsługiwanych kontekstach logowania, takich jak NIP albo identyfikator wewnętrzny (`InternalId`). Wcześniej trzeba uwierzytelnić się podpisem XAdES.
 
-Tokeny traktuj jako sekrety. Przechowuj wartość tokenu poza kontrolą wersji i
-preferuj zmienne środowiskowe albo secret manager. Profile mogą wskazywać
-zmienne środowiskowe tokenów, aby CLI i Python używały wspólnej konfiguracji bez
-commitowania sekretu.
+Tokeny trzymaj jak sekrety. Nie zapisuj ich w repozytorium. Lepiej trzymać je w zmiennych środowiskowych albo w menedżerze sekretów. Profil może wskazywać zmienną środowiskową z tokenem, żeby CLI i Python korzystały ze wspólnej konfiguracji bez umieszczania sekretu w kodzie.
 
-:::caution[Credential to nie autoryzacja]
-Token albo certyfikat może uwierzytelnić się poprawnie i nadal dostać odmowę,
-jeśli kontekst, identyfikator celu albo zakres uprawnień nie pasuje do
-operacji.
+:::caution[Dane uwierzytelniające to nie uprawnienie]
+Token albo certyfikat może poprawnie potwierdzić tożsamość, a KSeF i tak odmówi operacji, jeśli nie zgadza się kontekst logowania, identyfikator celu albo zakres uprawnień.
 :::
 
 ## Uprawnienia
 
-API uprawnień jest celowo szczegółowe, bo KSeF odróżnia typy celów i zakresy.
-SDK ma osobne metody dla nadań osoby, jednostki, autoryzacji, pośrednich,
-subunit i jednostek UE oraz odpowiadające im zapytania i cofnięcia.
+API uprawnień jest szczegółowe, bo KSeF rozróżnia rodzaje celów i zakresy. SDK ma osobne metody dla nadań osobie, jednostce, podmiotowi uprawnionemu, uprawnień pośrednich, jednostek podrzędnych i jednostek unijnych oraz odpowiadające im zapytania i cofnięcia.
 
-Oficjalny model uprawnień łączy identyfikatory celów, typy uprawnień i reguły
-delegowania:
+Model uprawnień łączy identyfikator celu, typ uprawnienia i zasady przekazywania uprawnień dalej:
 
-| Pojęcie | Skutek projektowy |
+| Pojęcie | Skutek w projekcie |
 | --- | --- |
-| Identyfikator celu | Użyj właściwego rodzaju identyfikatora, takiego jak NIP, PESEL, fingerprint certyfikatu, NIP VAT UE albo internal ID. |
-| Typ uprawnienia | Trzymaj skończone wybory jawnie, na przykład odczyt faktur, zapis faktur, odczyt credentiali, zarządzanie credentialami, zarządzanie subunit, czynności egzekucyjne albo introspekcja. |
-| Uprawnienia bezpośrednie i pośrednie | Pytaj i cofaj przez gałąź zgodną ze sposobem nadania uprawnienia. |
-| Delegowanie | `can_delegate` ma sens tylko tam, gdzie KSeF pozwala na delegowanie w danej ścieżce uprawnień. |
-| Status operacji | Nadania i cofnięcia zwracają uchwyt `PermissionOperation`; wywołaj `wait()` zanim uznasz, że uprawnienie się zmieniło. |
+| Identyfikator celu | Użyj właściwego rodzaju: NIP, PESEL, odcisk palca certyfikatu (`fingerprint`), NIP VAT UE albo identyfikator wewnętrzny. |
+| Typ uprawnienia | Trzymaj skończony wybór wprost, na przykład przeglądanie faktur, wystawianie faktur, przeglądanie uprawnień, zarządzanie uprawnieniami, zarządzanie jednostkami podrzędnymi, wykonywanie operacji egzekucyjnych albo przeglądanie historii sesji. |
+| Uprawnienia bezpośrednie i pośrednie | Pytaj i cofaj tą metodą, która odpowiada sposobowi nadania. |
+| Przekazanie dalej | `can_delegate` ma sens tylko tam, gdzie KSeF pozwala przekazać uprawnienie dalej. |
+| Status operacji | Nadanie i cofnięcie zwracają obiekt `PermissionOperation`. Wywołaj `wait()`, zanim uznasz, że uprawnienie się zmieniło. |
 
 ```python
 from ksef2.models import EntityPermission
@@ -72,18 +49,18 @@ status = operation.wait()
 print(status.status.code, status.status.description)
 ```
 
-Przy błędzie autoryzacji sprawdź:
+Przy odmowie sprawdź:
 
 - wybrane środowisko;
-- uwierzytelniony identyfikator podatnika albo kontekstu;
-- nazwę profilu i typ credentiali;
-- zestaw uprawnień tokenu;
-- identyfikator celu i zakres uprawnień;
-- czy operacja nadania albo cofnięcia została zakończona.
+- identyfikator podatnika albo identyfikator kontekstu, na który się uwierzytelniłeś;
+- nazwę profilu i rodzaj danych uwierzytelniających;
+- zestaw uprawnień tokena;
+- identyfikator celu i zakres uprawnienia;
+- czy operacja nadania albo cofnięcia już się zakończyła.
 
 ## Powiązane strony
 
-- [Zarządzaj tokenami](../how-to-guides/manage-tokens.md): Generuj, listuj, sprawdzaj i unieważniaj tokeny KSeF.
-- [Skonfiguruj uprawnienia](../how-to-guides/configure-permissions.md): Nadawaj, wyszukuj, sprawdzaj i cofaj uprawnienia.
-- [Operacje](../reference/operations.md): Zrozum referencje operacji, polling, retry i statusy.
-- [Metody uwierzytelniania](authentication-methods.md): Oddziel tożsamość uwierzytelniania od uprawnień sprawdzanych podczas operacji chronionych.
+- [Zarządzanie tokenami](../how-to-guides/manage-tokens.md): generowanie, lista, sprawdzenie i unieważnienie tokenów KSeF.
+- [Konfiguracja uprawnień](../how-to-guides/configure-permissions.md): nadawanie, wyszukiwanie, sprawdzanie i cofanie uprawnień.
+- [Operacje](../reference/operations.md): numery referencyjne, sprawdzanie statusu, ponowienia i statusy.
+- [Metody uwierzytelniania](authentication-methods.md): różnica między tożsamością a uprawnieniami sprawdzanymi przy operacjach chronionych.

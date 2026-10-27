@@ -3,11 +3,9 @@ title: Tworzenie i zamykanie klientów
 description: Argumenty konstruktorów, własność modułów, zamykanie zasobów i błędy cyklu życia w klientach ksef2.
 ---
 
-Ta strona opisuje kontrakt referencyjny klientów bazowych i uwierzytelnionych.
-Skorzystaj z poradnika praktycznego, gdy potrzebujesz pełnej sekwencji
-konfiguracji.
+Ta strona opisuje kontrakt klientów głównych i uwierzytelnionych. Pełną sekwencję konfiguracji znajdziesz w poradniku praktycznym.
 
-## Konstruktory klienta bazowego
+## Konstruktory klienta głównego
 
 ```text
 Client(
@@ -27,139 +25,102 @@ AsyncClient(
 
 | Argument | Typ sync | Typ async | Domyślnie | Znaczenie |
 | --- | --- | --- | --- | --- |
-| `environment` | `Environment | str` | `Environment | str` | Wymagane | Środowisko KSeF i bazowy URL klienta. Nazwy tekstowe nie rozróżniają wielkości liter, np. `"test"`. |
-| `transport_config` | `TransportConfig | None` | `TransportConfig | None` | Timeouty HTTP, pool, TLS, proxy, HTTP/2 i retry dla klienta HTTP tworzonego przez SDK. |
-| `http_client` | `httpx.Client | None` | `httpx.AsyncClient | None` | Klient HTTP przekazany przez aplikację. Gdy jest podany, aplikacja posiada jego ustawienia HTTP i końcowe zamknięcie. |
+| `environment` | `Environment | str` | `Environment | str` | Wymagane | Środowisko KSeF i bazowy adres URL klienta. Nazwy tekstowe nie rozróżniają wielkości liter, na przykład `"test"`. |
+| `transport_config` | `TransportConfig | None` | `TransportConfig | None` | | Limity czasu HTTP, pula połączeń, TLS, proxy, HTTP/2 i ponowienia dla klienta HTTP tworzonego przez SDK. |
+| `http_client` | `httpx.Client | None` | `httpx.AsyncClient | None` | | Klient HTTP przekazany przez aplikację. Gdy jest podany, aplikacja ma jego ustawienia HTTP i sama go zamyka. |
 
-Gdy `http_client` nie jest podany, SDK tworzy klienta `httpx` z
-`transport_config` i zamyka go razem z klientem bazowym.
-Przekazany `http_client` musi mieć `base_url` zgodny z wybranym
-`Environment`; SDK używa tego klienta do requestów i nie zastępuje jego
-`base_url`.
+Gdy `http_client` nie jest podany, SDK tworzy klienta `httpx` z `transport_config` i zamyka go razem z klientem głównym. Przekazany `http_client` musi mieć `base_url` zgodny z wybranym `Environment`. SDK używa tego klienta do żądań i nie podmienia jego `base_url`.
 
-Gdy przekazujesz `http_client`, jego `base_url` musi pasować do `environment`.
-Pusty `base_url` zostanie ustawiony na URL wybranego środowiska; inny URL
-spowoduje `KSeFArgumentError` podczas tworzenia klienta. Dzięki temu routing i
-ograniczenia funkcji TEST pozostają zgodne.
+Gdy przekazujesz `http_client`, jego `base_url` musi pasować do `environment`. Pusty `base_url` zostanie ustawiony na adres wybranego środowiska. Inny adres spowoduje `KSeFArgumentError` przy tworzeniu klienta. Dzięki temu kierowanie ruchu i ograniczenia funkcji środowiska testowego zostają zgodne.
 
-## Elementy klienta bazowego
+## Elementy klienta głównego
 
 | Element | Dostępny na | Zwraca | Uwagi |
 | --- | --- | --- | --- |
-| `authentication` | `Client`, `AsyncClient` | `AuthClient` / `AsyncAuthClient` | Punkt wejścia do tokenu, XAdES, certyfikatu TEST i profili. |
+| `authentication` | `Client`, `AsyncClient` | `AuthClient` / `AsyncAuthClient` | Wejście do tokenu, XAdES, certyfikatu testowego i profili. |
 | `encryption` | `Client`, `AsyncClient` | `EncryptionClient` / `AsyncEncryptionClient` | Publiczny odczyt certyfikatów szyfrowania KSeF. |
-| `peppol` | `Client`, `AsyncClient` | `PeppolClient` / `AsyncPeppolClient` | Publiczny lookup dostawców PEPPOL. |
-| `testdata` | `Client`, `AsyncClient` | `TestDataClient` / `AsyncTestDataClient` | Gałąź fixture'ów tylko dla TEST. Rzuca błąd poza `Environment.TEST`. |
-| `raw` | `Client`, `AsyncClient` | `RawClient` / `AsyncRawClient` | Niskopoziomowe, nieuwierzytelnione grupy endpointów. |
-| `authenticated(auth_tokens)` | `Client`, `AsyncClient` | `AuthenticatedClient` / `AsyncAuthenticatedClient` | Deprecated compatibility wrapper. Użyj `authentication.resume(AuthenticationResumeState.from_tokens(auth_tokens))`. |
-| `close()` | `Client` | `None` | Idempotentnie zamyka klienta HTTP sync należącego do SDK i unieważnia moduły w cache. |
-| `aclose()` | `AsyncClient` | `None` | Idempotentnie zamyka zasoby async i unieważnia moduły w cache. |
+| `peppol` | `Client`, `AsyncClient` | `PeppolClient` / `AsyncPeppolClient` | Publiczne wyszukiwanie dostawców PEPPOL. |
+| `testdata` | `Client`, `AsyncClient` | `TestDataClient` / `AsyncTestDataClient` | Moduł danych testowych tylko dla `Environment.TEST`. Poza tym środowiskiem zgłasza błąd. |
+| `raw` | `Client`, `AsyncClient` | `RawClient` / `AsyncRawClient` | Niskopoziomowe, nieuwierzytelnione grupy operacji API. |
+| `authenticated(auth_tokens)` | `Client`, `AsyncClient` | `AuthenticatedClient` / `AsyncAuthenticatedClient` | Przestarzała metoda zgodności. Użyj `authentication.resume(AuthenticationResumeState.from_tokens(auth_tokens))`. |
+| `close()` | `Client` | `None` | Idempotentnie zamyka synchronicznego klienta HTTP należącego do SDK i unieważnia zapamiętane moduły. |
+| `aclose()` | `AsyncClient` | `None` | Idempotentnie zamyka zasoby asynchroniczne i unieważnia zapamiętane moduły. |
 
-`AsyncClient.close()`, `AsyncOnlineSessionClient.close()` i
-`AsyncBatchSessionClient.close()` natychmiast zgłaszają `KSeFArgumentError`
-i pozostawiają zasoby otwarte. Użyj `await client.aclose()`,
-`await session.aclose()` lub `async with`. Metody `close()` są synchroniczne
-i nie można ich używać z `await`.
+`AsyncClient.close()`, `AsyncOnlineSessionClient.close()` i `AsyncBatchSessionClient.close()` od razu zgłaszają `KSeFArgumentError` i zostawiają zasoby otwarte. Użyj `await client.aclose()`, `await session.aclose()` albo `async with`. Metody `close()` są synchroniczne i nie można ich używać z `await`.
 
-Właściwości modułów są cache'owane, dopóki klient bazowy jest otwarty. Po
-zamknięciu klienta dostęp do modułów i operacje chronione middleware cyklu życia
-rzucają `KSeFClientClosedError`.
+Właściwości modułów są zapamiętywane, dopóki klient główny jest otwarty. Po zamknięciu klienta dostęp do modułów i operacje chronione przez warstwę cyklu życia zgłaszają `KSeFClientClosedError`.
 
-## Context managery
+## Menedżery kontekstu
 
-| Klient | Protokół context managera | Metoda cleanup |
+| Klient | Zapis | Zamknięcie |
 | --- | --- | --- |
 | `Client` | `with Client(...) as client:` | `client.close()` przy wyjściu. |
 | `AsyncClient` | `async with AsyncClient(...) as client:` | `await client.aclose()` przy wyjściu. |
 
-Context manager zamyka tylko klienta bazowego. Sesje online i batch są osobnymi
-granicami cyklu życia i powinny być zamykane przez własne context managery albo
-metody serwisów.
+Menedżer kontekstu zamyka tylko klienta głównego. Sesja interaktywna i sesja wsadowa mają osobny cykl życia. Zamykaj je własnym menedżerem kontekstu albo metodą usługi.
 
 ## Elementy klienta uwierzytelnionego
 
-Uwierzytelnienie zwraca klienta uwierzytelnionego powiązanego z jednym
-kontekstem KSeF i jedną parą tokenów.
+Uwierzytelnienie zwraca klienta uwierzytelnionego związanego z jednym kontekstem logowania i jedną parą tokenów.
 
 | Element | Zwraca | Uwagi |
 | --- | --- | --- |
-| `auth_tokens` | `AuthTokens` | Modele tokenów access i refresh używane przez tę gałąź. |
-| `access_token` | `str` | String bearer access tokenu. Traktuj jako sekret. |
-| `refresh_token` | `str` | String refresh tokenu. Traktuj jako sekret. |
-| `resume_state()` | `AuthenticationResumeState` | Serializowalny stan uwierzytelnienia zawierający access i refresh token. |
-| `online_session(form_code=... \| state=...)` | Klient sesji online | Otwiera jedną sesję online faktur albo wznawia ją z zapisanego stanu (obiekt lub JSON). Async zwraca awaitable wrapper context managera. |
-| `resume_online_session(state)` | Klient sesji online | Wycofane; użyj `online_session(state=...)`. |
-| `batch_session(prepared_batch= \| batch_file= \| state=)` | Klient sesji batch | Otwiera sesję batch z przygotowanego batcha albo deklaracji pliku batch, albo wznawia ją z zapisanego stanu. `state=` razem z oryginalnym `prepared_batch=` odzyskuje nieudany upload. |
-| `open_batch_session(...)` | Klient sesji batch | Otwiera sesję batch, gdy caller posiada metadane szyfrowania. |
-| `resume_batch_session(state)` | Klient sesji batch | Wycofane; użyj `batch_session(state=...)`. |
-| `invoices` | `InvoicesService` | Metadane, pobrania bezpośrednie, eksporty, pobieranie paczek i wait helpery. |
-| `batch` | `BatchService` | Wysokopoziomowy workflow przygotowania paczki, uploadu, zamknięcia, statusu i UPO. |
-| `limits` | `LimitsClient` | Endpointy limitów kontekstu, podmiotu i API. |
+| `auth_tokens` | `AuthTokens` | Modele tokena dostępu i tokena odświeżającego używane przez tego klienta. |
+| `access_token` | `str` | Napis tokena dostępu w nagłówku bearer. Traktuj go jak sekret. |
+| `refresh_token` | `str` | Napis tokena odświeżającego. Traktuj go jak sekret. |
+| `resume_state()` | `AuthenticationResumeState` | Stan uwierzytelnienia do zapisu, z tokenem dostępu i tokenem odświeżającym. |
+| `online_session(form_code=... \| state=...)` | Klient sesji interaktywnej | Otwiera jedną sesję interaktywną faktur albo wznawia ją z zapisanego stanu (obiekt albo JSON). Wersja asynchroniczna zwraca menedżer kontekstu, którego trzeba użyć z `await`. |
+| `resume_online_session(state)` | Klient sesji interaktywnej | Wycofane. Użyj `online_session(state=...)`. |
+| `batch_session(prepared_batch= \| batch_file= \| state=)` | Klient sesji wsadowej | Otwiera sesję wsadową z przygotowanej paczki albo z opisu pliku paczki, albo wznawia ją z zapisanego stanu. `state=` razem z oryginalnym `prepared_batch=` odzyskuje nieudane przesłanie. |
+| `open_batch_session(...)` | Klient sesji wsadowej | Otwiera sesję wsadową, gdy wywołujący sam ma metadane szyfrowania. |
+| `resume_batch_session(state)` | Klient sesji wsadowej | Wycofane. Użyj `batch_session(state=...)`. |
+| `invoices` | `InvoicesService` | Metadane, pobrania bezpośrednie, eksporty, pobieranie paczek i funkcje oczekiwania. |
+| `batch` | `BatchService` | Wysokopoziomowy przepływ przygotowania paczki, przesłania, zamknięcia, statusu i UPO. |
+| `limits` | `LimitsClient` | Operacje limitów kontekstu logowania, podmiotu i API. |
 | `tokens` | `TokensClient` | Generowanie, status, lista i unieważnianie tokenów. |
-| `certificates` | `CertificatesClient` | Enrollment, pobranie, query, limity i unieważnianie certyfikatów. |
+| `certificates` | `CertificatesClient` | Rejestracja, pobranie, zapytanie, limity i unieważnianie certyfikatów. |
 | `sessions` | `SessionManagementClient` | Lista i zamykanie sesji uwierzytelnienia. |
-| `invoice_sessions` | `InvoiceSessionsClient` | Historia sesji online i batch faktur oraz pobieranie UPO po zapisanych referencjach. |
-| `permissions` | `PermissionsClient` | Nadawanie, query, cofanie i status operacji uprawnień. |
-| `raw` | `RawAuthenticatedClient` | Niskopoziomowe, uwierzytelnione grupy endpointów. |
+| `invoice_sessions` | `InvoiceSessionsClient` | Historia sesji interaktywnych i wsadowych oraz pobieranie UPO po zapisanych numerach referencyjnych. |
+| `permissions` | `PermissionsClient` | Nadawanie, zapytanie, cofanie i status operacji na uprawnieniach. |
+| `raw` | `RawAuthenticatedClient` | Niskopoziomowe, uwierzytelnione grupy operacji API. |
 
-`AuthenticationResumeState` jest właścicielem bearer access i refresh tokenów.
-`OnlineSessionResumeState` i `BatchSessionResumeState` nie zawierają danych
-uwierzytelnienia; wznawiaj je przez klienta uwierzytelnionego.
+`AuthenticationResumeState` jest właścicielem tokena dostępu i tokena odświeżającego w nagłówku bearer. `OnlineSessionResumeState` i `BatchSessionResumeState` nie zawierają danych uwierzytelnienia. Wznawiaj je przez klienta uwierzytelnionego.
 
-Klienci uwierzytelnieni współdzielą transport i cache certyfikatów klienta
-głównego. Nie posiadają osobnego klienta HTTP.
+Klienci uwierzytelnieni dzielą transport i pamięć certyfikatów klienta głównego. Nie mają osobnego klienta HTTP.
 
 ## Własność klienta HTTP
 
-| Setup | Źródło konfiguracji HTTP | Kto zamyka zasoby HTTP |
+| Układ | Skąd bierze się konfiguracja HTTP | Kto zamyka zasoby HTTP |
 | --- | --- | --- |
-| `Client(Environment.TEST)` | SDK buduje `httpx.Client` z `TransportConfig`. | `Client.close()` albo wyjście z context managera. |
-| `AsyncClient(Environment.TEST)` | SDK buduje `httpx.AsyncClient` z `TransportConfig`. | `await AsyncClient.aclose()` albo wyjście z async context managera. |
+| `Client(Environment.TEST)` | SDK buduje `httpx.Client` z `TransportConfig`. | `Client.close()` albo wyjście z menedżera kontekstu. |
+| `AsyncClient(Environment.TEST)` | SDK buduje `httpx.AsyncClient` z `TransportConfig`. | `await AsyncClient.aclose()` albo wyjście z asynchronicznego menedżera kontekstu. |
 | `Client(..., http_client=http)` | Podany `httpx.Client`. | Aplikacja zamyka `http`. |
 | `AsyncClient(..., http_client=http)` | Podany `httpx.AsyncClient`. | Aplikacja zamyka `http`. |
 
-Gdy `http_client` jest podany, ustawienia HTTP takie jak timeout, pool, TLS,
-proxy, `trust_env`, HTTP/2, custom transporty i event hooki pochodzą z tego
-obiektu. Middleware retry SDK nadal używa `transport_config.retry`.
+Gdy `http_client` jest podany, ustawienia HTTP, takie jak limit czasu, pula połączeń, TLS, proxy, `trust_env`, HTTP/2, własny transport i hooki zdarzeń, pochodzą z tego obiektu. Warstwa ponowień SDK nadal używa `transport_config.retry`.
 
 ## Wątki, zadania i serializacja
 
-Używaj osobnego `Client` i jego uwierzytelnionych gałęzi w każdym wątku roboczym.
-Bazowy `httpx.Client` obsługuje współbieżne żądania, a `threading.Lock` w SDK
-serializuje odświeżanie tokenów w obrębie jednego uwierzytelnionego klienta.
-Ta blokada nie chroni jednak pamięci podręcznej certyfikatów i limitów ani stanu
-cyklu życia klienta, więc SDK nie gwarantuje bezpieczeństwa całego klienta
-przy współdzieleniu między wątkami.
+Używaj osobnego `Client` i jego klientów uwierzytelnionych w każdym wątku roboczym. Bazowy `httpx.Client` obsługuje współbieżne żądania, a `threading.Lock` w SDK szereguje odświeżanie tokenów w obrębie jednego klienta uwierzytelnionego. Ta blokada nie chroni pamięci podręcznej certyfikatów i limitów ani stanu cyklu życia klienta, więc SDK nie gwarantuje bezpieczeństwa całego klienta przy współdzieleniu między wątkami.
 
-`AsyncClient` i jego uwierzytelnione gałęzie mogą obsługiwać niezależne żądania
-wielu zadań w jednej pętli zdarzeń. Odświeżanie tokenów używa `asyncio.Lock`.
-Nie współdziel ich między wątkami ani pętlami zdarzeń. Przed zamknięciem klienta
-poczekaj na wszystkie zadania i koordynuj zmiany pamięci podręcznej limitów
-lub magazynów certyfikatów.
+`AsyncClient` i jego klienci uwierzytelnieni mogą obsługiwać niezależne żądania wielu zadań w jednej pętli zdarzeń. Odświeżanie tokenów używa `asyncio.Lock`. Nie współdziel ich między wątkami ani pętlami zdarzeń. Przed zamknięciem klienta poczekaj na wszystkie zadania i uzgodnij zmiany pamięci podręcznej limitów albo magazynów certyfikatów.
 
-Przypisz każdej sesji online lub wsadowej jednego właściciela albo serializuj
-jej operacje blokadą aplikacji. Flagi zamknięcia sesji i stan wysyłki nie mają
-blokady współbieżności. Wysyłanie faktur lub części paczki nie może konkurować
-z zamykaniem sesji ani ponownym wysyłaniem tej samej paczki.
+Każdej sesji interaktywnej albo wsadowej przypisz jednego właściciela albo szereguj jej operacje blokadą aplikacji. Flagi zamknięcia sesji i stan wysyłki nie mają blokady współbieżności. Wysyłanie faktur albo części paczki nie może iść równolegle z zamykaniem sesji ani z ponownym wysyłaniem tej samej paczki.
 
-Limity żądań KSeF obowiązują dla kontekstu niezależnie od liczby klientów, wątków
-czy zadań, które go używają. Ograniczaj współbieżność łącznie dla tych workerów.
+Limity żądań KSeF obowiązują dla kontekstu logowania niezależnie od liczby klientów, wątków czy zadań, które go używają. Ograniczaj współbieżność łącznie dla tych procesów roboczych.
 
-Klienci z założenia nie obsługują pickle ani głębokiego kopiowania; stany
-wznowienia i modele faktur można serializować, więc przekazuj je i twórz klienta
-w procesie odbierającym. Zapisuj stany wznowienia przez `to_json()` i odtwarzaj je
-przez odpowiednią uwierzytelnioną gałąź.
+Klienci z założenia nie obsługują pickle ani głębokiego kopiowania. Stany wznowienia i modele faktur można serializować, więc przekazuj je i twórz klienta w procesie, który je odbiera. Zapisuj stany wznowienia przez `to_json()` i odtwarzaj je przez odpowiedni moduł klienta uwierzytelnionego.
 
-## Błędy lifecycle
+## Błędy cyklu życia
 
-| Błąd | Kiedy jest rzucany |
+| Błąd | Kiedy jest zgłaszany |
 | --- | --- |
-| `KSeFClientClosedError` | Klient główny albo gałąź chroniona lifecycle jest użyta po zamknięciu. |
-| `KSeFUnsupportedEnvironmentError` | Gałąź tylko dla TEST, obecnie `testdata`, jest użyta poza `Environment.TEST`. |
+| `KSeFClientClosedError` | Klient główny albo moduł chroniony cyklem życia jest użyty po zamknięciu. |
+| `KSeFUnsupportedEnvironmentError` | Moduł tylko dla środowiska testowego, obecnie `testdata`, jest użyty poza `Environment.TEST`. |
 
-## Powiązana referencja
+## Powiązane strony
 
-- [Konfiguracja klienta](../how-to-guides/client-setup.md): Twórz klientów w skryptach, jobach i zależnościach frameworka.
-- [Metody uwierzytelniania](../concepts/authentication-methods.md): Jak klient bazowy przechodzi w klienta uwierzytelnionego.
-- [Referencja operacji](operations.md): Sprawdź transport, retry, timeouty i wznawialność.
-- [API niskiego poziomu](low-level/overview.md): Użyj schema-native wrapperów endpointów, gdy klient workflow nie wystarcza.
+- [Konfiguracja klienta](../how-to-guides/client-setup.md): Tworzenie klientów w skryptach, zadaniach w tle i zależnościach frameworka.
+- [Metody uwierzytelniania](../concepts/authentication-methods.md): Jak klient główny staje się klientem uwierzytelnionym.
+- [Operacje](operations.md): Transport, ponowienia, limity czasu i wznawianie.
+- [API niskiego poziomu](low-level/overview.md): Operacje zgodne ze schematem, gdy klient przepływu nie wystarcza.

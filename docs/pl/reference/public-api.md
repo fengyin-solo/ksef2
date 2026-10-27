@@ -1,6 +1,6 @@
 ---
 title: Interfejs publiczny
-description: Stabilne ścieżki importu i granice modułów wewnętrznych w ksef2 1.0.
+description: Stabilne ścieżki importu i moduły wewnętrzne w ksef2 1.0.
 ---
 
 W kodzie aplikacyjnym używaj ścieżek importu z tej strony. To one mają pozostać
@@ -11,19 +11,19 @@ stabilne w linii 1.x.
 | Ścieżka importu | Do czego służy |
 | --- | --- |
 | `ksef2` | Klienci root, konfiguracja środowiska i transportu, `FormSchema`, `__version__` oraz publiczne wyjątki. |
-| `ksef2.clients` | Konkretne klasy klientów sync/async, stabilne typy workflow `InvoicesService` / `BatchService` oraz typy uchwytów, stronicowania i wyniku eksportu (`InvoiceSubmission`, `ExportJob`, `GeneratedToken`, `PermissionOperation`, `CertificateEnrollment`, `ExportedInvoices`, `Pager`, `OperationHandle`) wraz z odpowiednikami async, do adnotacji typów. |
-| `ksef2.models` | Modele żądań, odpowiedzi, filtrów, paginacji (w tym `Page`), tokenów, uprawnień, sesji, batchy, eksportu i stanów wznowienia (`ExportResumeState`, `GeneratedTokenResumeState`, `CertificateEnrollmentResumeState`, `PermissionOperationResumeState`, `InvoiceSubmissionResumeState`) oraz obiekt poświadczeń XAdES (`XAdESCredentials`) i rekordy certyfikatów podpisujących (`SigningCertificate`, `SigningCertificateInfo`, `SigningCertificateRef`). |
+| `ksef2.clients` | Konkretne klasy klientów synchronicznych i asynchronicznych, stabilne typy przepływów `InvoicesService` / `BatchService` oraz typy obiektów operacji, stronicowania i wyniku eksportu (`InvoiceSubmission`, `ExportJob`, `GeneratedToken`, `PermissionOperation`, `CertificateEnrollment`, `ExportedInvoices`, `Pager`, `OperationHandle`) wraz z odpowiednikami asynchronicznymi, do adnotacji typów. |
+| `ksef2.models` | Modele żądań, odpowiedzi, filtrów, paginacji (w tym `Page`), tokenów, uprawnień, sesji, sesji wsadowej, eksportu i stanów wznowienia (`ExportResumeState`, `GeneratedTokenResumeState`, `CertificateEnrollmentResumeState`, `PermissionOperationResumeState`, `InvoiceSubmissionResumeState`) oraz obiekt pary certyfikat i klucz (`XAdESCredentials`) i rekordy certyfikatów podpisu (`SigningCertificate`, `SigningCertificateInfo`, `SigningCertificateRef`). |
 | `ksef2.fa3` | `InvoiceBuilder` jest kanonicznym builderem FA(3). `FA3InvoiceBuilder` pozostaje wycofywanym aliasem przez 1.x; moduł eksportuje też drafty i typy modeli FA(3). |
 | `ksef2.logging` | `configure_logging()` do jawnego włączenia logowania strukturalnego SDK. |
-| `ksef2.xades` | Ładowanie certyfikatów, generowanie certyfikatów TEST, lokalne podpisy XAdES, `LocalSigner` oraz obiekt poświadczeń `XAdESCredentials` przyjmowany przez `with_xades()`. |
-| `ksef2.certificate_stores` | Protokoły magazynu certyfikatów podpisujących (`SigningCertificateStoreProtocol`, `AsyncSigningCertificateStoreProtocol`), typy rekordów `SigningCertificate` oraz wbudowane adaptery w pamięci i w plikach szyfrowanych hasłem. To nie jest cache certyfikatów szyfrujących KSeF. |
-| `ksef2.testdata` | Pomocniki tylko dla TEST, które generują poprawne numery NIP i PESEL (`generate_nip`, `generate_pesel`). |
-| `ksef2.profiles` | Helpery konfiguracji profili zgodnych z `ksef2-cli`. |
+| `ksef2.xades` | Wczytywanie certyfikatów, generowanie certyfikatów testowych, lokalne podpisy XAdES, `LocalSigner` oraz obiekt `XAdESCredentials` przyjmowany przez `with_xades()`. |
+| `ksef2.certificate_stores` | Protokoły magazynu certyfikatów podpisu (`SigningCertificateStoreProtocol`, `AsyncSigningCertificateStoreProtocol`), typy rekordów `SigningCertificate` oraz wbudowane adaptery w pamięci i w plikach szyfrowanych hasłem. To nie jest pamięć podręczna certyfikatów szyfrowania KSeF. |
+| `ksef2.testdata` | Funkcje tylko dla środowiska testowego, które generują poprawne numery NIP i PESEL (`generate_nip`, `generate_pesel`). |
+| `ksef2.profiles` | Funkcje konfiguracji profili zgodnych z `ksef2-cli`. |
 | `ksef2.renderers` | Lokalne renderowanie XSLT; renderowanie PDF wymaga również dodatku `[pdf]`. Przy pierwszym użyciu bez niego `InvoicePDFExporter` zwraca czytelny błąd instalacji. |
-| `ksef2.raw` | Klienty endpointów niskiego poziomu, modele `spec` i `supp` oraz narzędzia kryptograficzne. |
+| `ksef2.raw` | Klienci operacji API niskiego poziomu, modele `spec` i `supp` oraz narzędzia kryptograficzne. |
 | `ksef2.raw.mappers` | Publiczne mappery między modelami raw i modelami SDK. |
 
-Preferuj najwyższy poziom importu pasujący do workflow:
+Wybieraj najwyższy poziom importu, który pasuje do przepływu:
 
 ```python
 from ksef2 import Client, Environment, FormSchema, KSeFApiError
@@ -38,9 +38,7 @@ podczas działania wymagają `ksef2[runtime-checks]`. Pozostałe wymienione wyż
 moduły działają z podstawową instalacją. `ksef2.pdf` nie jest osobnym modułem;
 używaj `ksef2.renderers` dla obu rendererów.
 
-SDK domyślnie nie emituje logów i przekazuje rekordy przez standardowy logger
-`ksef2`. Aplikacja może skonfigurować własne handlery i poziomy standardowego
-logowania albo jawnie włączyć renderer konsolowy/JSON SDK:
+SDK domyślnie nie emituje logów i przekazuje rekordy przez standardowy logger `ksef2`. Aplikacja może ustawić własną obsługę logów i poziomy standardowego logowania albo jawnie włączyć renderer konsolowy albo JSON z SDK:
 
 ```python
 from ksef2.logging import configure_logging
@@ -48,14 +46,11 @@ from ksef2.logging import configure_logging
 configure_logging(level="INFO", renderer="console")
 ```
 
-`configure_logging()` służy do konfiguracji aplikacji i SDK nigdy nie wywołuje
-go samodzielnie. Zdarzenia SDK używają poziomów standardowego logowania i pól
-strukturalnych. Tokeny, klucze kryptograficzne i presigned URL-e nie trafiają do
-zdarzeń logowania SDK.
+`configure_logging()` służy do konfiguracji aplikacji i SDK nigdy nie wywołuje go samodzielnie. Zdarzenia SDK używają poziomów standardowego logowania i pól strukturalnych. Tokeny, klucze kryptograficzne i podpisane adresy URL nie trafiają do zdarzeń logowania SDK.
 
-## Eksporty pakietu root
+## Eksporty pakietu głównego
 
-Pakiet root `ksef2` jest publiczną fasadą dla typowego kodu aplikacyjnego:
+Pakiet główny `ksef2` jest publicznym wejściem dla typowego kodu aplikacji:
 
 - `Client`, `AsyncClient`;
 - `Environment`, `TransportConfig`, `TimeoutConfig`, `RetryConfig`,
@@ -64,22 +59,18 @@ Pakiet root `ksef2` jest publiczną fasadą dla typowego kodu aplikacyjnego:
 - `ExceptionCode` i wszystkie publiczne klasy wyjątków `KSeF*`;
 - `__version__`.
 
-Dla tych nazw używaj importów z root zamiast sięgać do modułów implementacyjnych.
+Dla tych nazw importuj z pakietu głównego, zamiast sięgać do modułów implementacji.
 
 ## Stabilność API niskiego poziomu
 
-`ksef2.raw` jest publiczne, ale celowo niskopoziomowe. Ścieżka importu jest
-stabilna, natomiast kształt modeli zgodnych ze schematem podąża za wersją
-OpenAPI KSeF.
+`ksef2.raw` jest publiczne, ale celowo niskopoziomowe. Ścieżka importu jest stabilna, natomiast postać modeli zgodnych ze schematem idzie za wersją OpenAPI KSeF.
 
 ```python
 from ksef2.raw import spec
 from ksef2.raw.mappers import auth as auth_mapper
 ```
 
-Nie importuj wygenerowanych modeli OpenAPI z prywatnego pakietu schem SDK.
-Używaj `ksef2.raw.spec` i `ksef2.raw.supp`, żeby kod aplikacyjny pozostał na
-wspieranej powierzchni.
+Nie importuj wygenerowanych modeli OpenAPI z prywatnego pakietu schematów SDK. Używaj `ksef2.raw.spec` i `ksef2.raw.supp`, żeby kod aplikacji został na wspieranym zakresie.
 
 ## Ścieżki prywatne
 
@@ -87,11 +78,7 @@ Zasada jest prosta: **ścieżka modułu bez podkreślenia jest publiczna, a każ
 ze znakiem podkreślenia jest prywatna.** `ksef2._core`, `ksef2._clients.base` i
 `ksef2.raw._facade` są prywatne, podobnie jak każdy moduł poniżej nich.
 
-Moduły prywatne mogą zmieniać się bez wydania major. Dawne ścieżki `core`,
-`domain`, `infra` i `services` pozostają jako wycofywane aliasy przez całe 1.x.
-Emitują ostrzeżenie raz dla danej rodziny pakietów, wskazując zamienniki,
-i używają tych samych modułów oraz klas. Usunięcie jest możliwe nie wcześniej
-niż w 2.0.0.
+Moduły prywatne mogą zmieniać się bez wydania głównego. Dawne ścieżki `core`, `domain`, `infra` i `services` zostają jako wycofywane aliasy przez całe 1.x. Zgłaszają ostrzeżenie raz dla danej rodziny pakietów, wskazują zamienniki i używają tych samych modułów oraz klas. Usunięcie jest możliwe nie wcześniej niż w 2.0.0.
 
 Przykłady przed i po zmianie zawiera [poradnik migracji do 1.0](migration-1-0.md).
 
@@ -99,28 +86,20 @@ Przykłady przed i po zmianie zawiera [poradnik migracji do 1.0](migration-1-0.m
 
 ## Sekrety i serializacja
 
-Modele przenoszące sekrety lub podpisane adresy URL (tokeny dostępu i
-odświeżania, klucze AES i IV, presigned URL-e pobierania i wysyłki, tokeny
-jednorazowe) ukrywają je w `model_dump()`, `model_dump_json()` i `repr()`. Te
-metody służą do logowania i wyświetlania. **Nie są formatem trwałego zapisu**:
-zredagowanego wyniku nie da się wczytać z powrotem, a jego walidacja może się
-nie powieść. Na przykład `UpoPage.model_validate(page.model_dump())` zgłasza
-błąd, bo `download_url` jest wykluczony z dumpa, ale wymagany przez model.
+Modele, które niosą sekrety albo podpisane adresy URL (token dostępu i token odświeżający, klucze AES i IV, podpisane adresy pobierania i wysyłki, tokeny jednorazowe), ukrywają je w `model_dump()`, `model_dump_json()` i `repr()`. Te metody służą do logowania i wyświetlania. **Nie są formatem trwałego zapisu.** Wyniku z ukrytymi polami nie da się wczytać z powrotem, a jego sprawdzenie może się nie powieść. Na przykład `UpoPage.model_validate(page.model_dump())` zgłasza błąd, bo `download_url` jest wyłączony z wyniku `model_dump()`, ale model go wymaga.
 
 Stan zapisuj i odtwarzaj jawnymi metodami:
 
 - `to_dict()` i `to_json()` w modelach stanu wznowienia
   (`AuthenticationResumeState`, `OnlineSessionResumeState`,
-  `BatchSessionResumeState`) eksportują pełne poświadczenia; odtworzysz je przez
-  `from_dict()` lub `from_json()`.
+  `BatchSessionResumeState`) eksportują pełne sekrety. Odtworzysz je przez `from_dict()` albo `from_json()`.
 - `to_sensitive_dict()` w modelach odpowiedzi z sekretami, takich jak `UpoPage`,
   `GenerateTokenResponse` i `ExportHandle`, eksportuje pola sekretne do
   świadomego, chronionego użycia.
 - `to_sensitive_dict()` i `to_sensitive_json()` w `PreparedBatch` eksportują pełne
   zaszyfrowane części i materiał AES do chronionego magazynu. Odtwórz paczkę przez
   `PreparedBatch.from_sensitive_dict()` lub `from_sensitive_json()` i przekaż ją razem
-  z zapisanym stanem sesji, aby wznowić upload po restarcie. Ogólne dumpy i repr
-  ukrywają bajty paczki i klucze.
+  z zapisanym stanem sesji, aby wznowić przesłanie po restarcie. Zwykły zrzut i `repr` ukrywają bajty paczki i klucze.
 
 `XAdESCredentials` przechowuje załadowane obiekty certyfikatu i klucza prywatnego
 cryptography, dostępne przez `certificate` i `private_key`. Nie zachowuje hasła ani
@@ -133,27 +112,18 @@ nie ma `model_dump()` ani API JSON: zapisujesz go wyłącznie przez `save()` mag
 `SigningCertificateInfo` i `SigningCertificateRef` to metadane bez materiału klucza,
 które można serializować i logować.
 
-Wynik tych metod traktuj jak poświadczenie: przechowuj go zaszyfrowany, nigdy
-nie loguj i nie commituj.
+Wynik tych metod traktuj jak sekret. Przechowuj go zaszyfrowany, nigdy go nie loguj i nie zapisuj w repozytorium.
 
 Zakończone eksporty faktur zapisuj jako zwykłe bajty `ExportedInvoices.archive`.
-Odtwórz je przez `ExportedInvoices.from_archive(archive, compression="zip")` lub
-użyj `compression="tar_gz"` dla TarGz. Metadane są odczytywane leniwie z archiwum;
-status paczki i adresy pobierania nie są odtwarzane. Chroń odszyfrowane dane faktur
-w magazynie. Zobacz [Pobieranie faktur](../how-to-guides/download-invoices.md).
+Odtwórz je przez `ExportedInvoices.from_archive(archive, compression="zip")` albo użyj `compression="tar_gz"` dla TarGz. Metadane są czytane z archiwum przy pierwszym dostępie. Status paczki i adresy pobierania nie są odtwarzane. Chroń odszyfrowane dane faktur w magazynie. Zobacz [Pobieranie faktur](../how-to-guides/download-invoices.md).
 
 ## Reguła kompatybilności
 
-Usunięcie lub zmiana nazwy stabilnych importów SDK wymaga wydania major.
-Wycofywane API działa przez całe 1.x. Nowe API może wejść w wydaniu minor.
-Wydania patch zachowują udokumentowane działanie poza poprawkami błędów.
+Usunięcie albo zmiana nazwy stabilnych importów SDK wymaga wydania głównego. Wycofywane API działa przez całe 1.x. Nowe API może wejść w wydaniu mniejszym. Wydania poprawkowe zachowują udokumentowane działanie, poza poprawkami błędów.
 
 ### Zmiany wymuszone przez KSeF
 
-Gdy KSeF usuwa lub zmienia endpoint w sposób, którego SDK nie może wchłonąć,
-wynikająca z tego zmiana może trafić do wydania minor. Jest opisana w
-changelogu pod nagłówkiem „KSeF API changes”, żeby nie pomylić jej z decyzją
-SDK. Zmiany łamiące, które SDK inicjuje samo, nadal wymagają major version bump.
+Gdy KSeF usuwa albo zmienia operację API w sposób, którego SDK nie może ukryć, wynikająca z tego zmiana może trafić do wydania mniejszego. Jest opisana w dzienniku zmian pod nagłówkiem „KSeF API changes”, żeby nie pomylić jej z decyzją SDK. Zmiany łamiące, które SDK wprowadza samo, nadal wymagają wydania głównego.
 
 ### Polityka wycofywania
 
@@ -164,16 +134,12 @@ zaplanowaną zmianą w 1.x. Komunikat "will be removed no earlier than ksef2
 
 ## Wycofywane API
 
-Te API działają przez całe 1.x. Każde z nich emituje `DeprecationWarning` raz na
-wywołanie, jest oznaczone PEP 702 `@deprecated`, więc type checkery i IDE
-wskazują miejsca użycia, i może zostać usunięte nie wcześniej niż w ksef2 2.0.0. Python ukrywa
-`DeprecationWarning` poza `__main__` i runnerami testów, więc uruchom testy z
-`python -W error::DeprecationWarning`, żeby je znaleźć.
+Te API działają przez całe 1.x. Każde z nich zgłasza `DeprecationWarning` raz na wywołanie i jest oznaczone PEP 702 `@deprecated`, więc narzędzia typów i IDE wskazują miejsca użycia. Może zostać usunięte nie wcześniej niż w ksef2 2.0.0. Python ukrywa `DeprecationWarning` poza `__main__` i uruchamianiem testów, więc uruchom testy z `python -W error::DeprecationWarning`, żeby je znaleźć.
 
 | Wycofane | Użyj zamiast | Usunięte w |
 | --- | --- | --- |
 | `Client.authenticated(tokens)` i `AsyncClient.authenticated(tokens)` | `client.authentication.resume(AuthenticationResumeState.from_tokens(tokens))` | 2.0.0 lub później |
-| `get_state()` w klientach sesji online i wsadowej | `resume_state()` | 2.0.0 lub później |
+| `get_state()` w klientach sesji interaktywnej i wsadowej | `resume_state()` | 2.0.0 lub później |
 | `BatchSessionClient.access_token` | `AuthenticatedClient.access_token` klienta nadrzędnego | 2.0.0 lub później |
 | `dump_state()` w stanie wznowienia sesji | `to_dict()` | 2.0.0 lub później |
 | `model_dump_sensitive()` w stanie wznowienia sesji | `to_dict()` | 2.0.0 lub później |
@@ -183,8 +149,8 @@ wskazują miejsca użycia, i może zostać usunięte nie wcześniej niż w ksef2
 | argument `access_token=` w `from_encoded()` stanu wznowienia sesji (ignorowany) | Zapisuj `AuthenticationResumeState` osobno | 2.0.0 lub później |
 | klucz `access_token` w zapisanym stanie wznowienia sesji (ignorowany; stare pliki nadal się wczytują) | Zapisuj `AuthenticationResumeState` osobno | 2.0.0 lub później |
 | klucz `auth_timeout` w profilu zapisanym przez ksef2-cli 0.0.2 | `max_poll_attempts` (i opcjonalnie `poll_interval`) | 2.0.0 lub później |
-| `send_invoice_and_wait()` i `wait_for_invoice_ready()` w sesji online | `send_invoice(...).wait()` | 2.0.0 lub później |
-| `get_invoice_upo_by_ksef_number()` i `get_invoice_upo_by_reference()` w sesji online | `download_invoice_upo(ksef_number=...)` albo `download_invoice_upo(reference_number=...)` | 2.0.0 lub później |
+| `send_invoice_and_wait()` i `wait_for_invoice_ready()` w sesji interaktywnej | `send_invoice(...).wait()` | 2.0.0 lub później |
+| `get_invoice_upo_by_ksef_number()` i `get_invoice_upo_by_reference()` w sesji interaktywnej | `download_invoice_upo(ksef_number=...)` albo `download_invoice_upo(reference_number=...)` | 2.0.0 lub później |
 | `BatchSessionClient.get_upo(upo_reference_number=...)` | `download_upo()` | 2.0.0 lub później |
 | `auth.batch.prepare_batch()` i `prepare_batch_from_paths()` | `auth.batch.prepare()` | 2.0.0 lub później |
 | `auth.batch.submit_batch()`, `submit_prepared_batch()` i `open_session()` | `auth.batch.submit()` albo `auth.batch_session(...)` | 2.0.0 lub później |
@@ -210,17 +176,14 @@ wskazują miejsca użycia, i może zostać usunięte nie wcześniej niż w ksef2
 | `auth.permissions.revoke_common()` | `auth.permissions.revoke()` | 2.0.0 lub później |
 | `InvoicesClient` i `AsyncInvoicesClient` importowane z `ksef2.clients` | `auth.invoices` (`InvoicesService`) | 2.0.0 lub później |
 
-`session.send_invoice()` zachowuje nazwę i przyjmuje XML pozycyjnie jako `bytes`
-albo `str`. Zwraca teraz uchwyt `InvoiceSubmission`, który udostępnia każde pole
-dawnego `SendInvoiceResponse`, więc kod czytający `.reference_number` nadal
-działa.
+`session.send_invoice()` zachowuje nazwę i przyjmuje XML pozycyjnie jako `bytes` albo `str`. Zwraca teraz obiekt `InvoiceSubmission`, który udostępnia każde pole dawnego `SendInvoiceResponse`, więc kod czytający `.reference_number` nadal działa.
 
 To samo dotyczy pozostałych operacji, które KSeF kończy asynchronicznie:
 `tokens.generate()` zwraca `GeneratedToken` (odczytaj `.token` od razu, `.wait()`
 czeka na aktywację), `permissions.grant_*()` i `revoke*()` zwracają
 `PermissionOperation`, a `certificates.enroll()` zwraca `CertificateEnrollment`.
 Każdy udostępnia wszystkie pola odpowiedzi, którą zastępuje, a
-`get_operation_status()` i `get_enrollment_status()` pozostają getterami danych.
+`get_operation_status()` i `get_enrollment_status()` zostają metodami odczytu danych.
 
 `auth.collective_identifiers.list_invoices()` zachowuje nazwę, ale zwraca teraz
 `Pager` po fakturach zamiast jednej strony, więc jest jedyną nazwą z powyższej
@@ -237,8 +200,8 @@ stronicowanie z kursorem go nie zastępuje. Każdy `Pager`, także ten z
 `InvoiceBuilder.dump_state()` i `from_state()` to osobne API szkiców buildera
 i nie są wycofane.
 
-## Referencja
+## Powiązane strony
 
-- [Cykl życia klienta](client-lifecycle.md): Przejrzyj klientów głównych, klientów uwierzytelnionych i własność cyklu życia.
-- [API niskiego poziomu](low-level/overview.md): Użyj schema-native wrapperów endpointów przez wspieraną powierzchnię raw.
-- [Generowanie kodu sync](../contributing/sync-generation.md): Zobacz jak klient sync jest generowany z implementacji async.
+- [Tworzenie i zamykanie klientów](client-lifecycle.md): Klienci główni, klienci uwierzytelnieni i własność cyklu życia.
+- [API niskiego poziomu](low-level/overview.md): Operacje zgodne ze schematem we wspieranym zakresie `raw`.
+- [Synchronizacja kodu sync/async](../contributing/sync-generation.md): Jak klient synchroniczny powstaje z implementacji asynchronicznej.

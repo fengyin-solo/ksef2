@@ -49,7 +49,7 @@
           {
             "label": "SDK Overview",
             "translations": {
-              "pl": "Jak działa SDK"
+              "pl": "Działanie SDK"
             },
             "path": "concepts/overview.md"
           },
@@ -69,7 +69,7 @@
               {
                 "label": "Clients and lifecycle",
                 "translations": {
-                  "pl": "Klient "
+                  "pl": "Klient i cykl życia"
                 },
                 "path": "concepts/clients-and-lifecycle.md"
               },
@@ -216,21 +216,21 @@
               {
                 "label": "Configure a certificate store",
                 "translations": {
-                  "pl": "Skonfiguruj magazyn certyfikatów"
+                  "pl": "Konfiguracja magazynu certyfikatów"
                 },
                 "path": "how-to-guides/configure-certificate-store.md"
               },
               {
                 "label": "Authenticate",
                 "translations": {
-                  "pl": "Uwierzytelnij się"
+                  "pl": "Uwierzytelnianie"
                 },
                 "path": "how-to-guides/authenticate.md"
               },
               {
                 "label": "Use profiles",
                 "translations": {
-                  "pl": "Użyj profili"
+                  "pl": "Profile"
                 },
                 "path": "how-to-guides/profiles.md"
               }
@@ -245,35 +245,35 @@
               {
                 "label": "Build FA(3) invoices",
                 "translations": {
-                  "pl": "Zbuduj faktury FA(3)"
+                  "pl": "Budowanie faktur FA(3)"
                 },
                 "path": "how-to-guides/build-fa3-invoices.md"
               },
               {
                 "label": "Send invoices",
                 "translations": {
-                  "pl": "Wyślij faktury"
+                  "pl": "Wysyłanie faktur"
                 },
                 "path": "how-to-guides/send-invoices.md"
               },
               {
                 "label": "Get status and UPO",
                 "translations": {
-                  "pl": "Sprawdź status i UPO"
+                  "pl": "Pobieranie statusu i UPO"
                 },
                 "path": "how-to-guides/get-status-and-upo.md"
               },
               {
                 "label": "Query invoices",
                 "translations": {
-                  "pl": "Wyszukaj faktury"
+                  "pl": "Wyszukiwanie faktur"
                 },
                 "path": "how-to-guides/query-invoices.md"
               },
               {
                 "label": "Download invoices",
                 "translations": {
-                  "pl": "Pobierz faktury"
+                  "pl": "Pobieranie faktur"
                 },
                 "path": "how-to-guides/download-invoices.md"
               }
@@ -288,28 +288,28 @@
               {
                 "label": "Manage tokens",
                 "translations": {
-                  "pl": "Zarządzaj tokenami"
+                  "pl": "Zarządzanie tokenami"
                 },
                 "path": "how-to-guides/manage-tokens.md"
               },
               {
                 "label": "Configure permissions",
                 "translations": {
-                  "pl": "Skonfiguruj uprawnienia"
+                  "pl": "Konfiguracja uprawnień"
                 },
                 "path": "how-to-guides/configure-permissions.md"
               },
               {
                 "label": "Manage certificates",
                 "translations": {
-                  "pl": "Zarządzaj certyfikatami"
+                  "pl": "Zarządzanie certyfikatami"
                 },
                 "path": "how-to-guides/manage-certificates.md"
               },
               {
                 "label": "Manage limits",
                 "translations": {
-                  "pl": "Zarządzaj limitami"
+                  "pl": "Zarządzanie limitami"
                 },
                 "path": "how-to-guides/manage-limits.md"
               }
@@ -324,21 +324,21 @@
               {
                 "label": "Inspect encryption certificates",
                 "translations": {
-                  "pl": "Sprawdź certyfikaty szyfrowania"
+                  "pl": "Podgląd certyfikatów szyfrowania"
                 },
                 "path": "how-to-guides/inspect-encryption-certificates.md"
               },
               {
                 "label": "Query PEPPOL providers",
                 "translations": {
-                  "pl": "Wyszukaj dostawców PEPPOL"
+                  "pl": "Wyszukiwanie dostawców PEPPOL"
                 },
                 "path": "how-to-guides/query-peppol-providers.md"
               },
               {
                 "label": "Use TEST data",
                 "translations": {
-                  "pl": "Użyj danych TEST"
+                  "pl": "Dane testowe"
                 },
                 "path": "how-to-guides/use-test-data.md"
               },
@@ -371,7 +371,7 @@
         "id": "reference",
         "label": "Reference",
         "translations": {
-          "pl": "Referencja"
+          "pl": "Dokumentacja referencyjna"
         },
         "kind": "reference",
         "items": [
@@ -385,7 +385,7 @@
           {
             "label": "1.0.0 release notes",
             "translations": {
-              "pl": "Notatki wydania 1.0.0"
+              "pl": "Wydanie 1.0.0"
             },
             "path": "reference/release-notes-1-0-0.md"
           },
@@ -447,7 +447,7 @@
               {
                 "label": "Endpoint map",
                 "translations": {
-                  "pl": "Mapa endpointów"
+                  "pl": "Mapa operacji API"
                 },
                 "path": "reference/low-level/endpoint-map.md"
               }
@@ -473,7 +473,7 @@
           {
             "label": "Publish an SDK release",
             "translations": {
-              "pl": "Opublikuj wydanie SDK"
+              "pl": "Publikacja wydania"
             },
             "path": "contributing/releases.md"
           }

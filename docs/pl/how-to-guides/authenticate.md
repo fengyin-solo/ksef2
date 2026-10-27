@@ -1,16 +1,12 @@
 ---
-title: Uwierzytelnij się
-description: Skonfiguruj dane uwierzytelniające ksef2 przez zmienne środowiskowe, tokeny KSeF, certyfikaty XAdES albo profile kompatybilne z CLI.
+title: Uwierzytelnianie
+description: Skonfiguruj dane uwierzytelniające ksef2 przez zmienne środowiskowe, tokeny KSeF, certyfikaty XAdES albo profile zgodne z CLI.
 ---
 
-Uwierzytelnianie zamienia głównego `Client` w klienta uwierzytelnionego. Klient
-główny wybiera środowisko KSeF, a metoda uwierzytelnienia wybiera kontekst, w
-którym działa aplikacja.
+Uwierzytelnianie zamienia głównego `Client` w klienta uwierzytelnionego. Klient główny wybiera środowisko KSeF, a metoda uwierzytelnienia wybiera kontekst logowania, w którym działa aplikacja.
 
-:::caution[Sekrety trzymaj w środowisku]
-Nie zapisuj tokenów KSeF, haseł certyfikatów ani haseł kluczy prywatnych w
-repozytorium. Ścieżki i nazwy profili mogą trafić do lokalnej konfiguracji,
-ale wartości sekretów powinny pochodzić ze zmiennych środowiskowych.
+:::caution[Sekrety trzymaj poza repozytorium]
+Nie zapisuj tokenów KSeF, haseł certyfikatów ani haseł kluczy prywatnych w repozytorium. Ścieżki i nazwy profili mogą trafić do lokalnej konfiguracji, ale wartości sekretów powinny pochodzić ze zmiennych środowiskowych.
 :::
 
 ## Zmienne środowiskowe
@@ -20,8 +16,8 @@ Te nazwy są używane w przykładach i przez profile `ksef2-cli`:
 | Zmienna | Znaczenie |
 | --- | --- |
 | `KSEF2_ENV` | `test`, `demo` albo `production` w przykładach SDK. |
-| `KSEF2_NIP` | NIP podatnika/kontekstu używany przy uwierzytelnianiu. |
-| `KSEF2_TOKEN` | Token KSeF dla uwierzytelniania tokenem. |
+| `KSEF2_NIP` | NIP kontekstu logowania. |
+| `KSEF2_TOKEN` | Token KSeF do uwierzytelniania tokenem. |
 | `KSEF2_PROFILE` | Nazwa profilu wybierana przez `ksef2-cli` i uwierzytelnianie profilami w SDK. |
 | `KSEF2_CONFIG` | Opcjonalna ścieżka do pliku konfiguracji profili CLI. |
 | `KSEF2_KEY_PASSWORD` | Opcjonalne hasło zaszyfrowanego klucza PEM. |
@@ -33,9 +29,7 @@ export KSEF2_NIP=5261040828
 export KSEF2_TOKEN=podmien-na-prawdziwy-token-ksef
 ```
 
-SDK czyta `KSEF2_PROFILE` i `KSEF2_CONFIG`, gdy używasz
-`client.authentication.with_profile()`. Przy bezpośrednim uwierzytelnianiu
-tokenem albo certyfikatem trzymaj granicę konfiguracji jawną w aplikacji:
+SDK czyta `KSEF2_PROFILE` i `KSEF2_CONFIG`, gdy używasz `client.authentication.with_profile()`. Przy bezpośrednim uwierzytelnianiu tokenem albo certyfikatem trzymaj konfigurację jawną w aplikacji:
 
 ```python
 import os
@@ -46,16 +40,13 @@ environment_name = os.environ.get("KSEF2_ENV", "test").upper()
 environment = Environment[environment_name]
 ```
 
-Poniższe przykłady metod zakładają, że `client` jest otwartym klientem bazowym
-dla wybranego środowiska. W skryptach preferuj context manager, na przykład
-`with Client(Environment.TEST) as client:`.
+Poniższe przykłady metod zakładają, że `client` jest otwartym klientem głównym dla wybranego środowiska. W skryptach lepiej użyć menedżera kontekstu (`with`), na przykład `with Client(Environment.TEST) as client:`.
 
 ## Wybierz metodę
 
 ### Z tokenem KSeF
 
-Użyj tokenu KSeF, gdy aplikacja ma już ważny token dla danego kontekstu. Token
-działa w TEST, DEMO i PRODUCTION.
+Użyj tokena KSeF, gdy aplikacja ma już ważny token dla danego kontekstu logowania. Token działa w środowisku testowym, przedprodukcyjnym (Demo) i produkcyjnym.
 
 ```python
 import os
@@ -67,10 +58,9 @@ auth = client.authentication.with_token(
 )
 ```
 
-### Certyfikat TEST
+### Certyfikat testowy
 
-Certyfikat generowany przez SDK jest przeznaczony do lokalnego developmentu i
-działa tylko z `Environment.TEST`.
+Certyfikat generowany przez SDK jest przeznaczony do pracy lokalnej i działa tylko z `Environment.TEST`.
 
 ```python
 import os
@@ -82,10 +72,7 @@ auth = client.authentication.with_test_certificate(
 
 ### Z PEM XAdES
 
-Użyj bajtów certyfikatu i klucza prywatnego w formacie PEM, gdy materiał certyfikatu
-jest przechowywany oddzielnie. `XAdESCredentials.from_pem` przyjmuje same bajty, więc
-SDK nie otwiera pliku za Ciebie, a kod trzymający materiał gdzie indziej może go
-przekazać bezpośrednio.
+Użyj bajtów certyfikatu i klucza prywatnego w formacie PEM, gdy materiał certyfikatu jest przechowywany osobno. `XAdESCredentials.from_pem` przyjmuje same bajty, więc SDK nie otwiera pliku za Ciebie, a kod trzymający materiał gdzie indziej może go przekazać bezpośrednio.
 
 ```python
 import os
@@ -106,16 +93,9 @@ auth = client.authentication.with_xades(
 )
 ```
 
-Hasło odszyfrowuje klucz tylko podczas tworzenia poświadczeń i nie jest potem
-przechowywane. Odszyfrowany klucz istnieje w pamięci wewnątrz `credentials`, więc
-traktuj ten obiekt jak sekret: nie loguj go, nie zapisuj w cache ani na dysku, a po
-uwierzytelnieniu usuń do niego odwołanie. `repr()` ukrywa obiekty certyfikatu i klucza.
-Obiekt poświadczeń nie ma schematu Pydantic ani API serializacji JSON. Przechowuje załadowane obiekty,
-sprawdza typ klucza i zgodność z certyfikatem tylko raz, a następnie używa ich do
-podpisywania.
+Hasło odszyfrowuje klucz tylko podczas tworzenia obiektu i nie jest potem przechowywane. Odszyfrowany klucz istnieje w pamięci wewnątrz `credentials`, więc traktuj ten obiekt jak sekret: nie loguj go, nie zapisuj w pamięci podręcznej ani na dysku, a po uwierzytelnieniu usuń do niego odwołanie. `repr()` ukrywa obiekty certyfikatu i klucza. Obiekt nie ma schematu Pydantic ani API serializacji JSON. Przechowuje załadowane obiekty, sprawdza typ klucza i zgodność z certyfikatem tylko raz, a następnie używa ich do podpisywania.
 
-Forma z obiektami pozostaje wspierana. Załaduj materiał samodzielnie i przekaż
-zwrócone certyfikat oraz klucz.
+Forma z obiektami pozostaje wspierana. Załaduj materiał samodzielnie i przekaż zwrócony certyfikat oraz klucz.
 
 ```python
 import os
@@ -159,9 +139,7 @@ auth = client.authentication.with_xades(
 )
 ```
 
-`XAdESCredentials.from_der` robi to samo dla bajtów certyfikatu i klucza w kodowaniu
-DER. Przekazanie `credentials` razem z `cert` albo `private_key`, albo nieprzekazanie
-żadnej pary, podnosi `KSeFArgumentError` przed wysłaniem jakiegokolwiek żądania.
+`XAdESCredentials.from_der` robi to samo dla bajtów certyfikatu i klucza w kodowaniu DER. Przekazanie `credentials` razem z `cert` albo `private_key`, albo nieprzekazanie żadnej pary, zgłasza wyjątek `KSeFArgumentError` przed wysłaniem jakiegokolwiek żądania.
 
 Forma z obiektami pozostaje wspierana:
 
@@ -186,13 +164,9 @@ auth = client.authentication.with_xades(
 
 ### Uwierzytelnianie certyfikatem z magazynu
 
-Użyj magazynu certyfikatów podpisu, gdy Twój certyfikat i klucz prywatny żyją w
-magazynie aplikacji — w keychainie, bazie danych albo managerze sekretów — a nie
-w pliku czytanym przy starcie. `ksef2.certificate_stores` trzyma certyfikaty
-podpisu razem z kluczami; to nie cache certyfikatów szyfrowania, który posiada
-klient główny.
+Użyj magazynu certyfikatów podpisu, gdy Twój certyfikat i klucz prywatny żyją w magazynie aplikacji, na przykład w pęku kluczy, bazie danych albo menedżerze sekretów, a nie w pliku czytanym przy starcie. `ksef2.certificate_stores` trzyma certyfikaty podpisu razem z kluczami. To nie jest pamięć certyfikatów szyfrowania, którą ma klient główny.
 
-Zapisz parę raz i uwierzytelniaj się zwróconą referencją:
+Zapisz parę raz i uwierzytelniaj się zwróconym wskazaniem:
 
 ```python
 import os
@@ -227,19 +201,14 @@ with Client(Environment.PRODUCTION) as client:
     )
 ```
 
-Magazyn oddaje dokładnie rekord wskazany przez `reference`. Nigdy nie wybiera
-najnowszego certyfikatu i klient nie zamyka magazynu: to aplikacja otwiera i
-zamyka to, na czym magazyn stoi.
+Magazyn oddaje dokładnie rekord wskazany przez `reference`. Nigdy nie wybiera najnowszego certyfikatu. Klient nie zamyka magazynu: to aplikacja otwiera i zamyka to, na czym magazyn stoi.
 
 Przed pierwszym żądaniem do KSeF klient sprawdza, że:
 
-1. magazyn pasuje rodzaju do klienta, bo klient synchroniczny nie może oczekiwać
-   na magazyn, a klient asynchroniczny nie odczyta magazynu synchronicznego;
-2. referencję zapisano dla środowiska tego klienta;
+1. magazyn jest tego samego rodzaju co klient, bo klient synchroniczny nie może czekać na magazyn asynchroniczny, a klient asynchroniczny nie odczyta magazynu synchronicznego;
+2. wskazanie zapisano dla środowiska tego klienta;
 3. rekord zwrócony przez magazyn jest tym, o który go zapytano;
-4. certyfikat nie jest certyfikatem KSeF typu `offline`. Certyfikat o nieznanej
-   funkcji w KSeF, na przykład zewnętrzny albo wygenerowany w TEST, jest
-   akceptowany;
+4. certyfikat nie jest certyfikatem KSeF typu `Offline` (`offline`). Certyfikat o nieznanej funkcji w KSeF, na przykład zewnętrzny albo wygenerowany w środowisku testowym, jest akceptowany;
 5. certyfikat mieści się w swoim okresie ważności.
 
 Klient asynchroniczny czeka na to samo wywołanie:
@@ -250,12 +219,9 @@ auth = await client.authentication.with_stored_certificate(
 )
 ```
 
-## Profile kompatybilne z CLI
+## Profile zgodne z CLI
 
-`ksef2-cli` i SDK używają tego samego lokalnego pliku profili. Profil
-przechowuje niesekretne ustawienia: środowisko, NIP, metodę uwierzytelnienia,
-ścieżki certyfikatów, ustawienia pollingu i nazwę zmiennej środowiskowej z
-sekretem. Nie zapisuje wartości tokenów ani haseł certyfikatów.
+`ksef2-cli` i SDK używają tego samego lokalnego pliku profili. Profil przechowuje ustawienia, które nie są sekretami: środowisko, NIP, metodę uwierzytelnienia, ścieżki certyfikatów, ustawienia sprawdzania statusu i nazwę zmiennej środowiskowej z sekretem. Nie zapisuje wartości tokenów ani haseł certyfikatów.
 
 ```bash
 ksef2 profile create test-company \
@@ -291,9 +257,7 @@ Kolejność wyboru profilu jest taka sama w CLI i SDK:
 2. `KSEF2_PROFILE`.
 3. `active_profile` w lokalnym pliku konfiguracji.
 
-Użyj `KSEF2_CONFIG` albo `config_path="..."`, gdy plik profili nie znajduje się
-w domyślnej lokalizacji `~/.config/ksef2/config.toml`. Istniejące pliki
-`~/.config/ksef2-cli/config.toml` nadal są odczytywane jako zgodność wsteczna.
+Użyj `KSEF2_CONFIG` albo `config_path="..."`, gdy plik profili nie znajduje się w domyślnej lokalizacji `~/.config/ksef2/config.toml`. Istniejące pliki `~/.config/ksef2-cli/config.toml` nadal są odczytywane dla zgodności ze starszą ścieżką.
 
 Użyj istniejącego profilu w kodzie SDK:
 
@@ -307,7 +271,7 @@ with Client(Environment.PRODUCTION) as client:
     # auth = client.authentication.with_profile("prod-token")
 ```
 
-Środowisko klienta bazowego musi zgadzać się ze środowiskiem wybranego profilu.
+Środowisko klienta głównego musi zgadzać się ze środowiskiem wybranego profilu.
 
 Utwórz albo zaktualizuj ten sam plik profili z kodu SDK:
 
@@ -328,8 +292,7 @@ store.save(
 )
 ```
 
-Klient asynchroniczny używa tego samego pliku profili i tej samej kolejności
-wyboru:
+Klient asynchroniczny używa tego samego pliku profili i tej samej kolejności wyboru:
 
 ```python
 import asyncio
@@ -345,36 +308,31 @@ asyncio.run(main())
 
 **Zobacz też:**
 
-- [Użyj profili](profiles.md): Twórz profile przez ksef2-cli, uwierzytelniaj się przez with_profile() i zarządzaj profilami przez ProfileStore.
-- [Własny magazyn certyfikatów podpisu](write-signing-certificate-store.md): Zaimplementuj protokół magazynu na własnym backendzie.
-- [Uwierzytelnianie w CLI](../../cli/guides/authentication.md): Użyj tych samych przepływów tokenu, certyfikatu TEST, PEM XAdES, PKCS#12 i profili z poziomu ksef2-cli.
+- [Profile](profiles.md): profile przez ksef2-cli, uwierzytelnianie przez `with_profile()` i `ProfileStore`.
+- [Własny magazyn certyfikatów podpisu](write-signing-certificate-store.md): protokół magazynu na własnym zapleczu.
+- [Uwierzytelnianie w CLI](../../cli/guides/authentication.md): te same przepływy tokena, certyfikatu testowego, PEM XAdES, PKCS#12 i profili w ksef2-cli.
 
-## Zalecany przepływ
+## Zalecany przebieg
 
 1. Umieść sekrety w zmiennych środowiskowych.
 
    Użyj `KSEF2_TOKEN`, `KSEF2_KEY_PASSWORD` albo `KSEF2_P12_PASSWORD`.
 
-2. Trzymaj niesekretne ustawienia w jednym miejscu.
+2. Trzymaj ustawienia bez sekretów w jednym miejscu.
 
-   Dla w pełni własnych konfiguracji użyj konfiguracji aplikacji. Jeśli to samo
-   środowisko obsługujesz też z terminala, skorzystaj z profili `ksef2-cli`.
+   Dla w pełni własnych konfiguracji użyj konfiguracji aplikacji. Jeśli to samo środowisko obsługujesz też z terminala, skorzystaj z profili `ksef2-cli`.
 
-3. Utwórz klienta bazowego dla środowiska.
+3. Utwórz klienta głównego dla środowiska.
 
-   Użyj `Client(Environment.TEST)`, `Client(Environment.DEMO)` albo
-   `Client(Environment.PRODUCTION)`.
+   Użyj `Client(Environment.TEST)`, `Client(Environment.DEMO)` albo `Client(Environment.PRODUCTION)`.
 
 4. Uwierzytelnij się raz i przekaż klienta do przepływów.
 
-   Klient uwierzytelniony przechowuje tokeny dostępu i udostępnia moduły
-   przepływów.
+   Klient uwierzytelniony przechowuje token dostępu (`accessToken`) i token odświeżający (`refreshToken`) oraz udostępnia moduły przepływów.
 
 ## Błędy
 
-Każdy błąd zgłaszany przez SDK jest podklasą `KSeFException`, błędy żądań HTTP
-też. Łap najpierw `KSeFTransportError`, gdy brak użytecznej odpowiedzi zmienia to,
-co robisz dalej.
+Każdy błąd zgłaszany przez SDK jest podklasą `KSeFException`. Błędy żądań HTTP też. Łap najpierw `KSeFTransportError`, gdy brak użytecznej odpowiedzi zmienia to, co robisz dalej.
 
 ```python
 from ksef2 import Client, Environment, KSeFException, KSeFTransportError
@@ -388,8 +346,8 @@ except KSeFException as exc:
     print(exc)
 ```
 
-## Następne przepływy
+## Następne strony
 
-- [Wysyłanie faktur](send-invoices.md): Otwórz sesję online albo batch po uwierzytelnieniu.
-- [Wyszukiwanie faktur](query-invoices.md): Pobierz metadane faktur z filtrami i paginacją.
-- [Pobieranie faktur](download-invoices.md): Pobierz przetworzone faktury albo szyfrowane paczki eksportu.
+- [Wysyłanie faktur](send-invoices.md): sesja interaktywna albo wsadowa po uwierzytelnieniu.
+- [Wyszukiwanie faktur](query-invoices.md): metadane faktur z filtrami i stronicowaniem.
+- [Pobieranie faktur](download-invoices.md): przetworzone faktury albo zaszyfrowane paczki eksportu.

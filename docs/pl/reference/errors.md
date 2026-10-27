@@ -1,16 +1,9 @@
 ---
-title: Referencja błędów
-description: Hierarchia wyjątków SDK, atrybuty, kody błędów KSeF, wskazówki i klasy timeoutów pollingu.
+title: Obsługa błędów
+description: Hierarchia wyjątków SDK, atrybuty, kody błędów KSeF, wskazówki i klasy przekroczenia czasu oczekiwania.
 ---
 
-ksef2 rzuca wyjątki SDK dla każdego błędu, który klasyfikuje, także dla błędów
-żądań HTTP: żadna metoda publiczna nie przepuszcza błędu żądania `httpx` do
-wywołującego. Łap `KSeFException`, żeby obsłużyć każdy błąd SDK, albo węższy
-`KSeFTransportError`, gdy żądanie nie dało odpowiedzi, której SDK mógłby użyć.
-Błędy, których SDK nie zgłasza, np. `TypeError` z Twoich własnych argumentów,
-pozostają zwykłymi wyjątkami Pythona. Transfery przez presigned URL-e do
-zewnętrznego storage używają opisanych niżej dedykowanych wyjątków zamiast
-klasyfikacji błędów API lub uwierzytelnienia KSeF.
+ksef2 zgłasza wyjątki SDK dla każdego błędu, który klasyfikuje, także dla błędów żądań HTTP. Żadna metoda publiczna nie przepuszcza błędu żądania `httpx` do wywołującego. Łap `KSeFException`, żeby obsłużyć każdy błąd SDK, albo węższy `KSeFTransportError`, gdy żądanie nie dało odpowiedzi, której SDK mógłby użyć. Błędy, których SDK nie zgłasza, na przykład `TypeError` z Twoich własnych argumentów, zostają zwykłymi wyjątkami Pythona. Transfery przez podpisany adres URL do zewnętrznego magazynu używają opisanych niżej osobnych wyjątków, a nie klasyfikacji błędów API albo uwierzytelnienia KSeF.
 
 ## Lokalna walidacja danych wejściowych
 
@@ -29,12 +22,9 @@ i tokeny KSeF zgłaszają `KSeFArgumentError` z podpowiedzią `hint` przed wysł
 `InvoicesFilter(ksef_number=...)` sprawdza format numeru podczas tworzenia
 obiektu. Akceptuje 35-znakowe numery KSeF 2.0 oraz 36-znakowe numery KSeF 1.0.
 
-## Rozgałęziaj po klasie albo po `ksef_code`
+## Rozróżniaj po klasie albo po `ksef_code`
 
-Obsługuj błędy po klasie wyjątku, a dla błędów API KSeF po `ksef_code`. Nigdy nie
-rozgałęziaj po treści komunikatu: komunikaty są pisane dla ludzi, zawierają
-aktualne sformułowania KSeF i mogą zmienić się między wydaniami. To samo dotyczy
-`hint`: pokaż go albo zaloguj, ale nie parsuj.
+Obsługuj błędy po klasie wyjątku, a dla błędów API KSeF po `ksef_code`. Nigdy nie rozróżniaj po treści komunikatu. Komunikaty są pisane dla ludzi, zawierają aktualne sformułowania KSeF i mogą zmienić się między wydaniami. To samo dotyczy `hint`: pokaż go albo zaloguj, ale nie parsuj.
 
 ## Klasy bazowe
 
@@ -92,41 +82,39 @@ except KSeFException as exc:
 
 ## Klasy wyjątków SDK
 
-| Klasa | `code` | Kiedy jest rzucana |
+| Klasa | `code` | Kiedy jest zgłaszana |
 | --- | --- | --- |
-| `KSeFPollingTimeoutError` | `POLLING_TIMEOUT` | Baza dziesięciu timeoutów pollingu workflow. |
+| `KSeFPollingTimeoutError` | `POLLING_TIMEOUT` | Baza dziesięciu przekroczeń czasu oczekiwania na wynik przepływu. |
 | `KSeFResponseValidationError` | `RESPONSE_VALIDATION_ERROR` | Nieprawidłowa odpowiedź API lub metadane eksportu. |
 | `KSeFProfileConfigError` | `PROFILE_CONFIG_ERROR` | Nieprawidłowa konfiguracja profilu, brak sekretów lub błąd wczytywania poświadczeń. |
-| `KSeFSessionFailedError` | `SESSION_FAILED` | Przetwarzanie sesji online lub wsadowej zakończyło się błędem. |
+| `KSeFSessionFailedError` | `SESSION_FAILED` | Przetwarzanie sesji interaktywnej lub wsadowej zakończyło się błędem. |
 | `KSeFTokenActivationFailedError` | `TOKEN_ACTIVATION_FAILED` | Aktywacja wygenerowanego tokenu nie powiodła się lub token został unieważniony. |
 | `KSeFNotFoundError` | `NOT_FOUND` | Brak zasobu według kodu KSeF lub HTTP 404/410. |
 | `KSeFServerError` | `SERVER_ERROR` | Sesja tymczasowo niedostępna lub HTTP 5xx. |
 | `KSeFClientClosedError` | `CLIENT_CLOSED` | Klient główny albo klient sesji użyty po zamknięciu. |
-| `KSeFUnsupportedEnvironmentError` | `UNSUPPORTED_ENVIRONMENT` | Gałąź albo przepływ tylko dla TEST użyty poza `Environment.TEST`. |
-| `KSeFValidationError` | `VALIDATION_ERROR` | Niepoprawne dane wejściowe SDK, błędny payload odpowiedzi, błędny profil albo błędne argumenty sesji/batch. |
+| `KSeFUnsupportedEnvironmentError` | `UNSUPPORTED_ENVIRONMENT` | Moduł albo przepływ tylko dla środowiska testowego użyty poza `Environment.TEST`. |
+| `KSeFValidationError` | `VALIDATION_ERROR` | Niepoprawne dane wejściowe SDK, błędna treść odpowiedzi, błędny profil albo błędne argumenty sesji interaktywnej albo wsadowej. |
 | `KSeFArgumentError` | `ARGUMENT_ERROR` | Wywołanie łączy argumenty niedozwolone przez SDK, na przykład oba albo żaden z `form_code` i `state`. Podklasa `KSeFValidationError`, `TypeError` i (przez `KSeFValidationError`) `ValueError`. |
 | `KSeFInvoiceRenderingError` | `INVOICE_RENDERING_ERROR` | Błędy opcjonalnego renderowania XSLT/PDF. |
 | `KSeFEncryptionError` | `ENCRYPTION_ERROR` | Błąd szyfrowania tokenu, klucza symetrycznego, faktury albo deszyfrowania. |
 | `KSeFSessionError` | `SESSION_ERROR` | Naruszenie stanu sesji, na przykład użycie zamkniętej sesji. Klasa bazowa `KSeFInvoiceRejectedError`. |
-| `KSeFInvoiceRejectedError` | `INVOICE_REJECTED` | KSeF zakończył przetwarzanie faktury z sesji interaktywnej i ją odrzucił (`InvoiceSubmission.wait()`). |
+| `KSeFInvoiceRejectedError` | `INVOICE_REJECTED` | KSeF skończył przetwarzanie faktury z sesji interaktywnej i ją odrzucił (`InvoiceSubmission.wait()`). |
 | `KSeFExportFailedError` | `EXPORT_FAILED` | KSeF zakończył eksport faktur bez paczki: eksport się nie powiódł, został anulowany przez system albo wygasł (`ExportJob.wait()`). Podklasa `KSeFOperationFailedError`. |
 | `KSeFPermissionOperationFailedError` | `PERMISSION_OPERATION_FAILED` | KSeF zakończył nadanie albo cofnięcie uprawnienia bez jego zastosowania (`PermissionOperation.wait()`). Podklasa `KSeFOperationFailedError`. |
 | `KSeFCertificateEnrollmentFailedError` | `CERTIFICATE_ENROLLMENT_FAILED` | KSeF odrzucił, anulował albo nie zrealizował rejestracji certyfikatu (`CertificateEnrollment.wait()`). Podklasa `KSeFOperationFailedError`. |
-| `KSeFCertificateStoreError` | `CERTIFICATE_STORE_ERROR` | Błąd bazowy magazynu certyfikatów podpisujących (`ksef2.certificate_stores`). Przenosi `operation`, `reference` i `outcome_ambiguous`. |
-| `KSeFCertificateStoreNotFoundError` | `CERTIFICATE_STORE_NOT_FOUND` | Pod wskazanym odniesieniem nie ma zapisanego certyfikatu podpisującego. Podklasa `KSeFCertificateStoreError`. |
-| `KSeFCertificateStoreConflictError` | `CERTIFICATE_STORE_CONFLICT` | Pod tym odniesieniem zapisany jest już inny rekord. Podklasa `KSeFCertificateStoreError`. |
+| `KSeFCertificateStoreError` | `CERTIFICATE_STORE_ERROR` | Błąd bazowy magazynu certyfikatów podpisu (`ksef2.certificate_stores`). Niesie `operation`, `reference` i `outcome_ambiguous`. |
+| `KSeFCertificateStoreNotFoundError` | `CERTIFICATE_STORE_NOT_FOUND` | Pod wskazanym `reference` nie ma zapisanego certyfikatu podpisu. Podklasa `KSeFCertificateStoreError`. |
+| `KSeFCertificateStoreConflictError` | `CERTIFICATE_STORE_CONFLICT` | Pod tym wskazaniem zapisany jest już inny rekord. Podklasa `KSeFCertificateStoreError`. |
 | `KSeFCertificateStoreAccessError` | `CERTIFICATE_STORE_ACCESS` | Magazyn odrzucił poświadczenia albo uprawnienia wywołującego. Podklasa `KSeFCertificateStoreError`. |
 | `KSeFCertificateStoreUnavailableError` | `CERTIFICATE_STORE_UNAVAILABLE` | Magazyn jest niedostępny albo nie przyjął rekordu. Podklasa `KSeFCertificateStoreError`. |
-| `KSeFCertificateStoreMaterialError` | `CERTIFICATE_STORE_MATERIAL` | Zapisany certyfikat albo klucz jest uszkodzony, nieobsługiwany, niedeszyfrowalny lub nie zgadza się z odniesieniem. Podklasa `KSeFCertificateStoreError`. |
-| `KSeFAuthTokenRedemptionError` | `AUTH_TOKEN_REDEMPTION_ERROR` | Jednorazowy redeem uwierzytelnienia nie dostał użytecznej odpowiedzi i mógł się powieść. Podklasa `KSeFTransportError`. |
-| `KSeFExternalTransferError` | `EXTERNAL_TRANSFER_ERROR` | Upload lub download przez presigned URL został odrzucony albo nie dał użytecznej odpowiedzi. |
-| `KSeFBatchUploadError` | `BATCH_UPLOAD_ERROR` | Upload części batch nie powiódł się, ale chroniony stan odzyskiwania pozostaje dostępny. |
+| `KSeFCertificateStoreMaterialError` | `CERTIFICATE_STORE_MATERIAL` | Zapisany certyfikat albo klucz jest uszkodzony, nieobsługiwany, nie da się go odszyfrować albo nie zgadza się ze wskazaniem. Podklasa `KSeFCertificateStoreError`. |
+| `KSeFAuthTokenRedemptionError` | `AUTH_TOKEN_REDEMPTION_ERROR` | Jednorazowa wymiana tokenu uwierzytelnienia nie dostała użytecznej odpowiedzi i mogła się powieść. Podklasa `KSeFTransportError`. |
+| `KSeFExternalTransferError` | `EXTERNAL_TRANSFER_ERROR` | Przesłanie albo pobranie przez podpisany adres URL zostało odrzucone albo nie dało użytecznej odpowiedzi. |
+| `KSeFBatchUploadError` | `BATCH_UPLOAD_ERROR` | Przesłanie części sesji wsadowej nie powiodło się, ale chroniony stan odzyskiwania zostaje dostępny. |
 | `NoCertificateAvailableError` | `NO_CERTIFICATE_AVAILABLE` | Brak poprawnego certyfikatu dla podpisu albo szyfrowania. |
 | `KSeFMetadataPaginationError` | `METADATA_PAGINATION_ERROR` | Paginacja metadanych nie może bezpiecznie kontynuować. |
 
-`KSeFAuthTokenRedemptionError.outcome_ambiguous` ma zawsze wartość `True`. Nie
-ponawiaj redeem: KSeF mógł już zużyć tymczasowy token uwierzytelnienia, mimo że
-do wywołującego nie dotarła użyteczna odpowiedź.
+`KSeFAuthTokenRedemptionError.outcome_ambiguous` ma zawsze wartość `True`. Nie ponawiaj wymiany tokenu: KSeF mógł już zużyć tymczasowy token uwierzytelnienia, mimo że do wywołującego nie dotarła użyteczna odpowiedź.
 
 `KSeFCertificateStoreError.outcome_ambiguous` ma wartość `True` tylko wtedy, gdy
 magazyn nie potrafi powiedzieć, czy zapis został wykonany. Przed ponownym zapisem
@@ -144,18 +132,12 @@ obsługiwać `KSeFPermissionDeniedError` albo `KSeFApiError`.
 
 ## Atrybuty błędu transportu
 
-`KSeFTransportError` jest rzucany, gdy żądanie nie dało odpowiedzi, której SDK
-mógłby użyć: nie dotarło do KSeF, odpowiedź nie dała się zdekodować albo
-łańcuch przekierowań został porzucony. Żądania nadające się do ponowienia są
-ponawiane najpierw, więc ten błąd oznacza wyczerpane próby albo żądanie, którego
-SDK nie ponawia. Powtarzamy tylko błędy, których KSeF mógł nie zobaczyć, więc
-błąd dekodowania albo przekierowania jest zgłaszany po jednej próbie; sama
-otoczka nie zmienia liczby prób.
+`KSeFTransportError` jest zgłaszany, gdy żądanie nie dało odpowiedzi, której SDK mógłby użyć: nie dotarło do KSeF, odpowiedzi nie dało się zdekodować albo łańcuch przekierowań został porzucony. Żądania, które da się ponowić, są ponawiane najpierw, więc ten błąd oznacza wyczerpane próby albo żądanie, którego SDK nie ponawia. Powtarzamy tylko błędy, których KSeF mógł nie zobaczyć, więc błąd dekodowania albo przekierowania jest zgłaszany po jednej próbie. Samo zgłoszenie tego błędu nie zmienia liczby prób.
 
 | Atrybut | Typ | Znaczenie |
 | --- | --- | --- |
 | `method` | `str \| None` | Metoda HTTP błędnego żądania albo `None`, gdy SDK jej nie zna. |
-| `path` | `str \| None` | Ścieżka URL żądania bez userinfo, hosta, query i fragmentu. Presigned URL-e storage nigdy nie trafiają do tego pola. |
+| `path` | `str \| None` | Ścieżka URL żądania bez userinfo, hosta, zapytania i fragmentu. Podpisane adresy URL magazynu nigdy nie trafiają do tego pola. |
 | `cause_type` | `str \| None` | Typ oryginalnego błędu transportu albo `None`. |
 | `cause_message` | `str \| None` | Bezpieczne podsumowanie przyczyny; adresy URL i query są usuwane. |
 | `outcome_ambiguous` | `bool` | `True`, gdy żądanie mogło dotrzeć do KSeF. Błędy połączenia przed wysłaniem mają wartość `False`; utrata odpowiedzi dla niebezpiecznego żądania ma wartość `True`. |
@@ -183,51 +165,37 @@ except KSeFException as exc:
     print(exc)  # każdy pozostały błąd SDK
 ```
 
-## Atrybuty transferu zewnętrznego i odzyskiwanie batch
+## Atrybuty transferu zewnętrznego i odzyskiwanie sesji wsadowej
 
-Odpowiedzi z presigned storage nie są odpowiedziami API KSeF. Na przykład błąd
-`403` storage zgłasza `KSeFExternalTransferError`, a nie `KSeFAuthError`.
-Komunikat i `context` zawierają wyłącznie oczyszczony host, operację, referencję
-workflow, numer części, status i flagę niejednoznaczności; nie zawierają
-podpisanego URL-a.
+Odpowiedzi z magazynu na podpisanym adresie URL nie są odpowiedziami API KSeF. Na przykład błąd `403` tego magazynu zgłasza `KSeFExternalTransferError`, a nie `KSeFAuthError`. Komunikat i `context` zawierają wyłącznie oczyszczony host, operację, numer referencyjny przepływu, numer części, status i flagę niejednoznaczności. Nie zawierają podpisanego adresu URL.
 
 | Atrybut | Typ | Znaczenie |
 | --- | --- | --- |
 | `operation` | `Literal["upload", "download"]` | Zewnętrzny transfer, który się nie powiódł. |
-| `host` | `str` | Host storage bez ścieżki, query i podpisu. |
-| `reference_number` | `str` | Referencja eksportu lub workflow batch. |
+| `host` | `str` | Host magazynu bez ścieżki, zapytania i podpisu. |
+| `reference_number` | `str` | Numer referencyjny eksportu albo przepływu sesji wsadowej. |
 | `part_ordinal` | `int` | Jednobazowy numer części paczki. |
 | `status_code` | `int | None` | Status odpowiedzi storage albo `None`, gdy odpowiedź nie dotarła. |
-| `outcome_ambiguous` | `bool` | `True`, gdy upload mógł dotrzeć do storage mimo utraty odpowiedzi. |
+| `outcome_ambiguous` | `bool` | `True`, gdy przesłanie mogło dotrzeć do magazynu mimo utraty odpowiedzi. |
 
-`KSeFBatchUploadError.recovery_state()` celowo ujawnia wrażliwy
-`BatchSessionResumeState` potrzebny do odzyskania workflow, a
-`recovery_prepared_batch()` ujawnia dokładną paczkę `PreparedBatch`, której użył
-nieudany upload, również tę przygotowaną wewnątrz `submit()`. Oba przekazujesz do
-`auth.batch_session(state=..., prepared_batch=...)`. Żaden z nich nie trafia do
-komunikatu ani `context`, ponieważ zawierają materiał szyfrujący, a stan także
-presigned URL-e. Zapisuj je wyłącznie w chronionym magazynie danych
-uwierzytelniających i nie ponawiaj automatycznie uploadu, gdy
-`outcome_ambiguous` ma wartość `True`.
+`KSeFBatchUploadError.recovery_state()` celowo ujawnia wrażliwy `BatchSessionResumeState` potrzebny do odzyskania przepływu, a `recovery_prepared_batch()` ujawnia dokładną paczkę `PreparedBatch`, której użyło nieudane przesłanie, także tę przygotowaną wewnątrz `submit()`. Oba przekazujesz do `auth.batch_session(state=..., prepared_batch=...)`. Żaden z nich nie trafia do komunikatu ani do `context`, bo zawierają materiał szyfrujący, a stan także podpisane adresy URL. Zapisuj je wyłącznie w chronionym magazynie danych uwierzytelniających i nie ponawiaj przesłania automatycznie, gdy `outcome_ambiguous` ma wartość `True`.
 
 Oryginalny błąd `httpx` pozostaje dostępny przez `__cause__`. Nie loguj go bez
 kontroli, ponieważ surowa diagnostyka HTTP może zawierać podpisany URL.
 
 ## Atrybuty błędu API
 
-`KSeFApiError` jest rzucany dla sparsowanych odpowiedzi KSeF 4xx i 5xx.
-Specjalne podklasy są używane dla błędów auth/autoryzacji, rate limitu oraz
-zasobów, których KSeF jeszcze nie udostępnił.
+`KSeFApiError` jest zgłaszany dla sparsowanych odpowiedzi KSeF 4xx i 5xx. Osobne podklasy są używane dla błędów uwierzytelnienia i uprawnień, limitu żądań oraz zasobów, których KSeF jeszcze nie udostępnił.
 
 | Atrybut | Typ | Znaczenie |
 | --- | --- | --- |
 | `status_code` | `int` | Status HTTP zwrócony przez KSeF. |
-| `ksef_code` | `int | None` | Surowy kod błędu KSeF, niezależnie od wartości. `None`, gdy odpowiedź nie zawierała kodu. To źródło prawdy. |
+| `ksef_code` | `int | None` | Surowy kod błędu KSeF, niezależnie od wartości. `None`, gdy odpowiedź nie zawierała kodu. Rozróżniaj błędy według tego pola. |
 | `exception_code` | `ExceptionCode` | Ten sam kod jako enum, gdy SDK go zna; w przeciwnym razie `UNKNOWN_ERROR`. Zachowany dla zgodności. |
 | `trace_id` | `str | None` | Identyfikator śledzenia żądania w KSeF, gdy KSeF go zwrócił. |
 | `details` | `list[str]` | Komunikaty szczegółowe dołączone przez KSeF; pusta lista, gdy ich brak. |
 | `hint` | `str | None` | Co zrobić dalej, gdy SDK zna przyczynę. |
-| `response` | `BaseModel | None` | Sparsowany payload błędu KSeF, gdy parsowanie się udało. |
+| `response` | `BaseModel | None` | Sparsowana treść błędu KSeF, gdy parsowanie się udało. |
 
 Te same wartości są dostępne w `context`: `status_code`, `ksef_code`,
 `trace_id`, `details` oraz `hint` (jeśli jest).
@@ -237,11 +205,9 @@ strukturalnych diagnostyk, gdy `response` nie jest `None`.
 
 ### Format komunikatu
 
-Każdy błąd API KSeF ma ten sam format, niezależnie od kształtu odpowiedzi
-(`application/problem+json`, starszy payload `exception`, inne JSON-y, tekst albo
-pusta odpowiedź). SDK wybiera parser po nagłówku `Content-Type` odpowiedzi:
+Każdy błąd API KSeF ma ten sam format, niezależnie od postaci odpowiedzi (`application/problem+json`, starsza treść `exception`, inne JSON-y, tekst albo pusta odpowiedź). SDK wybiera parser po nagłówku `Content-Type` odpowiedzi:
 `application/problem+json` jest czytany jako Problem Details, `application/json`
-jako starszy payload (poza 401, który KSeF wysyła jako Problem Details oznaczony
+jako starsza treść (poza 401, który KSeF wysyła jako Problem Details oznaczony
 `application/json`), a wszystko inne staje się krótkim fragmentem:
 
 ```text
@@ -257,7 +223,7 @@ SDK wysyła `X-Error-Format: problem-details` w każdym żądaniu do API KSeF
 (zobacz [Format błędów](#format-błędów)), więc KSeF zwraca błędy 400 i 429 jako
 `application/problem+json`, a `trace_id` jest ustawiony w każdym błędzie API
 zwróconym w tym formacie. (401, 403 i 410 zawsze są Problem Details.) Nagłówek
-nie jest wysyłany do presigned URL-i storage. Treść odpowiedzi nie wchodzi do
+nie jest wysyłany na podpisane adresy URL magazynu. Treść odpowiedzi nie wchodzi do
 komunikatu; zostaje w `response`. Gdy treść nie jest rozpoznawalnym błędem,
 opisem jest krótki, skrócony fragment tej treści.
 
@@ -306,9 +272,7 @@ angielsku. Linia `Trace ID` pojawia się, gdy KSeF zwrócił identyfikator
 tylko wtedy, gdy SDK zna przyczynę, każda wymieniona w niej metoda jest aktualna,
 a dla jednego wystąpienia można ją zastąpić, przekazując `hint=...` do wyjątku.
 
-Wskazówki do błędów API zależą najpierw od kodu KSeF, potem od statusu HTTP.
-Kod z własną wskazówką zachowuje ją także przy 401 albo 403. HTTP 401 zgłasza
-`KSeFAuthError`, a HTTP 403 zgłasza `KSeFPermissionDeniedError`:
+Wskazówki do błędów API zależą najpierw od kodu KSeF, potem od statusu HTTP. Kod z własną wskazówką zachowuje ją także przy 401 albo 403. HTTP 401 zgłasza `KSeFAuthError`, a HTTP 403 zgłasza `KSeFPermissionDeniedError`. Tekst wskazówki jest taki, jaki wstawia SDK, po angielsku. Nazwy klas, kody i metody zostają bez zmian.
 
 | Status HTTP | Kod KSeF | Klasa | Wskazówka |
 | --- | --- | --- | --- |
@@ -336,8 +300,7 @@ Kod z własną wskazówką zachowuje ją także przy 401 albo 403. HTTP 401 zgł
 | 401 | inny | `KSeFAuthError` | KSeF rejected the credentials or the access token. Authenticate again with `client.authentication.with_token()` or `client.authentication.with_xades()`, and check that the token or certificate is valid for this context. |
 | 403 | inny | `KSeFPermissionDeniedError` | The authenticated identity is not allowed to do this in the current context. Check the reason in `details`, and grant the missing permission with the permissions client, for example `grant_person()`. |
 
-`KSeFRateLimitError` buduje wskazówkę z `retry_after`, na przykład
-`Wait 17 seconds before retrying.`
+`KSeFRateLimitError` buduje wskazówkę z `retry_after`. SDK wstawia ją po angielsku, na przykład `Wait 17 seconds before retrying.` (poczekaj 17 sekund przed ponowieniem).
 
 Wskazówki do pozostałych błędów SDK:
 
@@ -390,7 +353,7 @@ doda kod, którego tu nie ma.
 
 `21178` nie zawsze znaczy „jeszcze nie wystawione”: KSeF zwraca go na stałe także
 dla faktury, którą odrzucił (na przykład duplikatu, status 440). Najpierw wywołaj
-`wait()`; jeśli rzuci `KSeFInvoiceRejectedError`, UPO nie będzie.
+`wait()`. Jeśli zgłosi `KSeFInvoiceRejectedError`, UPO nie będzie.
 
 | Kod KSeF | `ExceptionCode` | Znaczenie |
 | --- | --- | --- |
@@ -461,13 +424,11 @@ nazwy są w tabeli powyżej. Jeden dodatkowy element nie jest kodem KSeF:
 Kody, których enum nie zna, mapują się do `ExceptionCode.UNKNOWN_ERROR`, ale
 surowa liczba zostaje w `ksef_code`. W nowym kodzie preferuj `ksef_code`.
 
-## Klasy timeoutów pollingu
+## Klasy przekroczenia czasu oczekiwania
 
-Wszystkie dziesięć klas poniżej dziedziczy po `KSeFPollingTimeoutError`,
-który udostępnia `timeout`.
+Wszystkie dziesięć klas poniżej dziedziczy po `KSeFPollingTimeoutError`, który udostępnia `timeout`.
 
-Wyjątki timeoutów pollingu oznaczają przekroczenie lokalnego deadline'u
-czekania. Same w sobie nie dowodzą, że zdalny workflow KSeF się nie udał.
+Te wyjątki oznaczają przekroczenie lokalnego limitu czasu czekania. Same w sobie nie dowodzą, że zdalny przepływ w KSeF się nie udał.
 
 | Klasa | `code` | Atrybuty identyfikujące |
 | --- | --- | --- |
@@ -482,30 +443,22 @@ czekania. Same w sobie nie dowodzą, że zdalny workflow KSeF się nie udał.
 | `KSeFBatchSessionTimeoutError` | `BATCH_SESSION_TIMEOUT` | `reference_number`, `timeout` |
 | `KSeFOnlineSessionTimeoutError` | `ONLINE_SESSION_TIMEOUT` | `reference_number`, `timeout` |
 
-Zapisz właściwą referencję albo stan zwracany przez `resume_state()` przed
-pollingiem, aby inny proces mógł wznowić sprawdzanie statusu. Każdy błąd
-timeoutu niesie `hint`, który mówi, jak czekać dalej albo wznowić pracę.
+Zapisz właściwy numer referencyjny albo stan zwracany przez `resume_state()`, zanim zaczniesz cyklicznie sprawdzać status, żeby inny proces mógł je wznowić. Każdy błąd przekroczenia czasu niesie `hint`, który mówi, jak czekać dalej albo wznowić pracę.
 
-`download_upo()` na handle faktury, sesji interaktywnej i sesji batch nigdy nie
-czeka i nie ma `timeout`. Najpierw wywołaj `wait()` na handle albo sesji.
-Wywołane za wcześnie rzuca `KSeFNotReadyError` ze wskazówką wskazującą `wait()`;
-sesja, która jest nadal otwarta, rzuca `KSeFSessionError`.
+`download_upo()` na obiekcie faktury, sesji interaktywnej i sesji wsadowej nigdy nie czeka i nie ma `timeout`. Najpierw wywołaj `wait()` na tym obiekcie albo na sesji. Wywołane za wcześnie zgłasza `KSeFNotReadyError` ze wskazówką wskazującą `wait()`. Sesja, która jest nadal otwarta, zgłasza `KSeFSessionError`.
 
-## Atrybuty rate limitu
+## Atrybuty limitu żądań
 
 | Atrybut | Typ | Znaczenie |
 | --- | --- | --- |
 | `retry_after` | `int | None` | Całkowite sekundy z `Retry-After` KSeF, podane jako sekundy albo data HTTP; `None`, gdy nagłówka brak lub nie da się go odczytać. |
 | `status_code` | `int` | Zawsze `429`. |
-| `response` | `BaseModel | None` | Sparsowany payload błędu KSeF, gdy jest dostępny. |
-| `hint` | `str` | `Wait <retry_after> seconds before retrying.` |
+| `response` | `BaseModel | None` | Sparsowana treść błędu KSeF, gdy jest dostępna. |
+| `hint` | `str` | Tekst wstawiany przez SDK po angielsku: `Wait <retry_after> seconds before retrying.` (poczekaj podaną liczbę sekund przed ponowieniem). |
 
 ## Atrybuty odrzucenia faktury
 
-`KSeFInvoiceRejectedError` dziedziczy po `KSeFSessionError`, więc istniejące
-handlery nadal go łapią. Łap `KSeFInvoiceRejectedError` przed
-`KSeFSessionError`, gdy tylko naruszenie stanu sesji wymaga otwarcia sesji od
-nowa albo ponownego uwierzytelnienia.
+`KSeFInvoiceRejectedError` dziedziczy po `KSeFSessionError`, więc istniejąca obsługa tego błędu nadal go łapie. Łap `KSeFInvoiceRejectedError` przed `KSeFSessionError`, gdy tylko naruszenie stanu sesji wymaga otwarcia sesji od nowa albo ponownego uwierzytelnienia.
 
 | Atrybut | Typ | Znaczenie |
 | --- | --- | --- |
@@ -525,8 +478,8 @@ odpowiedzią, może przekazać `originalKsefNumber` do `download()` i
 porównać pobraną fakturę z wysłaną. Jeśli to ta sama faktura, może uznać ją za
 już przyjętą.
 
-## Powiązana referencja
+## Powiązane strony
 
-- [Referencja operacji](operations.md): Sprawdź retry, rate limit, timeouty workflow i wznawialny stan.
-- [Cykl życia klienta](client-lifecycle.md): Sprawdź błędy lifecycle i zamykanie klientów.
-- [Status i UPO](../concepts/status-and-upo.md): Zrozum statusy, dokumenty UPO i deadline'y pollingu.
+- [Operacje](operations.md): Ponowienia, limit żądań, limity czasu przepływów i stan, który da się wznowić.
+- [Tworzenie i zamykanie klientów](client-lifecycle.md): Błędy cyklu życia i zamykanie klientów.
+- [Status i UPO](../concepts/status-and-upo.md): Statusy, dokumenty UPO i lokalne limity czasu.

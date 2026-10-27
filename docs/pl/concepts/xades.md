@@ -1,33 +1,27 @@
 ---
 title: XAdES
-description: Zrozum krok podpisu XML używany przez uwierzytelnianie KSeF oparte o certyfikat.
+description: Podpis XML używany przy uwierzytelnianiu w KSeF certyfikatem.
 ---
 
-XAdES to format podpisu XML używany, gdy uwierzytelnianie KSeF opiera się o
-certyfikat. W SDK XAdES należy do uwierzytelniania: podpisuje
-`AuthTokenRequest` zbudowany z challenge KSeF i kontekstu logowania.
+XAdES to format podpisu XML używany, gdy uwierzytelnianie w KSeF opiera się na certyfikacie. W SDK XAdES należy do uwierzytelniania: podpisuje `AuthTokenRequest` zbudowany z wyzwania KSeF i kontekstu logowania.
 
-Nie jest schematem XML faktury, szyfrowaniem sesji ani formatem paczki eksportu.
+Nie jest strukturą XML faktury, szyfrowaniem sesji ani formatem paczki eksportu.
 
 ## Co potwierdza XAdES
 
-Podczas uwierzytelniania XAdES KSeF sprawdza podpisany dokument XML i certyfikat
-osadzony w podpisie. Kontekstem logowania jest NIP przekazany do metody SDK.
-Podmiot uwierzytelniający jest odczytywany z certyfikatu podpisującego, na
-przykład:
+Przy uwierzytelnianiu XAdES KSeF sprawdza podpisany dokument XML i certyfikat osadzony w podpisie. Kontekstem logowania jest NIP przekazany do metody SDK. Podmiot uwierzytelniający jest odczytywany z certyfikatu, którym podpisano dokument, na przykład:
 
-- kwalifikowanego certyfikatu osoby fizycznej zawierającego PESEL albo NIP;
-- kwalifikowanej pieczęci organizacji zawierającej NIP;
-- certyfikatu KSeF do uwierzytelniania;
-- certyfikatu rozpoznawanego przez uprawnienia na odcisk palca;
-- materiału certyfikatu samopodpisanego tylko dla TEST.
+- kwalifikowany certyfikat osoby fizycznej zawierający PESEL albo NIP;
+- kwalifikowana pieczęć organizacji zawierająca NIP;
+- certyfikat KSeF typu `Authentication`;
+- certyfikat rozpoznawany przez uprawnienia nadane na odcisk palca certyfikatu (`fingerprint`);
+- certyfikat samopodpisany, wyłącznie w środowisku testowym.
 
-Następnie KSeF sprawdza, czy ten podmiot może działać w żądanym kontekście.
+Następnie KSeF sprawdza, czy ten podmiot może działać we wskazanym kontekście logowania.
 
 ## Warstwy SDK
 
-Większość aplikacji powinna używać `with_xades()` albo profilu, który wybiera tę
-metodę:
+Większość aplikacji powinna używać `with_xades()` albo profilu, który wybiera tę metodę:
 
 ```python
 auth = client.authentication.with_xades(
@@ -37,35 +31,28 @@ auth = client.authentication.with_xades(
 )
 ```
 
-Helper obsługuje zwykłą sekwencję:
+Metoda wykonuje zwykłą sekwencję:
 
-1. Pobierz challenge uwierzytelniania.
-2. Zbuduj XML `AuthTokenRequest` dla kontekstu.
-3. Podpisz XML przez XAdES.
-4. Wyślij podpisany XML do KSeF.
-5. Odpytuj operację uwierzytelniania.
-6. Odbierz access i refresh tokeny.
+1. Pobiera wyzwanie uwierzytelniania.
+2. Buduje XML `AuthTokenRequest` dla kontekstu logowania.
+3. Podpisuje XML w formacie XAdES.
+4. Wysyła podpisany XML do KSeF.
+5. Sprawdza status operacji uwierzytelniania.
+6. Odbiera token dostępu (`accessToken`) i token odświeżający (`refreshToken`).
 
-Używaj `ksef2.xades` bezpośrednio, gdy musisz samodzielnie załadować materiał
-certyfikatu, obejrzeć podpisany XML albo przetestować granicę low-level
-integracji.
+Z `ksef2.xades` korzystaj bezpośrednio, gdy sam ładujesz materiał certyfikatu, chcesz obejrzeć podpisany XML albo sprawdzasz integrację na poziomie operacji API.
 
-:::tip[Granica zewnętrznego podpisu]
-Jeśli inny system podpisuje XML, a Python ma tylko wysłać wynik albo odebrać
-tokeny, użyj low-level endpointów uwierzytelniania i powiąż pobrane tokeny
-przez
-`client.authentication.resume(AuthenticationResumeState.from_tokens(auth_tokens))`.
+:::tip[Podpis poza Pythonem]
+Jeśli inny system podpisuje XML, a Python ma tylko wysłać wynik albo odebrać tokeny, użyj operacji uwierzytelniania niskiego poziomu i powiąż pobrane tokeny przez `client.authentication.resume(AuthenticationResumeState.from_tokens(auth_tokens))`.
 :::
 
-## Certyfikaty TEST
+## Certyfikaty testowe
 
-SDK potrafi wygenerować materiał samopodpisanego certyfikatu tylko dla TEST
-przez `with_test_certificate()` albo niskopoziomowe helpery w `ksef2.xades`. To
-skrót developerski dla `Environment.TEST`; nie działa w DEMO ani PRODUKCJI.
+SDK potrafi wygenerować certyfikat samopodpisany tylko dla środowiska testowego, przez `with_test_certificate()` albo metody pomocnicze w `ksef2.xades`. To skrót do pracy w `Environment.TEST`. Nie działa w środowisku przedprodukcyjnym (Demo) ani produkcyjnym.
 
 ## Powiązane strony
 
-- [Metody uwierzytelniania](authentication-methods.md): Zobacz XAdES obok uwierzytelniania tokenem, certyfikatem TEST i profilem.
-- [Użyj pomocników XAdES](../how-to-guides/use-xades-helpers.md): Załaduj materiał certyfikatu i podpisz XML uwierzytelniający w kodzie.
-- [Certyfikaty](certificates.md): Zrozum tożsamość certyfikatu, rejestrację i typy wydanych certyfikatów.
-- [Low-level uwierzytelnianie](../reference/low-level/authentication.md): Wykonaj uwierzytelnianie ręcznie, gdy podpis jest obsługiwany poza wysokopoziomowym helperem SDK.
+- [Metody uwierzytelniania](authentication-methods.md): XAdES obok tokena KSeF, certyfikatu testowego i profilu.
+- [Podpisy XAdES](../how-to-guides/use-xades-helpers.md): wczytanie certyfikatu i podpis XML uwierzytelniania w kodzie.
+- [Certyfikaty](certificates.md): tożsamość certyfikatu, rejestracja i typy certyfikatów wydanych przez KSeF.
+- [Uwierzytelnianie niskiego poziomu](../reference/low-level/authentication.md): uwierzytelnianie ręczne, gdy podpis powstaje poza metodą wysokiego poziomu.

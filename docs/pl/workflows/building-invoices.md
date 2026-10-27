@@ -1,11 +1,9 @@
 ---
 title: Budowanie faktur
-description: Zbuduj XML faktury FA(3) typowanymi pomocnikami ksef2 przed wysyłką do KSeF.
+description: Zbuduj XML faktury FA(3) typowanymi metodami ksef2, zanim wyślesz go do KSeF.
 ---
 
-Użyj `ksef2.fa3`, gdy aplikacja ma dane faktury jako obiekty Pythona i chcesz,
-żeby SDK wygenerowało XML FA(3). Użyj przepływów wysyłki, gdy masz już XML z
-innego systemu.
+Użyj `ksef2.fa3`, gdy aplikacja ma dane faktury jako obiekty Pythona i chcesz, żeby SDK wygenerowało XML FA(3). Przepływów wysyłki użyj, gdy XML masz już z innego systemu.
 
 ## Zbuduj fakturę standardową
 
@@ -63,8 +61,7 @@ Każde `.done()` wraca do poprzedniego poziomu buildera.
 
 ## Zapisuj wersje robocze
 
-Zapisuj stan buildera, gdy edycja faktury może trwać przez wiele żądań albo
-sesji użytkownika.
+Zapisuj stan buildera, gdy edycja faktury może trwać przez wiele żądań albo sesji użytkownika.
 
 ```python
 from ksef2.fa3 import InvoiceBuilder, KsefInvoiceDraft
@@ -84,25 +81,23 @@ with auth.online_session(form_code=FormSchema.FA3) as session:
     print(status.ksef_number)
 ```
 
-:::tip[Budowanie i wysyłka to oddzielne przepływy]
-Generowanie XML traktuj jako pracę po stronie aplikacji. Wysyłkę online albo
-batch traktuj jako pracę po stronie KSeF. Gdy retry ma znaczenie, zapisz XML
-albo stan draftu przed otwarciem sesji KSeF.
+:::tip[Budowanie i wysyłka to osobne przepływy]
+Generowanie XML traktuj jako pracę po stronie aplikacji. Wysyłkę w sesji interaktywnej albo wsadowej traktuj jako pracę po stronie KSeF. Gdy ponowienie ma znaczenie, zapisz XML albo stan wersji roboczej, zanim otworzysz sesję KSeF.
 :::
 
-## Zalecany przepływ
+## Zalecany przebieg
 
 1. Przenieś dane aplikacji do buildera FA(3).
 
-2. Wybierz rodzaj faktury i uzupełnij wymagane sekcje zagnieżdżone.
+2. Wybierz rodzaj faktury i uzupełnij wymagane, zagnieżdżone sekcje.
 
-3. Zapisz stan draftu, jeśli użytkownicy mogą przerwać edycję.
+3. Zapisz stan wersji roboczej, jeśli użytkownik może przerwać edycję.
 
 4. Wyrenderuj XML metodą `to_xml()`.
 
-5. Wyślij XML przez przepływ online albo batch.
+5. Wyślij XML przez sesję interaktywną albo wsadową.
 
-## Referencja
+## Opis API
 
 - [Wysyłanie faktur](sending-invoices.md)
-- [Referencja API FA(3)](../reference/api/fa3.md)
+- [Opis API FA(3)](../reference/api/fa3.md)

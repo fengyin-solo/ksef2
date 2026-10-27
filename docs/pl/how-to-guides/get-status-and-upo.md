@@ -1,17 +1,15 @@
 ---
-title: Sprawdź status i UPO
-description: Sprawdzaj status sesji online i batch, listuj faktury sesji i pobieraj dokumenty UPO.
+title: Pobieranie statusu i UPO
+description: Sprawdzaj status sesji interaktywnej i wsadowej, listuj faktury sesji i pobieraj dokumenty UPO.
 ---
 
-Użyj tej strony po wysłaniu XML faktury. Przykłady zakładają, że masz już
-uwierzytelnionego klienta `auth`.
+Użyj tej strony po wysłaniu XML faktury. Przykłady zakładają, że masz już uwierzytelnionego klienta `auth`.
 
-Wywołania statusu zwracają modele SDK. Wywołania UPO zwracają bajty XML.
+Wywołania statusu zwracają modele SDK. Wywołania UPO (Urzędowego Poświadczenia Odbioru) zwracają bajty XML.
 
-## Status faktury online
+## Status faktury w sesji interaktywnej
 
-Przy wysyłce online `send_invoice()` zwraca referencję faktury w sesji. Użyj tej
-referencji do pollingu wyniku faktury i pobrania UPO faktury.
+Przy wysyłce interaktywnej `send_invoice()` zwraca numer referencyjny faktury w sesji. Użyj go do sprawdzania wyniku faktury i pobrania jej UPO.
 
 ```python
 from pathlib import Path
@@ -39,12 +37,9 @@ with auth.online_session(form_code=FormSchema.FA3) as session:
     Path("upo.xml").write_bytes(upo_xml)
 ```
 
-`download_upo()` to jedno zapytanie i nigdy nie czeka, więc najpierw wywołaj
-`submission.wait()`, jak powyżej. Wywołane za wcześnie rzuca `KSeFNotReadyError`
-ze wskazówką, by wywołać `wait()`.
+`download_upo()` to jedno zapytanie i nigdy nie czeka, więc najpierw wywołaj `submission.wait()`, jak powyżej. Wywołane za wcześnie zgłasza wyjątek `KSeFNotReadyError` ze wskazówką, żeby wywołać `wait()`.
 
-W tym samym bloku sesji, jeśli masz już numer KSeF, możesz pobrać UPO faktury
-po numerze KSeF:
+W tym samym bloku sesji, jeśli masz już numer KSeF, możesz pobrać UPO faktury po numerze KSeF:
 
 ```python
 ksef_number = invoice_status.ksef_number
@@ -54,17 +49,13 @@ if ksef_number is None:
 upo_xml = session.download_invoice_upo(ksef_number=ksef_number)
 ```
 
-:::caution[Zachowaj referencję faktury]
-Referencja faktury jest trwałym uchwytem do pollingu jednej faktury w sesji.
-Zapisz ją przed czekaniem, żeby inny worker mógł sprawdzić wynik, jeśli
-pierwotny proces się zatrzyma.
+:::caution[Zachowaj numer referencyjny faktury]
+Numer referencyjny faktury pozwala później sprawdzić jedną fakturę w sesji. Zapisz go, zanim zaczniesz czekać, żeby inny proces roboczy mógł sprawdzić wynik, jeśli pierwotny proces się zatrzyma.
 :::
 
 ## Pobierz UPO po restarcie
 
-Mając nowego uwierzytelnionego klienta `auth`, użyj zapisanych referencji, aby
-pobrać UPO z sesji online lub batch. Nie potrzebujesz otwartego uchwytu sesji
-ani `OnlineSessionResumeState` z kluczami szyfrowania.
+Mając nowego uwierzytelnionego klienta `auth`, użyj zapisanych numerów referencyjnych, aby pobrać UPO z sesji interaktywnej lub wsadowej. Nie potrzebujesz otwartego obiektu sesji ani `OnlineSessionResumeState` z kluczami szyfrowania.
 
 ```python
 # Wczytaj te referencje z danych zapisanych przez aplikację.
@@ -87,19 +78,13 @@ upo_page_xml = auth.invoice_sessions.download_upo(
 )
 ```
 
-Przekaż dokładnie jeden z parametrów: `invoice_reference_number`, `ksef_number`
-lub `upo_reference_number`. Każde wywołanie wykonuje jedno uwierzytelnione żądanie
-i zwraca bajty XML. Dla klienta async użyj `await` przy tym samym wywołaniu.
+Przekaż dokładnie jeden z parametrów: `invoice_reference_number`, `ksef_number` albo `upo_reference_number`. Każde wywołanie wykonuje jedno uwierzytelnione żądanie i zwraca bajty XML. Dla klienta asynchronicznego użyj `await` przy tym samym wywołaniu.
 
-Podobnie jak `submission.download_upo()`, ta metoda nie czeka ani nie polluje.
-Gdy KSeF zwróci kod 21165 lub 21178, rzuca `KSeFNotReadyError`. Sprawdź status
-przetwarzania przed ponowną próbą; odrzucona faktura może nigdy nie otrzymać UPO.
-Strona UPO sesji jest dostępna po zamknięciu i przetworzeniu sesji.
+Podobnie jak `submission.download_upo()`, ta metoda nie czeka i nie sprawdza statusu w pętli. Gdy KSeF zwróci kod 21165 albo 21178, zgłasza wyjątek `KSeFNotReadyError`. Sprawdź status przetwarzania przed ponowną próbą. Odrzucona faktura może nigdy nie dostać UPO. Strona UPO sesji jest dostępna po zamknięciu i przetworzeniu sesji.
 
-## Strony sesji online
+## Strony sesji interaktywnej
 
-Użyj stron sesji, gdy chcesz sprawdzić wszystko, co wysłano w sesji online, a
-nie jedną referencję faktury.
+Stron sesji użyj, gdy chcesz sprawdzić wszystko, co wysłano w sesji interaktywnej, a nie jedną fakturę.
 
 ### Przyjęte
 
@@ -119,10 +104,9 @@ for invoice in page.invoices:
     print(invoice.reference_number, invoice.status.code, invoice.status.details)
 ```
 
-## Status batch i UPO
+## Status sesji wsadowej i UPO
 
-Przy wysyłce batch zachowaj zwrócony `BatchSessionResumeState`. Serwis batch może
-pollować po stanie albo po samym numerze referencyjnym sesji.
+Przy wysyłce wsadowej zachowaj zwrócony `BatchSessionResumeState`. Moduł sesji wsadowej może sprawdzać status po stanie albo po samym numerze referencyjnym sesji.
 
 ```python
 from pathlib import Path
@@ -154,15 +138,13 @@ for number, upo_xml in enumerate(session.download_upo(), start=1):
     Path(f"batch-upo-{number}.xml").write_bytes(upo_xml)
 ```
 
-:::note[UPO jest artefaktem audytowym]
-Zapisuj XML UPO trwale. To oficjalny dokument potwierdzenia, a nie tylko
-tymczasowa odpowiedź statusu.
+:::note[UPO jest materiałem do audytu]
+Zapisuj XML UPO trwale. To oficjalne poświadczenie, a nie tylko chwilowa odpowiedź ze statusem.
 :::
 
-## Listuj faktury przyjęte i odrzucone w batchu
+## Lista faktur przyjętych i odrzuconych w sesji wsadowej
 
-Faktury przyjęte i odrzucone są na osobnych stronach. Przeczytaj oba zestawy
-przy uzgadnianiu batcha.
+Faktury przyjęte i odrzucone są na osobnych stronach. Przy uzgadnianiu paczki przeczytaj oba zestawy.
 
 ### Przyjęte
 
@@ -196,12 +178,9 @@ while page.continuation_token is not None:
 
 ## Znajdź sesje po restarcie
 
-Użyj `auth.invoice_sessions`, gdy musisz znaleźć sesje online albo batch po
-zakończeniu pierwotnego procesu wysyłki.
+Użyj `auth.invoice_sessions`, gdy musisz znaleźć sesje interaktywne albo wsadowe po zakończeniu pierwotnego procesu wysyłki.
 
-`list()` zwraca `Pager`: iteruj po nim, by dostać każdą sesję, wywołaj
-`.pages()` dla list wielkości strony albo `.first_page()`, by wykonać jedno
-żądanie.
+`list()` zwraca `Pager`. Iteruj po nim, żeby dostać każdą sesję, wywołaj `.pages()` dla list wielkości strony albo `.first_page()`, żeby wykonać jedno żądanie.
 
 ### Jedna strona
 
@@ -222,23 +201,21 @@ for item in auth.invoice_sessions.list("batch"):
     print(item.reference_number, item.status.description)
 ```
 
-## Zalecany przepływ
+## Zalecany przebieg
 
-1. Zapisz referencje sesji i faktur podczas wysyłki.
+1. Zapisz numery referencyjne sesji i faktur podczas wysyłki.
 
-2. Polluj konkretną fakturę, sesję online albo sesję batch zgodnie z pytaniem,
-   na które odpowiadasz.
+2. Sprawdzaj konkretną fakturę, sesję interaktywną albo sesję wsadową, zależnie od pytania.
 
 3. Zapisz szczegóły faktur przyjętych i odrzuconych.
 
-4. Pobierz XML UPO i zapisz go razem z danymi audytowymi.
+4. Pobierz XML UPO i zapisz go razem z danymi do audytu.
 
-5. Użyj `auth.invoice_sessions`, żeby odzyskać referencje sesji po restarcie
-   procesu.
+5. Użyj `auth.invoice_sessions`, żeby odzyskać numery referencyjne sesji po restarcie procesu.
 
-## Następne przepływy
+## Następne strony
 
-- [Wyślij faktury](send-invoices.md): Wyślij XML faktury przez sesję online albo batch przed pollingiem statusu.
-- [Status i UPO](../concepts/status-and-upo.md): Zrozum powierzchnie statusu, dokumenty UPO, polling i lokalne timeouty.
-- [Pobierz faktury](download-invoices.md): Pobierz przetworzony XML faktury po nadaniu numeru KSeF.
-- [Wyszukaj faktury](query-invoices.md): Znajdź przetworzone faktury filtrami metadanych i paginacją.
+- [Wysyłanie faktur](send-invoices.md): XML faktury przez sesję interaktywną albo wsadową, zanim sprawdzisz status.
+- [Status i UPO](../concepts/status-and-upo.md): statusy, dokumenty UPO, sprawdzanie wyniku i lokalne limity czasu.
+- [Pobieranie faktur](download-invoices.md): przetworzony XML faktury po nadaniu numeru KSeF.
+- [Wyszukiwanie faktur](query-invoices.md): przetworzone faktury, filtry metadanych i stronicowanie.

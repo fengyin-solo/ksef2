@@ -1,16 +1,13 @@
 ---
-title: Sprawdź certyfikaty szyfrowania
+title: Podgląd certyfikatów szyfrowania
 description: Odczytuj publiczne certyfikaty szyfrowania KSeF używane przez zaszyfrowane przepływy faktur i eksportów.
 ---
 
-Użyj `client.encryption`, gdy potrzebujesz kontroli startowej, diagnostyki albo
-własnego cache certyfikatów. Większość przepływów faktur ładuje publiczne
-certyfikaty szyfrowania automatycznie.
+Użyj `client.encryption`, gdy potrzebujesz kontroli przy starcie, diagnostyki albo własnej pamięci podręcznej certyfikatów. Większość przepływów faktur pobiera publiczne certyfikaty szyfrowania sama.
 
 ## Pobierz certyfikaty
 
-`client.encryption` jest gałęzią klienta głównego, więc nie wymaga klienta
-uwierzytelnionego.
+`client.encryption` jest modułem klienta głównego, więc nie wymaga klienta uwierzytelnionego.
 
 ### Wszystkie zastosowania
 
@@ -30,7 +27,7 @@ for certificate in certificates:
     print(certificate.public_key_id, certificate.usage, certificate.valid_to)
 ```
 
-### Klucze sesji/eksportu
+### Klucze sesji i eksportu
 
 ```python
 certificates = client.encryption.get_certificates(
@@ -41,7 +38,7 @@ for certificate in certificates:
     print(certificate.public_key_id, certificate.valid_to)
 ```
 
-### Token auth
+### Szyfrowanie tokena
 
 ```python
 certificates = client.encryption.get_certificates(
@@ -52,12 +49,9 @@ for certificate in certificates:
     print(certificate.public_key_id, certificate.valid_to)
 ```
 
-## Wstępnie załaduj przed szyfrowanymi przepływami
+## Pobierz certyfikaty przed szyfrowanymi przepływami
 
-Wysokopoziomowe helpery sesji online, batch, uwierzytelniania tokenem i eksportu
-używają tych publicznych certyfikatów, gdy szyfrują lokalny materiał klucza dla
-KSeF. Wstępne ładowanie jest przydatne, gdy chcesz diagnostyki startowej zanim
-worker zacznie przyjmować zadania.
+Metody wysokiego poziomu dla sesji interaktywnej, sesji wsadowej, uwierzytelniania tokenem i eksportu używają tych publicznych certyfikatów, gdy szyfrują lokalny klucz dla KSeF. Wcześniejsze pobranie przydaje się, gdy chcesz sprawdzić start, zanim proces roboczy zacznie przyjmować zadania.
 
 ```python
 required_usage = "symmetric_key_encryption"
@@ -67,26 +61,23 @@ if not certificates:
     raise RuntimeError(f"No KSeF certificate supports {required_usage}.")
 ```
 
-:::tip[Nie przypinaj treści certyfikatu w kodzie]
-Pobieraj aktualne certyfikaty KSeF i cache'uj je zgodnie z potrzebami
-operacyjnymi. Hardcodowane dane certyfikatu kiedyś wygasną.
+:::tip[Nie zapisuj treści certyfikatu w kodzie]
+Pobieraj aktualne certyfikaty KSeF i trzymaj je w pamięci podręcznej zgodnie z potrzebami operacyjnymi. Dane wpisane na stałe kiedyś wygasną.
 :::
 
-## Zalecany przepływ
+## Zalecany przebieg
 
-1. Domyślnie pozwól przepływom faktur ładować certyfikaty leniwie.
+1. Domyślnie pozwól przepływom faktur pobierać certyfikaty dopiero wtedy, gdy będą potrzebne.
 
-2. Dodaj kontrolę startową tylko wtedy, gdy brak certyfikatu ma zatrzymać
-   proces przed przyjęciem pracy.
+2. Dodaj kontrolę przy starcie tylko wtedy, gdy brak certyfikatu ma zatrzymać proces, zanim przyjmie pracę.
 
-3. Sprawdź zastosowanie wymagane przez przepływ: szyfrowanie tokenów albo
-   szyfrowanie kluczy symetrycznych.
+3. Sprawdź zastosowanie wymagane przez przepływ: szyfrowanie tokenów albo szyfrowanie kluczy symetrycznych.
 
-4. Alarmuj i ponów później, jeśli nie ma ważnego certyfikatu.
+4. Zgłoś alarm i spróbuj później, jeśli nie ma ważnego certyfikatu.
 
-## Następne przepływy
+## Następne strony
 
-- [Szyfrowanie](../concepts/encryption.md): Zrozum, gdzie publiczne certyfikaty KSeF pojawiają się w przepływach SDK.
-- [Magazyn certyfikatów](configure-certificate-store.md): Kontroluj odświeżanie cache certyfikatów albo podłącz magazyn aplikacji.
-- [Wyślij faktury](send-invoices.md): Użyj certyfikatów szyfrowania przez wysokopoziomowe sesje online i batch.
-- [Pobierz faktury](download-invoices.md): Użyj helperów eksportu, które szyfrują i deszyfrują materiał paczek za Ciebie.
+- [Szyfrowanie](../concepts/encryption.md): gdzie publiczne certyfikaty KSeF pojawiają się w przepływach SDK.
+- [Konfiguracja magazynu certyfikatów](configure-certificate-store.md): odświeżanie pamięci certyfikatów albo podłączenie magazynu aplikacji.
+- [Wysyłanie faktur](send-invoices.md): certyfikaty szyfrowania przez sesje interaktywne i wsadowe wysokiego poziomu.
+- [Pobieranie faktur](download-invoices.md): metody eksportu, które szyfrują i odszyfrowują materiał paczek.

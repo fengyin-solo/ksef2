@@ -1,15 +1,13 @@
 ---
-title: Użyj danych TEST
-description: Twórz sandboxowe podmioty, osoby, uprawnienia, flagi załączników i blokady kontekstów w TEST.
+title: Dane testowe
+description: Twórz podmioty, osoby, uprawnienia, flagi załączników i blokady kontekstów w środowisku testowym.
 ---
 
-Używaj `client.testdata` tylko z `Environment.TEST`. Te helpery modyfikują dane
-sandboxa KSeF, dzięki czemu testy i demo mogą tworzyć znane konteksty.
+Używaj `client.testdata` tylko z `Environment.TEST`. Te metody zmieniają dane środowiska testowego KSeF, dzięki czemu testy i pokazy mogą tworzyć znane konteksty logowania.
 
-## Utwórz dane sandboxa ręcznie
+## Utwórz dane ręcznie
 
-Bezpośrednich metod używaj dla współdzielonych fixture'ów, które mają przetrwać
-wiele uruchomień testów.
+Metod bezpośrednich używaj dla wspólnych danych testowych, które mają przetrwać wiele uruchomień testów.
 
 ### Podmiot
 
@@ -44,17 +42,16 @@ client.testdata.block_context(context=context)
 client.testdata.unblock_context(context=context)
 ```
 
-Usuń współdzielone fixture'y jawnie, gdy nie są już potrzebne:
+Usuń wspólne dane jawnie, gdy nie są już potrzebne:
 
 ```python
 client.testdata.delete_person(nip="5261040828")
 client.testdata.delete_subject(nip="5261040828")
 ```
 
-## Użyj temporal cleanup
+## Sprzątanie po wyjściu z bloku
 
-`temporal()` zapisuje mutacje i próbuje posprzątać je best-effort po wyjściu z
-bloku.
+`temporal()` zapisuje zmiany i po wyjściu z bloku próbuje je posprzątać. Sprzątanie jest podejmowane w miarę możliwości, bez gwarancji, że każda zmiana zniknie.
 
 ### Podmiot i załączniki
 
@@ -95,14 +92,12 @@ with client.testdata.temporal() as data:
 ```
 
 :::caution[Tylko TEST]
-Gałąź danych TEST istnieje do przygotowania fixture'ów sandboxa. Nie buduj
-przepływów produktu zależnych od niej w DEMO albo PRODUCTION.
+Moduł danych testowych służy do przygotowania danych w środowisku testowym. Nie buduj na nim przepływów produktu w środowisku przedprodukcyjnym (Demo) ani produkcyjnym.
 :::
 
 ## Generowanie identyfikatorów
 
-`ksef2.testdata` generuje numery NIP i PESEL z poprawną sumą kontrolną, dzięki
-czemu każde uruchomienie testów może użyć nowych podmiotów w sandboxie:
+`ksef2.testdata` generuje numery NIP i PESEL z poprawną sumą kontrolną, dzięki czemu każde uruchomienie testów może użyć nowych podmiotów w środowisku testowym:
 
 ```python
 from ksef2.testdata import generate_nip, generate_pesel
@@ -111,21 +106,18 @@ nip = generate_nip()
 pesel = generate_pesel()
 ```
 
-## Zalecany przepływ
+## Zalecany przebieg
 
-1. Utwórz tylko podmioty, osoby, uprawnienia, flagi załączników albo blokady
-   kontekstów wymagane przez test.
+1. Utwórz tylko te podmioty, osoby, uprawnienia, flagi załączników albo blokady kontekstu logowania, których wymaga test.
 
-2. Użyj `temporal()` dla fixture'ów, które powinny zostać posprzątane
-   automatycznie.
+2. Użyj `temporal()` dla danych, które powinny zostać posprzątane automatycznie.
 
-3. Użyj bezpośrednich metod create/delete dla fixture'ów współdzielonych przez
-   wiele uruchomień testów.
+3. Użyj bezpośrednich metod tworzenia i usuwania dla danych wspólnych dla wielu uruchomień testów.
 
-4. Trzymaj wygenerowane identyfikatory w konfiguracji testów, nie produkcji.
+4. Wygenerowane identyfikatory trzymaj w konfiguracji testów, nie w konfiguracji produkcyjnej.
 
-## Następne przepływy
+## Następne strony
 
-- [Konfiguracja klienta](client-setup.md): Utwórz klienta głównego TEST przed użyciem gałęzi testdata.
-- [Uwierzytelnianie](authenticate.md): Uwierzytelniaj się w kontekstach TEST utworzonych przez helpery testdata.
-- [Skonfiguruj uprawnienia](configure-permissions.md): Używaj produkcyjnych API uprawnień po przetestowaniu kształtów nadań w TEST.
+- [Konfiguracja klienta](client-setup.md): klient główny środowiska testowego, zanim użyjesz `testdata`.
+- [Uwierzytelnianie](authenticate.md): uwierzytelnianie w kontekstach logowania utworzonych przez metody danych testowych.
+- [Konfiguracja uprawnień](configure-permissions.md): produkcyjne API uprawnień po sprawdzeniu nadań w środowisku testowym.

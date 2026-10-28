@@ -94,11 +94,19 @@ class InvoicesFilterFactory(ModelFactory[InvoicesFilter]):
 
 
 @register_fixture(name="inv_package_part")
-class PackagePartFactory(ModelFactory[PackagePart]): ...
+class PackagePartFactory(ModelFactory[PackagePart]):
+    ordinal_number = 1
 
 
 @register_fixture(name="inv_package")
-class InvoicePackageFactory(ModelFactory[InvoicePackage]): ...
+class InvoicePackageFactory(ModelFactory[InvoicePackage]):
+    invoice_count = 2
+    size = 256
+    is_truncated = False
+
+    @classmethod
+    def parts(cls) -> list[PackagePart]:
+        return [PackagePartFactory.build(ordinal_number=ordinal) for ordinal in (1, 2)]
 
 
 class ExportHandleFactory(ModelFactory[ExportHandle]): ...

@@ -160,3 +160,162 @@ def test_export_download_verifies_each_part(
         assert sorted(item.name for item in tmp_path.iterdir()) == ["export.zip"]
     assert len(flavor.transport.calls) == 2
     assert flavor.transport.responses == []
+
+
+def _part_payload(
+    ordinal_number: int, plaintext: bytes
+) -> tuple[dict[str, object], bytes]:
+    ciphertext = encrypt_invoice(plaintext, key=KEY, iv=IV)
+    return (
+        {
+            "ordinalNumber": ordinal_number,
+            "partName": f"part-{ordinal_number}.zip.aes",
+            "method": "GET",
+            "url": f"https://storage.invalid/part-{ordinal_number}",
+            "partSize": len(plaintext),
+            "partHash": sha256_b64(plaintext),
+            "encryptedPartSize": len(ciphertext),
+            "encryptedPartHash": sha256_b64(ciphertext),
+            "expirationDate": datetime(2030, 1, 1, tzinfo=UTC).isoformat(),
+        },
+        ciphertext,
+    )
+
+
+def _malformed_package(kind: str) -> dict[str, object]:
+    part_one, _ = _part_payload(1, b"first archive part bytes!!")
+    part_two, _ = _part_payload(2, b"second archive part bytes!")
+    if kind == "empty":
+        parts: list[dict[str, object]] = []
+        invoice_count = 1
+    elif kind == "duplicate":
+        parts = [part_one, dict(part_one)]
+        invoice_count = 2
+    elif kind == "gap":
+        parts = [part_one, {**part_two, "ordinalNumber": 3}]
+        invoice_count = 2
+    else:  # starts_at_two
+        parts = [{**part_one, "ordinalNumber": 2}]
+        invoice_count = 1
+    return {
+        "invoiceCount": invoice_count,
+        "size": 99,
+        "parts": parts,
+        "isTruncated": False,
+    }
+
+
+@legacy_api
+@pytest.mark.parametrize(
+    "method", ["wait_for_export_package", "export_and_download", "wait", "download"]
+)
+@pytest.mark.parametrize(
+    ("kind", "message"),
+    [
+        ("empty", "at least one part"),
+        ("duplicate", "must be unique"),
+        ("gap", "consecutive starting at 1"),
+        ("starts_at_two", "consecutive starting at 1"),
+    ],
+)
+def test_invalid_package_manifest_fails_before_any_part_download(
+    flavor: Flavor,
+    method: str,
+    kind: str,
+    message: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    service = flavor.invoices_service()
+    _ready(flavor, _malformed_package(kind))
+    target = tmp_path / "export.zip"
+
+    with pytest.raises(KSeFValidationError, match=message):
+        if method == "wait_for_export_package":
+            flavor.run(
+                service.wait_for_export_package(
+                    reference_number="export-ref", timeout=0.0
+                )
+            )
+        elif method == "export_and_download":
+            schedule = (
+                AsyncMock(return_value=_handle())
+                if flavor.is_async
+                else Mock(return_value=_handle())
+            )
+            monkeypatch.setattr(service, "_schedule_export", schedule)
+            flavor.run(
+                service.export_and_download(
+                    filters=InvoicesFilter.for_seller(
+                        date_from="2026-01-01T00:00:00Z",
+                        date_to="2026-01-02T00:00:00Z",
+                    ),
+                    timeout=0.0,
+                )
+            )
+        else:
+            job = flavor.run(
+                service.export(state=ExportResumeState.from_handle(_handle()))
+            )
+            if method == "download":
+                flavor.run(job.download(target, timeout=0.0))
+            else:
+                flavor.run(job.wait(timeout=0.0))
+
+    if method == "download":
+        assert not target.exists()
+    # The status response is the only request; no presigned part URL was fetched.
+    assert len(flavor.transport.calls) == 1
+    assert "storage.invalid" not in flavor.transport.calls[0].path
+    assert flavor.transport.responses == []
+
+
+@legacy_api
+@pytest.mark.parametrize("destination", ["memory", "disk", "legacy"])
+def test_out_of_order_manifest_downloads_parts_in_ordinal_order(
+    flavor: Flavor, destination: str, tmp_path: Path
+) -> None:
+    first = b"first archive part bytes!!"
+    second = b"second archive part bytes!"
+    part_one, cipher_one = _part_payload(1, first)
+    part_two, cipher_two = _part_payload(2, second)
+    package: dict[str, object] = {
+        "invoiceCount": 2,
+        "size": len(first) + len(second),
+        # The server listed the parts out of order; the manifest is still valid.
+        "parts": [part_two, part_one],
+        "isTruncated": False,
+    }
+    service = flavor.invoices_service()
+    _ready(flavor, package)
+    # Downloads follow ordinal numbers, so part 1 must be requested before part 2.
+    flavor.transport.enqueue(content=cipher_one)
+    flavor.transport.enqueue(content=cipher_two)
+
+    if destination == "legacy":
+        ready_package = flavor.run(
+            service.wait_for_export_package(reference_number="export-ref", timeout=0.0)
+        )
+        archive = b"".join(
+            flavor.run(
+                service.fetch_package_bytes(package=ready_package, export=_handle())
+            )
+        )
+    else:
+        job = flavor.run(service.export(state=ExportResumeState.from_handle(_handle())))
+        result = flavor.run(
+            job.download(tmp_path / "export.zip", timeout=0.0)
+            if destination == "disk"
+            else job.wait(timeout=0.0)
+        )
+        assert isinstance(result, ExportedInvoices)
+        archive = result.archive
+        if destination == "disk":
+            assert (tmp_path / "export.zip").read_bytes() == first + second
+
+    assert archive == first + second
+    assert [call.path for call in flavor.transport.calls[1:]] == [
+        "https://storage.invalid/part-1",
+        "https://storage.invalid/part-2",
+    ]
+    assert flavor.transport.responses == []

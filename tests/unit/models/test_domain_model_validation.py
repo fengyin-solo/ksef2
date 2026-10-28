@@ -1,10 +1,14 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 import pytest
 from pydantic import BaseModel, ValidationError
 
 from ksef2._domain.models.batch import BatchFileInfo, BatchFilePart
-from ksef2._domain.models.invoices import InvoicesFilter
+from ksef2._domain.models.invoices import (
+    InvoicePackage,
+    InvoicesFilter,
+    PackagePart,
+)
 from ksef2._domain.models.pagination import InvoiceMetadataParams
 from ksef2.models import PersonPermissionsQuery
 from ksef2._core.exceptions import KSeFException, KSeFValidationError
@@ -322,3 +326,142 @@ def test_missing_person_query_type_uses_sdk_exception_hierarchy() -> None:
     assert isinstance(caught.value, KSeFValidationError)
     assert isinstance(caught.value.__cause__, ValidationError)
     assert caught.value.errors()[0]["loc"] == ("query_type",)
+
+
+def _package_part(ordinal_number: int) -> PackagePart:
+    return PackagePart(
+        ordinal_number=ordinal_number,
+        part_name=f"part-{ordinal_number}.zip.aes",
+        method="GET",
+        url=f"https://storage.example/part-{ordinal_number}",
+        part_size=16,
+        part_hash=f"plain-hash-{ordinal_number}",
+        encrypted_part_size=32,
+        encrypted_part_hash=f"encrypted-hash-{ordinal_number}",
+        expiration_date=datetime(2030, 1, 1, tzinfo=UTC),
+    )
+
+
+def _invoice_package(
+    *,
+    invoice_count: int,
+    size: int,
+    parts: list[PackagePart],
+) -> InvoicePackage:
+    return InvoicePackage(
+        invoice_count=invoice_count,
+        size=size,
+        parts=parts,
+        is_truncated=False,
+    )
+
+
+def test_empty_invoice_package_keeps_count_size_and_parts_at_zero() -> None:
+    package = _invoice_package(invoice_count=0, size=0, parts=[])
+
+    assert package.invoice_count == 0
+    assert package.size == 0
+    assert package.parts == []
+
+
+@pytest.mark.parametrize(
+    ("size", "parts", "detail"),
+    [
+        (5, [], "size=5"),
+        (0, [_package_part(1)], "1 part"),
+        (5, [_package_part(1)], "size=5"),
+    ],
+)
+def test_empty_invoice_package_rejects_nonzero_size_or_parts(
+    size: int, parts: list[PackagePart], detail: str
+) -> None:
+    with pytest.raises(
+        KSeFValidationError,
+        match=rf"Empty export package must report size 0 and no parts.*{detail}",
+    ) as caught:
+        _invoice_package(invoice_count=0, size=size, parts=parts)
+
+    assert isinstance(caught.value.__cause__, ValidationError)
+
+
+def test_non_empty_invoice_package_requires_at_least_one_part() -> None:
+    with pytest.raises(
+        KSeFValidationError,
+        match="Non-empty export package must list at least one part",
+    ) as caught:
+        _invoice_package(invoice_count=3, size=128, parts=[])
+
+    assert isinstance(caught.value.__cause__, ValidationError)
+
+
+def test_invoice_package_rejects_duplicate_part_ordinals() -> None:
+    with pytest.raises(
+        KSeFValidationError,
+        match=r"ordinal numbers must be unique.*duplicate ordinal number\(s\): 2",
+    ):
+        _invoice_package(
+            invoice_count=3,
+            size=48,
+            parts=[_package_part(1), _package_part(2), _package_part(2)],
+        )
+
+
+@pytest.mark.parametrize(
+    "ordinals",
+    [[2], [2, 3], [1, 3], [1, 2, 4]],
+)
+def test_invoice_package_rejects_ordinals_that_do_not_start_at_one_or_have_gaps(
+    ordinals: list[int],
+) -> None:
+    with pytest.raises(
+        KSeFValidationError,
+        match="ordinal numbers must be consecutive starting at 1 without gaps",
+    ):
+        _invoice_package(
+            invoice_count=len(ordinals),
+            size=16 * len(ordinals),
+            parts=[_package_part(ordinal) for ordinal in ordinals],
+        )
+
+
+def test_invoice_package_accepts_consecutive_ordinals_in_any_order() -> None:
+    shuffled = [_package_part(3), _package_part(1), _package_part(2)]
+
+    package = _invoice_package(invoice_count=3, size=48, parts=shuffled)
+
+    # The response order is preserved; download paths are responsible for sorting.
+    assert [part.ordinal_number for part in package.parts] == [3, 1, 2]
+
+
+@pytest.mark.parametrize("ordinal_number", [0, -1])
+def test_package_part_rejects_non_positive_ordinal_numbers(
+    ordinal_number: int,
+) -> None:
+    with pytest.raises(KSeFValidationError, match="greater than or equal to 1"):
+        _package_part(ordinal_number)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("invoice_count", -1), ("size", -1)],
+)
+def test_invoice_package_rejects_negative_counts_and_sizes(
+    field: str, value: int
+) -> None:
+    data = {"invoice_count": 0, "size": 0, "parts": []}
+    data[field] = value
+
+    with pytest.raises(KSeFValidationError, match="greater than or equal to 0"):
+        InvoicePackage(is_truncated=False, **data)  # pyright: ignore[reportArgumentType]
+
+
+def test_invoice_package_json_entry_shares_the_validation_contract() -> None:
+    with pytest.raises(
+        KSeFValidationError,
+        match="Invalid InvoicePackage input.*at least one part",
+    ) as caught:
+        InvoicePackage.model_validate_json(
+            '{"invoice_count": 1, "size": 10, "parts": [], "is_truncated": false}'
+        )
+
+    assert isinstance(caught.value.__cause__, ValidationError)

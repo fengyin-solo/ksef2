@@ -2,6 +2,7 @@
 
 import base64
 import json
+from collections import Counter
 from collections.abc import Mapping
 from dataclasses import field
 from datetime import date, datetime, timedelta, timezone
@@ -365,7 +366,7 @@ class ExportStatusInfo(KSeFBaseModel):
 class PackagePart(KSeFBaseModel):
     """Download metadata for one encrypted package part."""
 
-    ordinal_number: int
+    ordinal_number: int = PydanticField(ge=1)
     """One-based position of this part in the package."""
     part_name: str
     """File name of the part."""
@@ -406,9 +407,9 @@ class InvoicePackage(KSeFBaseModel):
     compression_type: CompressionType = "zip"
     """Archive compression reported by KSeF; ZIP for older callers."""
 
-    invoice_count: int
+    invoice_count: int = PydanticField(ge=0)
     """Number of invoices in the package."""
-    size: int
+    size: int = PydanticField(ge=0)
     """Total size of the package in bytes."""
     parts: list[PackagePart]
     """Package parts to download and concatenate."""
@@ -422,6 +423,56 @@ class InvoicePackage(KSeFBaseModel):
     """Permanent-storage date of the last invoice in the package, for continuing a truncated export."""
     permanent_storage_hwm_date: datetime | None = None
     """High-water mark of permanent storage covered by the package."""
+
+    @model_validator(mode="after")
+    def _validate_parts_manifest(self) -> Self:
+        """Keep an empty export all-zero and a non-empty package manifest complete.
+
+        Parts may be listed in any order because the download paths sort them
+        by ordinal number, but the ordinal set has to be ``1..n`` without
+        duplicates or gaps. Otherwise sorting would silently drop middle
+        parts or overwrite same-named outputs.
+        """
+        if self.invoice_count == 0:
+            problems: list[str] = []
+            if self.size != 0:
+                problems.append(f"size={self.size}")
+            if self.parts:
+                problems.append(f"{len(self.parts)} part(s)")
+            if problems:
+                raise ValueError(
+                    "Empty export package must report size 0 and no parts; got "
+                    + ", ".join(problems)
+                    + "."
+                )
+            return self
+
+        if not self.parts:
+            raise ValueError(
+                f"Non-empty export package must list at least one part; got "
+                f"invoice_count={self.invoice_count} and 0 parts."
+            )
+
+        ordinals = [part.ordinal_number for part in self.parts]
+        counts = Counter(ordinals)
+        duplicates = sorted(number for number, count in counts.items() if count > 1)
+        if duplicates:
+            joined = ", ".join(str(number) for number in duplicates)
+            raise ValueError(
+                "Export package part ordinal numbers must be unique; duplicate "
+                f"ordinal number(s): {joined}."
+            )
+
+        ordered = sorted(ordinals)
+        count = len(ordered)
+        if ordered != list(range(1, count + 1)):
+            got = ", ".join(str(number) for number in ordered)
+            raise ValueError(
+                "Export package part ordinal numbers must be consecutive "
+                f"starting at 1 without gaps; with {count} part(s) the ordinals "
+                f"must be 1..{count}, got {got}."
+            )
+        return self
 
 
 class InvoiceExportStatusResponse(KSeFBaseModel):

@@ -279,7 +279,7 @@ class TestInvoicesClient:
         fake_transport: FakeTransport,
         inv_export_status_resp: BaseFactory[spec.InvoiceExportStatusResponse],
     ) -> None:
-        expected = inv_export_status_resp.build()
+        expected = inv_export_status_resp.build(package=None)
         fake_transport.enqueue(expected.model_dump(mode="json"))
 
         result = invoices_client.get_export_status(reference_number="export-ref")

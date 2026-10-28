@@ -138,8 +138,33 @@ class TestInvoicesResponseMapper:
     def test_from_spec_export_status_response(
         self, inv_export_status_resp: BaseFactory[spec.InvoiceExportStatusResponse]
     ) -> None:
-        response = inv_export_status_resp.build()
+        parts = [
+            spec.InvoicePackagePart(
+                ordinalNumber=ordinal,
+                partName=f"part-{ordinal}.zip.aes",
+                method="GET",
+                url=f"https://example.com/export/part-{ordinal}",  # pyright: ignore[reportArgumentType]
+                partSize=64,
+                partHash="a" * 44,
+                encryptedPartSize=128,
+                encryptedPartHash="b" * 44,
+                expirationDate=datetime(2030, 1, 1, tzinfo=timezone.utc),
+            )
+            # A complete manifest whose parts are listed out of order.
+            for ordinal in (2, 1)
+        ]
+        package = spec.InvoicePackage(
+            invoiceCount=2,
+            size=128,
+            parts=parts,
+            isTruncated=False,
+        )
+        response = inv_export_status_resp.build(package=package)
         output = from_spec(response)
 
         assert isinstance(output, domain_invoices.InvoiceExportStatusResponse)
         assert output.status.code == response.status.code
+        assert output.package is not None
+        assert output.package.invoice_count == 2
+        # The response order is preserved; download paths sort by ordinal number.
+        assert [part.ordinal_number for part in output.package.parts] == [2, 1]

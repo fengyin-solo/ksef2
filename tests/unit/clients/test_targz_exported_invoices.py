@@ -4,6 +4,7 @@ import io
 import stat
 import tarfile
 import zipfile
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -11,7 +12,7 @@ from polyfactory import BaseFactory
 
 from ksef2 import KSeFValidationError
 from ksef2.clients import ExportedInvoices
-from ksef2.models import InvoicePackage
+from ksef2.models import InvoicePackage, PackagePart
 from ksef2._infra.schema.api import spec
 from tests.unit.clients.test_exported_invoices import _metadata_json
 
@@ -31,7 +32,19 @@ def _package(payload: bytes) -> ExportedInvoices:
         package=InvoicePackage(
             invoice_count=1,
             size=len(payload),
-            parts=[],
+            parts=[
+                PackagePart(
+                    ordinal_number=1,
+                    part_name="export.tar.gz.aes",
+                    method="GET",
+                    url="https://storage.example/export/part-1",
+                    part_size=len(payload),
+                    part_hash="plain-hash",
+                    encrypted_part_size=len(payload) + 16,
+                    encrypted_part_hash="encrypted-hash",
+                    expiration_date=datetime(2030, 1, 1, tzinfo=UTC),
+                )
+            ],
             is_truncated=False,
             compression_type="tar_gz",
         ),

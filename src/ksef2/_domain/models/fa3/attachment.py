@@ -12,6 +12,51 @@ from ksef2._domain.models.fa3.base import Fa3Model
 
 ValueType = Literal["date", "datetime", "decimal", "integer", "time", "txt"]
 NUMERIC_TYPES = {"decimal", "integer"}
+EMPTY_CELLS = {"", "-"}
+
+
+def _validate_numeric_cell(
+    value: str,
+    column_type: Literal["decimal", "integer"],
+    row_idx: int,
+    col_idx: int,
+) -> None:
+    """Check a numeric cell against the FA(3) number-text rules.
+
+    Decimal cells must hold a finite decimal number; integer cells must hold a
+    finite, integral number. Exponential notation of a finite number is
+    accepted; ``NaN`` and infinities are not legal FA(3) number text.
+
+    Args:
+        value: Raw cell text.
+        column_type: Declared column type, either ``"decimal"`` or ``"integer"``.
+        row_idx: Zero-based row index used in error messages.
+        col_idx: Zero-based column index used in error messages.
+
+    Raises:
+        ValueError: If the cell is not numeric, non-finite, or non-integral in an integer column.
+    """
+    try:
+        number = Decimal(value)
+    except InvalidOperation as exc:
+        raise ValueError(
+            f"Cell ({row_idx}, {col_idx}) of value `{value}` is not numeric"
+        ) from exc
+
+    if not number.is_finite():
+        label = (
+            "a finite decimal number"
+            if column_type == "decimal"
+            else "a finite integer"
+        )
+        raise ValueError(
+            f"Cell ({row_idx}, {col_idx}) of value `{value}` is not {label}"
+        )
+
+    if column_type == "integer" and number != number.to_integral_value():
+        raise ValueError(
+            f"Cell ({row_idx}, {col_idx}) of value `{value}` is not an integer"
+        )
 
 
 class AttachmentTable(Fa3Model):
@@ -50,6 +95,11 @@ class AttachmentTable(Fa3Model):
     def validate_rows_and_columns(self) -> Self:
         """Check that rows and column definitions agree.
 
+        Empty strings and single dashes are accepted as missing-value markers
+        in every column. Decimal cells must parse to a finite decimal number,
+        integer cells to a finite integer, and date/time cells to the matching
+        ISO format.
+
         Returns:
             The validated table.
 
@@ -65,16 +115,13 @@ class AttachmentTable(Fa3Model):
             raise ValueError("Column names count does not match column format count")
 
         def _validate_cell(value: str, row_idx: int, col_idx: int) -> None:
-            if value in {"", "-"}:
+            if value in EMPTY_CELLS:
                 return
             match self.columns_format[col_idx]:
-                case "decimal" | "integer":
-                    try:
-                        _ = Decimal(value)
-                    except InvalidOperation as exc:
-                        raise ValueError(
-                            f"Cell ({row_idx}, {col_idx}) of value `{value}` is not numeric"
-                        ) from exc
+                case "decimal":
+                    _validate_numeric_cell(value, "decimal", row_idx, col_idx)
+                case "integer":
+                    _validate_numeric_cell(value, "integer", row_idx, col_idx)
                 case "date":
                     try:
                         _ = date.fromisoformat(value)

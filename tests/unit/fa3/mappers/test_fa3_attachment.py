@@ -1,8 +1,19 @@
+import re
+
+import pytest
+
+from ksef2 import KSeFValidationError
 from ksef2._domain.models.fa3.attachment import Attachment, AttachmentTable, DataBlock
 from ksef2._infra.mappers.invoices.fa3.domain.attachment import from_spec, to_spec
 from ksef2._infra.schema.fa3.models.schemat import (
     FakturaZalacznik,
+    FakturaZalacznikBlokDanych,
+    FakturaZalacznikBlokDanychTabela,
+    FakturaZalacznikBlokDanychTabelaTnaglowek,
+    FakturaZalacznikBlokDanychTabelaTnaglowekKol,
+    FakturaZalacznikBlokDanychTabelaTnaglowekKolNkom,
     FakturaZalacznikBlokDanychTabelaTnaglowekKolTyp,
+    FakturaZalacznikBlokDanychTabelaWiersz,
 )
 
 
@@ -82,3 +93,86 @@ def test_attachment_from_spec_restores_column_names_and_text() -> None:
     assert table.columns_names == ["Service", "Amount", "SupplyDate"]
     assert table.columns_format == ["txt", "decimal", "date"]
     assert table.summary == ["-", "150.00", "-"]
+
+
+def _single_column_spec(
+    column_type: FakturaZalacznikBlokDanychTabelaTnaglowekKolTyp, cell: str
+) -> FakturaZalacznik:
+    return FakturaZalacznik(
+        blok_danych=[
+            FakturaZalacznikBlokDanych(
+                tabela=[
+                    FakturaZalacznikBlokDanychTabela(
+                        tmeta_dane=[],
+                        tnaglowek=FakturaZalacznikBlokDanychTabelaTnaglowek(
+                            kol=[
+                                FakturaZalacznikBlokDanychTabelaTnaglowekKol(
+                                    nkom=FakturaZalacznikBlokDanychTabelaTnaglowekKolNkom(
+                                        value="Amount"
+                                    ),
+                                    typ=column_type,
+                                )
+                            ]
+                        ),
+                        wiersz=[FakturaZalacznikBlokDanychTabelaWiersz(wkom=[cell])],
+                    )
+                ]
+            )
+        ]
+    )
+
+
+@pytest.mark.parametrize(
+    ("column_type", "cell", "reason"),
+    [
+        (
+            FakturaZalacznikBlokDanychTabelaTnaglowekKolTyp.DEC,
+            "NaN",
+            "not a finite decimal number",
+        ),
+        (
+            FakturaZalacznikBlokDanychTabelaTnaglowekKolTyp.DEC,
+            "-Infinity",
+            "not a finite decimal number",
+        ),
+        (
+            FakturaZalacznikBlokDanychTabelaTnaglowekKolTyp.INT,
+            "1.5",
+            "not an integer",
+        ),
+        (
+            FakturaZalacznikBlokDanychTabelaTnaglowekKolTyp.INT,
+            "Infinity",
+            "not a finite integer",
+        ),
+    ],
+)
+def test_attachment_from_spec_rejects_invalid_numeric_cells(
+    column_type: FakturaZalacznikBlokDanychTabelaTnaglowekKolTyp,
+    cell: str,
+    reason: str,
+) -> None:
+    with pytest.raises(
+        KSeFValidationError,
+        match=rf"Cell \(0, 0\) of value `{re.escape(cell)}` is {reason}",
+    ):
+        from_spec(_single_column_spec(column_type, cell))
+
+
+@pytest.mark.parametrize(
+    ("column_type", "cell"),
+    [
+        (FakturaZalacznikBlokDanychTabelaTnaglowekKolTyp.DEC, "1e3"),
+        (FakturaZalacznikBlokDanychTabelaTnaglowekKolTyp.INT, "1e3"),
+    ],
+)
+def test_attachment_from_spec_accepts_finite_exponential_cells(
+    column_type: FakturaZalacznikBlokDanychTabelaTnaglowekKolTyp, cell: str
+) -> None:
+    mapped = from_spec(_single_column_spec(column_type, cell))
+
+    assert isinstance(mapped, Attachment)
+    tables = mapped.data_blocks[0].tables
+    assert tables is not None
+    table = tables[0]
+    assert table.rows == [[cell]]

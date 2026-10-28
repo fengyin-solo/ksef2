@@ -2,6 +2,7 @@
 
 import pytest
 
+from ksef2 import KSeFValidationError
 from ksef2.fa3 import InvoiceBuilder
 from ksef2._domain.models.fa3.attachment import (
     Attachment,
@@ -277,6 +278,77 @@ def test_reopening_the_attachment_builder_keeps_the_previous_blocks() -> None:
     attachment = builder.dump_state().attachment
     assert attachment is not None
     assert [block.header for block in attachment.data_blocks] == ["First", "Second"]
+
+
+def test_table_builder_rejects_fractional_integer_cell() -> None:
+    with pytest.raises(
+        KSeFValidationError,
+        match=r"Cell \(0, 1\) of value `1.5` is not an integer",
+    ):
+        (
+            AttachmentTableBuilder()
+            .set_columns(["txt", "integer"])
+            .add_row(["Keyboard", "1.5"])
+            .build()
+        )
+
+
+def test_table_builder_rejects_non_finite_decimal_cell() -> None:
+    with pytest.raises(
+        KSeFValidationError,
+        match=r"Cell \(1, 0\) of value `Infinity` is not a finite decimal number",
+    ):
+        (
+            AttachmentTableBuilder()
+            .set_columns(["decimal"])
+            .add_row(["199.00"])
+            .add_row(["Infinity"])
+            .build()
+        )
+
+
+def test_attachment_chain_rejects_non_finite_integer_cell() -> None:
+    builder = started_invoice()
+
+    with pytest.raises(
+        KSeFValidationError,
+        match=r"Cell \(0, 1\) of value `NaN` is not a finite integer",
+    ):
+        (
+            builder.attachment()
+            .build_data_block()
+            .set_header("Meter readings")
+            .build_table()
+            .set_columns(["txt", "integer"])
+            .add_row(["Reading", "NaN"])
+            .done()
+        )
+
+
+def test_attachment_chain_accepts_exponential_values_and_missing_markers() -> None:
+    builder = started_invoice()
+
+    _ = (
+        builder.attachment()
+        .build_data_block()
+        .set_header("Meter readings")
+        .build_table()
+        .set_columns(["txt", "decimal", "integer"])
+        .add_row(["Reading", "1e2", "2"])
+        .add_row(["Missing", "-", ""])
+        .set_summary(["-", "100", "2"])
+        .done()
+        .done()
+        .done()
+    )
+
+    attachment = builder.dump_state().attachment
+    assert attachment is not None
+    tables = attachment.data_blocks[0].tables
+    assert tables is not None
+    table = tables[0]
+    assert table.rows == [["Reading", "1e2", "2"], ["Missing", "-", ""]]
+    assert table.summary == ["-", "100", "2"]
 
 
 def test_attachment_survives_the_draft_round_trip() -> None:
